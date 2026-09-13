@@ -1803,6 +1803,7 @@
     },
     "/api/v1/media/tts/{digest}.mp3": {
       "get": {
+        "description": "Same-origin audio requests carry the session cookie, so keep it private.",
         "operationId": "get_speech_api_v1_media_tts__digest__mp3_get",
         "parameters": [
           {

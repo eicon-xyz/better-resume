@@ -86,11 +86,11 @@ T2/T10 真机验证（需凭据）───────────────�
 | T1 句池归并 | ✅ 完成 | tests/media/test_assembler.py 22 例；含 MIN_OVERLAP 修复（PROBLEMS P2） |
 | T2 讯飞 AST adapter + 假 adapter | ✅ 完成 | tests/media/test_xunfei_ast.py 10 例（本地假 WS 服务端）；PROBLEMS P3/P4 |
 | T3 WS ticket + 转写端点 | ✅ 完成 | tests/test_ws_ticket.py 5 例 + tests/test_media_ws.py 6 例；PROBLEMS P5/P6 |
-| T4 TTS(edge-tts) + 缓存 + 端点 | 🔶 代码就位、单测绿（tests/media/test_tts.py 6 例）；**还差** HTTP 端点用例 tests/test_media_tts_api.py（401/422/404 路径穿越/503/504/缓存命中） |
-| T5 前端采集 + WS 客户端 | ⬜ 未开始 | — |
-| T6 三级文本消费 | ⬜ 未开始 | — |
-| T7 单例播放器 | ⬜ 未开始 | — |
-| T8 页面接线 | ⬜ 未开始 | — |
+| T4 TTS(edge-tts) + 缓存 + 端点 | ✅ 完成 | tests/media/test_tts.py 6 例 + tests/test_media_tts_api.py 8 例（401/422/404 路径穿越/503/504/缓存命中） |
+| T5 前端采集 + WS 客户端 | ✅ 完成 | src/audio/pcm.ts + capture.ts + transcriptionSocket.ts，21 例单测（重采样/切片/队列上限/去重/重连/释放麦克风） |
+| T6 三级文本消费 | ✅ 完成 | src/audio/transcriptStore.ts（replace/archive/final + mergeTranscript 不覆盖手写文本）；面试答案框与对话输入框共用一份 store |
+| T7 单例播放器 | ✅ 完成 | src/audio/player.ts（单例/缓存/手势解锁/3s 超时/revoke）+ useTtsPlayback；5 例单测 |
+| T8 页面接线 | ✅ 完成 | 面试房间（语音输入/停止/朗读题目）、对话页语音输入、vite ws 代理；src/pages/VoiceWiring.test.tsx 8 例 |
 | T9 假 adapter 端到端 | 🔶 后端一半已具备（WS 全流程用例即端到端：ticket→PCM→replace/archive/final）；前端一半未开始 |
 | T10 真机验证 | ⏸ 阻塞：等讯飞凭据（BR_XUNFEI_APP_ID / ACCESS_KEY_ID / ACCESS_KEY_SECRET） |
 | T11 验收 + PROBLEMS + 简历 + PR | ⬜ 未开始（M4 分支 m4/media 尚未开 PR） |

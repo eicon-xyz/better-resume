@@ -17,6 +17,10 @@
 | P6 | T3 实现 | 收尾事件永远发不出去：sender 先被 cancel，stop() 的 final 无人投递 | 已修（先 stop 再 flush） |
 | P7 | 全程 | 写 docstring/补丁脚本时反复踩转义（反引号、\n、${}）→ 加源码 hygiene 测试 | 已修（守卫测试） |
 | P8 | T4 实现 | 补丁脚本按字符串替换，把 tts 预算加到了 MediaSettings 而非 ResilienceSettings → 全站 78 例失败 | 已修（锚点带类名+全量回归） |
+| P9 | T5/T8 实现 | Vite 开发代理没开 ws:true → 浏览器连不上转写 WebSocket | 已修 |
+| P10 | T8 实现 | 页面级语音测试用全局桩（WebSocket/AudioContext）时点击麦克风无反应；改为注入 capture/socket 工厂后 8 例全绿 | 已修（测试策略） |
+| P11 | T8 实现 | jsdom 没有 URL.createObjectURL / 媒体播放 → 播放器静默失败；判定为浏览器边界后显式打桩 | 已修 |
+| P12 | T8 实现 | React 19 规则：useMemo 里写 ref 触发 react-hooks/refs；方法引用触发 unbound-method | 已修 |
 
 ---
 
@@ -110,3 +114,39 @@
 - **教训**：字符串锚点必须带类名或相邻字段这类唯一上下文；改配置类之后**立刻跑全量**，
   别只看新增的用例（本次新增的 6 例 TTS 单测全绿，掩盖了配置错位）。
 - **证据**：修复后 465 例全绿（含 chat/interview/resilience/media 全量）。
+
+## P9 — Vite 开发代理没开 WebSocket → 浏览器连不上转写通道
+
+- **症状（静态发现）**：vite.config.ts 的 /api 代理只有 http 转发，WS 升级请求会被拒。
+- **根因**：代理默认不过滤 ws；M1–M3 没有 WS，所以一直没暴露。
+- **修法**：/api 代理加 ws: true，并写进注释（同源形态与生产一致）。
+- **证据**：T8 之后本地手工验证 + 代理配置注释；CI 只跑单测，故这条属于人工验收面。
+
+## P10 — 页面级语音测试：全局桩下点麦克风“没反应”（测试策略问题）
+
+- **症状**：VoiceWiring 前身（InterviewRoomVoice）里点击“语音输入”后 createWsTicket 调用数始终为 0，
+  但同一个页面在 DebugVoice 里点击却生效；排查了 disabled、aria-pressed、事件绑定都没结论。
+- **根因**：测试用“替换 globalThis.WebSocket/AudioContext”的方式驱动浏览器边界，
+  而 useTranscription 是在 React 渲染期计算 supported 并缓存闭包，桩与真实执行时序不一致，
+  点击路径被静默吞掉（没有报错），排查成本很高。
+- **修法**：改用**注入工厂**（captureFactory / socketFactory 是 useTranscription 的显式参数），
+  组件测试只通过 store.applyEvent 驱动文本；页面级只断言“store → 输入框 → 提交”这条链路。
+  这样既不需要全局桩，也不依赖时序：8 例全绿。
+- **教训**：能用显式 seam 就别用全局桩；调试超过 3 轮就该换测试策略，而不是继续猜。
+
+## P11 — jsdom 没有 URL.createObjectURL / 媒体播放：播放器静默不合成
+
+- **症状**：question playback 用例断言 synthesizeSpeech 被调用，实际 0 次；页面无任何报错。
+- **根因**：player.primeFromGesture 里 URL.createObjectURL 在 jsdom 下不存在 → 抛错 →
+  speak() 的 promise 变成未处理拒绝（void 调用），于是后面的合成根本没发生。
+- **修法**：把 URL.createObjectURL / HTMLMediaElement.play/pause 判为浏览器边界，在测试 beforeEach 打桩；
+  同时也说明播放器需要更早暴露错误（已在 player 内聚成 error 状态，页面能显示）。
+- **证据**：src/pages/VoiceWiring.test.tsx::synthesizes the question once 绿。
+
+## P12 — React 19 的两条 lint 规则各拦一次（refs during render / unbound method）
+
+- **症状**：react-hooks/refs：在 useMemo 里给 playerRef.current 赋值；
+  @typescript-eslint/unbound-method：`Boolean(navigator.mediaDevices?.getUserMedia)` 与方法引用。
+- **修法**：删掉多余的 playerRef（memo 已经持有实例）；能力探测改为只看 mediaDevices 是否存在；
+  `useEffect(() => stop, [stop])` 改成 `useEffect(() => () => stop(), [stop])`。
+- **证据**：pnpm lint 0 warning / 0 error；tsc 干净；前端 152 例全绿。
