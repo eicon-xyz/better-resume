@@ -1,6 +1,8 @@
 # M4 验收证据（media：转写 WS + TTS 播报 → 语音答题全流程）
 
 > 日期：2026-09-14 ｜ 分支：m4/media ｜ 票据：docs/tickets/m4/（T1–T9、T11 完成；T10 待凭据）
+> PR：https://github.com/eicon-xyz/better-resume/pull/4（双 job success，run 34763326877）
+> 合并：merge commit f3888a4；合并后 main CI run 34763418705 **双 job success**。
 > 验收口径（§12.4 原文）：**语音答题全流程**。
 
 ## 1. 结论（先说清楚证据的边界）
