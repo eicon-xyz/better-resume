@@ -1,0 +1,117 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--br-space-5);
+  gap: var(--br-space-5);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.brand {
+  margin: 0;
+  font-size: var(--br-text-xl);
+}
+
+.back {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--br-space-5);
+  align-items: start;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-5);
+}
+
+.hint {
+  margin-top: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  padding: var(--br-space-4);
+  border: 1px dashed var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-surface-raised);
+  cursor: pointer;
+}
+
+.dropzone input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.preview {
+  margin: var(--br-space-2) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.progress {
+  height: 6px;
+  margin-top: var(--br-space-3);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-surface);
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: var(--br-color-accent);
+  transition: width var(--br-duration-fast);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--br-space-2);
+  margin-top: var(--br-space-3);
+}
+
+.error {
+  margin: var(--br-space-3) 0 0;
+  color: var(--br-color-danger);
+  font-size: var(--br-text-sm);
+}
+
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sessions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--br-space-3);
+  font-size: var(--br-text-sm);
+}
+
+.loading {
+  padding: var(--br-space-6);
+  color: var(--br-color-text-muted);
+}
