@@ -214,7 +214,11 @@ def test_duplicate_client_message_id_is_reported(
 def test_heartbeat_frames_keep_slow_streams_alive(migrated_database: str, monkeypatch) -> None:
     monkeypatch.setenv("BR_DEEPSEEK_API_KEY", "sk-test-not-real")
     settings = Settings(
-        _env_file=None, environment="test", log_level="WARNING", sse_heartbeat_seconds=0.05
+        _env_file=None,
+        environment="test",
+        log_level="WARNING",
+        sse_heartbeat_seconds=0.05,
+        database_url=migrated_database,
     )
     app = create_app(settings)
 

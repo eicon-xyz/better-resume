@@ -59,9 +59,18 @@ def hermetic_br_env(
 
 
 @pytest.fixture
-def settings() -> Settings:
-    """Test settings: ignore any .env on disk so tests are hermetic."""
-    return Settings(_env_file=None, environment="test", log_level="WARNING")
+def settings(database_url: str) -> Settings:
+    """Test settings: ignore any .env on disk, and point the app at the test database.
+
+    Without the explicit URL the app would fall back to the built-in localhost:5432 default,
+    which is right in CI but wrong whenever a developer runs Postgres elsewhere.
+    """
+    return Settings(
+        _env_file=None,
+        environment="test",
+        log_level="WARNING",
+        database_url=database_url,
+    )
 
 
 @pytest.fixture
