@@ -1,11 +1,11 @@
-"""Scene mapping for the Xingyun adapter (M5-T4): explicit in, strict out.
+r"""Scene mapping for the Xingyun adapter (M5-T4): explicit in, strict out.
 
 The cloud workflow is a black box: we control what we send and what we accept, nothing else.
 So this module has exactly two jobs and no fallbacks:
 
 * build the request payload for a scene (one documented shape per scene);
 * validate the answer against the caller's Pydantic schema — **no alias guessing** (the old
-  project hard-coded \`sugest\`/\`total_score\` style fallbacks; we refuse).
+  project hard-coded `sugest`/`total_score` style fallbacks; we refuse).
 """
 
 from __future__ import annotations
