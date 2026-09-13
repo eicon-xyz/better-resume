@@ -48,6 +48,8 @@ from .placeholder import UnimplementedInterviewEngine
 from .prompts import MAX_QUESTIONS, GeneratedQuestion, QuestionBatch
 from .protocols import InterviewEngine
 from .question_service import QuestionGenerationResult, QuestionService
+from .report_service import ReportResult, ReportService, ReportSummary
+from .restore_service import RestoreService, RestoreView
 from .session_fsm import (
     ACTIVE_STATUSES,
     SESSION_TRANSITIONS,
@@ -106,6 +108,11 @@ __all__ = [
     "QuestionNotFound",
     "QuestionRecord",
     "ReportHandle",
+    "ReportResult",
+    "ReportService",
+    "ReportSummary",
+    "RestoreService",
+    "RestoreView",
     "ReportRecord",
     "ResumeUpload",
     "SessionHandle",

@@ -388,6 +388,29 @@
         "title": "ChatSessionView",
         "type": "object"
       },
+      "DimensionView": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "score"
+        ],
+        "title": "DimensionView",
+        "type": "object"
+      },
       "FlowView": {
         "properties": {
           "current_question_no": {
@@ -478,6 +501,66 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InterviewReportView": {
+        "properties": {
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionView"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "llm_summary_used": {
+            "default": false,
+            "title": "Llm Summary Used",
+            "type": "boolean"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Score"
+          },
+          "session": {
+            "$ref": "#/components/schemas/InterviewSessionView"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTurnView"
+            },
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session"
+        ],
+        "title": "InterviewReportView",
         "type": "object"
       },
       "InterviewSessionCreateRequest": {
@@ -655,6 +738,141 @@
           "questions"
         ],
         "title": "QuestionBatchView",
+        "type": "object"
+      },
+      "ReportTurnView": {
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "follow_up_index": {
+            "default": 0,
+            "title": "Follow Up Index",
+            "type": "integer"
+          },
+          "follow_up_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up Reason"
+          },
+          "kind": {
+            "default": "main",
+            "title": "Kind",
+            "type": "string"
+          },
+          "missing_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Points",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "question_no": {
+            "title": "Question No",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "topic_no": {
+            "title": "Topic No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_no",
+          "topic_no",
+          "question"
+        ],
+        "title": "ReportTurnView",
+        "type": "object"
+      },
+      "RestoreResponseView": {
+        "properties": {
+          "answered": {
+            "default": 0,
+            "title": "Answered",
+            "type": "integer"
+          },
+          "current_question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeneratedQuestionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "derived": {
+            "default": false,
+            "title": "Derived",
+            "type": "boolean"
+          },
+          "flow": {
+            "$ref": "#/components/schemas/FlowView"
+          },
+          "last_answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "$ref": "#/components/schemas/InterviewSessionView"
+          },
+          "total_questions": {
+            "default": 0,
+            "title": "Total Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session",
+          "flow"
+        ],
+        "title": "RestoreResponseView",
         "type": "object"
       },
       "SessionUpdateRequest": {
@@ -1241,6 +1459,64 @@
         ]
       }
     },
+    "/api/v1/interview/sessions/{session_id}/finish": {
+      "post": {
+        "operationId": "finish_interview_api_v1_interview_sessions__session_id__finish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Ref"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterviewReportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Finish Interview",
+        "tags": [
+          "interview"
+        ]
+      }
+    },
     "/api/v1/interview/sessions/{session_id}/questions": {
       "post": {
         "operationId": "generate_questions_api_v1_interview_sessions__session_id__questions_post",
@@ -1288,6 +1564,90 @@
           }
         },
         "summary": "Generate Questions",
+        "tags": [
+          "interview"
+        ]
+      }
+    },
+    "/api/v1/interview/sessions/{session_id}/report": {
+      "get": {
+        "operationId": "get_report_api_v1_interview_sessions__session_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterviewReportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report",
+        "tags": [
+          "interview"
+        ]
+      }
+    },
+    "/api/v1/interview/sessions/{session_id}/restore": {
+      "get": {
+        "operationId": "restore_session_api_v1_interview_sessions__session_id__restore_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Session",
         "tags": [
           "interview"
         ]

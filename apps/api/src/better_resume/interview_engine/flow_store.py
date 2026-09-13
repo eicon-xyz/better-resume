@@ -37,6 +37,7 @@ class FlowStateStore:
         max_follow_up: int = 2,
         status: FlowStatus = FlowStatus.INIT,
         current_question_no: str | None = None,
+        follow_up_count: int = 0,
     ) -> FlowState:
         now = _utcnow()
         row = InterviewFlowStateRow(
@@ -45,7 +46,7 @@ class FlowStateStore:
             current_index=0,
             current_question_no=current_question_no,
             total_questions=total_questions,
-            follow_up_count=0,
+            follow_up_count=follow_up_count,
             max_follow_up=max(1, max_follow_up),
             version=1,
             updated_at=now,
