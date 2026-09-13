@@ -5,6 +5,7 @@ import os
 from collections.abc import Iterator
 
 import pytest
+import redis.asyncio as aioredis
 from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -44,6 +45,28 @@ def migrated_database(database_url: str) -> str:
             os.environ["BR_DATABASE_URL"] = previous
         get_settings.cache_clear()
     return database_url
+
+
+@pytest.fixture
+def redis_url(ambient_br_env: dict[str, str]) -> str:
+    """The Redis the tests use; the test is skipped when it is unreachable."""
+    url = ambient_br_env.get("BR_REDIS_URL") or "redis://127.0.0.1:6379/0"
+
+    async def reachable() -> bool:
+        client = aioredis.from_url(url, decode_responses=True)
+        try:
+            await asyncio.wait_for(client.ping(), timeout=2.0)
+            return True
+        finally:
+            await client.aclose()
+
+    try:
+        ok = asyncio.run(reachable())
+    except Exception:  # noqa: BLE001 - any connection problem means "skip"
+        ok = False
+    if not ok:
+        pytest.skip(f"redis not reachable at {url}")
+    return url
 
 
 @pytest.fixture(autouse=True)

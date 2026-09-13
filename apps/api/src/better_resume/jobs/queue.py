@@ -45,8 +45,14 @@ class JobQueue:
         dead_letter_stream: str | None = None,
         max_attempts: int = 3,
         status_ttl_seconds: int = 3600,
+        socket_timeout_seconds: float = 15.0,
     ) -> None:
-        self._client = aioredis.from_url(redis_url, decode_responses=True)
+        # redis-py 8 has a 5s default socket timeout, which truncates blocking reads for
+        # no good reason; keep it explicit and comfortably above our block window.
+        self._client = aioredis.from_url(
+            redis_url, decode_responses=True, socket_timeout=socket_timeout_seconds
+        )
+        self._socket_timeout_seconds = socket_timeout_seconds
         self.stream = stream
         self.group = group
         self.dead_letter_stream = dead_letter_stream or f"{stream}:dead"
@@ -94,10 +100,19 @@ class JobQueue:
                 raise
         self._group_ready = True
 
+    def blocking_block_ms(self, *, requested_ms: int) -> int:
+        """Never ask Redis to block longer than the socket is willing to wait."""
+        ceiling = int(max(0.0, self._socket_timeout_seconds - 2.0) * 1000)
+        return max(0, min(requested_ms, ceiling))
+
     async def claim(self, *, consumer: str, count: int = 1, block_ms: int = 500) -> list[Job]:
         await self.ensure_group()
         response = await self._client.xreadgroup(
-            self.group, consumer, {self.stream: ">"}, count=count, block=block_ms
+            self.group,
+            consumer,
+            {self.stream: ">"},
+            count=count,
+            block=self.blocking_block_ms(requested_ms=block_ms),
         )
         jobs: list[Job] = []
         for _stream, entries in response or []:
