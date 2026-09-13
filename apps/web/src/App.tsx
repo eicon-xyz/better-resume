@@ -8,6 +8,7 @@ import { createApiClient } from "./api/client";
 import type { ApiClient } from "./api/client";
 import { ChatPage } from "./pages/ChatPage";
 import { InterviewIntroPage } from "./pages/InterviewIntroPage";
+import { InterviewReportPage } from "./pages/InterviewReportPage";
 import { InterviewRoomPage } from "./pages/InterviewRoomPage";
 
 import { createQueryClient } from "./queryClient";
@@ -31,6 +32,7 @@ export function App({ client, queryClient }: AppProps = {}) {
             <Route path="/chat/:sessionId" element={<ChatPage />} />
             <Route path="/interview" element={<InterviewIntroPage />} />
             <Route path="/interview/room/:sessionId" element={<InterviewRoomPage />} />
+            <Route path="/interview/report/:sessionId" element={<InterviewReportPage />} />
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
         </BrowserRouter>

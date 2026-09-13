@@ -1,0 +1,130 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-5);
+  padding: var(--br-space-5);
+  overflow-y: auto;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--br-space-4);
+}
+
+.brand {
+  margin: 0;
+  font-size: var(--br-text-xl);
+}
+
+.meta {
+  margin: var(--br-space-1) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--br-space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--br-space-5);
+  align-items: start;
+}
+
+.overall {
+  margin: 0;
+  font-size: 42px;
+  line-height: 1.1;
+}
+
+.note {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.summary {
+  margin-top: 0;
+}
+
+.suggestions {
+  margin: var(--br-space-3) 0 0;
+  padding-left: var(--br-space-4);
+  color: var(--br-color-text);
+}
+
+.missing {
+  margin: var(--br-space-3) 0 0;
+  color: var(--br-color-danger);
+  font-size: var(--br-text-sm);
+}
+
+.turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+}
+
+.turnsTitle {
+  margin: 0;
+  font-size: var(--br-text-lg);
+}
+
+.turn {
+  padding: var(--br-space-3) var(--br-space-4);
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-surface);
+}
+
+.turnHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+}
+
+.turnNo {
+  color: var(--br-color-accent);
+  font-family: var(--br-font-mono);
+}
+
+.badge {
+  padding: 2px var(--br-space-2);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+}
+
+.turnScore {
+  margin-left: auto;
+  font-size: var(--br-text-lg);
+  color: var(--br-color-accent);
+}
+
+.question {
+  margin: var(--br-space-2) 0 0;
+  font-weight: 500;
+}
+
+.answer {
+  margin: var(--br-space-2) 0 0;
+  color: var(--br-color-text-muted);
+  white-space: pre-wrap;
+}
+
+.feedback {
+  margin: var(--br-space-2) 0 0;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
