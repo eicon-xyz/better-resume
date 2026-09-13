@@ -16,6 +16,7 @@
 | P5 | T3 实现 | M0 的通道草图（start/feed/stop）无法表达“通道结束/失败” → 协议补 wait() | 已修（协议扩展） |
 | P6 | T3 实现 | 收尾事件永远发不出去：sender 先被 cancel，stop() 的 final 无人投递 | 已修（先 stop 再 flush） |
 | P7 | 全程 | 写 docstring/补丁脚本时反复踩转义（反引号、\n、${}）→ 加源码 hygiene 测试 | 已修（守卫测试） |
+| P8 | T4 实现 | 补丁脚本按字符串替换，把 tts 预算加到了 MediaSettings 而非 ResilienceSettings → 全站 78 例失败 | 已修（锚点带类名+全量回归） |
 
 ---
 
@@ -94,3 +95,18 @@
 - **修法**：新增 tests/test_source_hygiene.py：用 warnings 捕获逐个 compile 源码文件，
   任何 SyntaxWarning 直接判失败；补丁脚本一律用 chr(10)/chr(36) 构造特殊字符（写进本文件，供后续会话照做）。
 - **证据**：tests/test_source_hygiene.py 通过；此后新增/修改的模块不再出现该告警。
+
+## P8 — 补丁脚本打错类：tts 预算进了 MediaSettings，policy 读不到（78 例齐红）
+
+- **症状**：加完 TTS 后全量测试 24 failed + 54 errors：AttributeError: ResilienceSettings has no attribute tts_timeout_seconds；
+  所有依赖 create_app 的用例一起倒。
+- **根因**：我用「按字符串替换」打补丁，而 MediaSettings 里已有一个 tts_timeout_seconds 字段；
+  锚点条件 `if tts_timeout_seconds in text and tts_max_concurrency not in text` 命中了 MediaSettings，
+  于是三个 tts 预算字段被追加到了错的类；后续“去重”补丁又把它们从 MediaSettings 删掉，
+  结果两边都没有。
+- **修法**：把字段加回 ResilienceSettings（锚点带上下文：followup_max_concurrency / followup_timeout_seconds /
+  extraction_replay_seconds 各自所在行），MediaSettings 只保留面向供应商的开关；
+  同时更新三处「stage 集合」断言与 contracts 用例。
+- **教训**：字符串锚点必须带类名或相邻字段这类唯一上下文；改配置类之后**立刻跑全量**，
+  别只看新增的用例（本次新增的 6 例 TTS 单测全绿，掩盖了配置错位）。
+- **证据**：修复后 465 例全绿（含 chat/interview/resilience/media 全量）。

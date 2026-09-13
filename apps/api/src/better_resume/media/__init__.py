@@ -9,6 +9,7 @@ from .adapters import (
     build_signed_url,
     parse_result_payload,
 )
+from .adapters.edge_tts import DEFAULT_VOICE, EdgeTtsSynthesizer
 from .assembler import (
     MIN_OVERLAP,
     OVERLAP_THRESHOLD,
@@ -33,6 +34,7 @@ from .models import (
 from .placeholder import UnimplementedTranscriptionChannel, UnimplementedTtsSynthesizer
 from .protocols import TranscriptionChannel, TtsSynthesizer
 from .registry import ChannelRegistry
+from .tts_cache import TtsCache
 
 __all__ = [
     "DEFAULT_SCRIPT",
@@ -45,6 +47,9 @@ __all__ = [
     "AudioRef",
     "ChannelCtx",
     "ChannelRegistry",
+    "DEFAULT_VOICE",
+    "EdgeTtsSynthesizer",
+    "TtsCache",
     "MediaConfigError",
     "PgsKind",
     "ScriptStep",
