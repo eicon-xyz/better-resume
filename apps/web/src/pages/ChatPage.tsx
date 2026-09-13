@@ -131,6 +131,13 @@ export function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => void navigate("/settings/ai")}
+            >
+              AI 设置
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 void api.logout().then(() => {
                   void queryClient.invalidateQueries();
