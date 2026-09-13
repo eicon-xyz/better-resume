@@ -39,6 +39,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/ws-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ws Ticket
+         * @description Browsers cannot set headers on a WebSocket, so the cookie buys a one-shot ticket.
+         */
+        post: operations["create_ws_ticket_api_v1_auth_ws_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/sessions": {
         parameters: {
             query?: never;
@@ -628,6 +648,16 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WsTicketView
+         * @description Short-lived, single-use ticket for the WebSocket handshake.
+         */
+        WsTicketView: {
+            /** Expires In */
+            expires_in: number;
+            /** Ticket */
+            ticket: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -705,6 +735,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    create_ws_ticket_api_v1_auth_ws_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WsTicketView"];
+                };
             };
         };
     };

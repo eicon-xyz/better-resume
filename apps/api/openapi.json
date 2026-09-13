@@ -969,6 +969,25 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WsTicketView": {
+        "description": "Short-lived, single-use ticket for the WebSocket handshake.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_in"
+        ],
+        "title": "WsTicketView",
+        "type": "object"
       }
     }
   },
@@ -1047,6 +1066,28 @@
           }
         },
         "summary": "Create Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/ws-ticket": {
+      "post": {
+        "description": "Browsers cannot set headers on a WebSocket, so the cookie buys a one-shot ticket.",
+        "operationId": "create_ws_ticket_api_v1_auth_ws_ticket_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsTicketView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Ws Ticket",
         "tags": [
           "auth"
         ]
