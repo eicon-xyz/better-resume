@@ -111,7 +111,9 @@ frontend (eslint + tsc + vitest): success
 
 - 这是 M1 代码（conversation / llm-gateway / chat SSE / OpenAPI→TS / 前端四件套）在 CI 上的首次真跑，
   两个 job 的每一步都是 success，包含 M1 新增的两条契约漂移检查。
-- 合并进 main 后 `push: branches: [main]` 还会再跑一次同样的双 job。
+- **已合并进 main**：`41a302c`（merge commit；PR #1 状态 `merged: true`）。
+  main 上的 CI run #7（[34751479009](https://github.com/eicon-xyz/better-resume/actions/runs/34751479009)）
+  双 job 同样全绿（backend 15 步 / frontend 13 步，failed=none）——即 M1 在 `main` 上的最终状态。
 
 ## 5. 票据完成情况
 
