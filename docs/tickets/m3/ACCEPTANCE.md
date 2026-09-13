@@ -1,6 +1,8 @@
 # M3 验收证据（ai-resilience：单飞 + 熔断 + 限流接入四链路）
 
 > 日期：2026-09-13 ｜ 分支：`m3/ai-resilience` ｜ 票据：docs/tickets/m3/（T1–T10 全部完成）
+> PR：https://github.com/eicon-xyz/better-resume/pull/3 （双 job success，run 34759655249）
+> 合并：merge commit `3cb0999`；合并后 main CI run 34759727460 **双 job success**。
 > 验收口径（§12.4 原文）：**并发同 key 单次调用有测试证明**。
 
 ## 1. 结论
