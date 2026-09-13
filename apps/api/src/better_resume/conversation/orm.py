@@ -51,7 +51,7 @@ class ConversationRow(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("now()")
     )
 
-    messages: Mapped[list["ConversationMessageRow"]] = relationship(
+    messages: Mapped[list[ConversationMessageRow]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
 
