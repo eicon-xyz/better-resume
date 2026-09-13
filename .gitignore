@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# uv / local caches (workspace-local cache dir used on WSL sandboxed dev boxes)
+.cache/
+
+# Node / pnpm
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Docker volumes
+data/
+pgdata/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
