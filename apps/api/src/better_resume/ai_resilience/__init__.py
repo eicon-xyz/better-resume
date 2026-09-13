@@ -1,4 +1,5 @@
 from .breaker import BreakerPolicy, BreakerRegistry, BreakerState, CircuitBreaker
+from .bulkhead import Bulkhead, BulkheadRegistry
 from .clock import Clock, ManualClock, SystemClock
 from .errors import (
     AiInvalid,
@@ -18,6 +19,7 @@ from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
 from .singleflight import Flight, FlightState, SingleFlight
 from .stream import StreamBroadcast
+from .timeout import with_timeout, wrap_stream_timeout
 
 __all__ = [
     "AiInvalid",
@@ -29,6 +31,8 @@ __all__ = [
     "BreakerPolicy",
     "BreakerRegistry",
     "BreakerState",
+    "Bulkhead",
+    "BulkheadRegistry",
     "CircuitBreaker",
     "Clock",
     "DirectAiResilience",
@@ -43,6 +47,8 @@ __all__ = [
     "StagePolicy",
     "StreamBroadcast",
     "SystemClock",
+    "with_timeout",
+    "wrap_stream_timeout",
     "UnimplementedAiResilience",
     "classify",
     "wrap",
