@@ -1678,6 +1678,29 @@
         ]
       }
     },
+    "/api/v1/resilience/stats": {
+      "get": {
+        "operationId": "resilience_stats_api_v1_resilience_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Resilience Stats Api V1 Resilience Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Resilience Stats",
+        "tags": [
+          "resilience"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "healthz_healthz_get",

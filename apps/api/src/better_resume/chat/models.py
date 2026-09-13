@@ -50,12 +50,25 @@ class ChatMessageView(BaseModel):
 
 
 class ChatErrorEvent(BaseModel):
-    """Terminal error frame; the partial answer is already persisted when it is sent."""
+    """Terminal error frame; the partial answer is already persisted when it is sent.
+
+    Kinds cover both taxonomies: llm-gateway's own (retryable/non_retryable/vendor) and
+    M3's resilience taxonomy (timeout/overloaded/unavailable/invalid). Missing a value
+    here used to crash the SSE producer into "unknown" — see PROBLEMS P8.
+    """
 
     message: str
-    kind: Literal["retryable", "non_retryable", "vendor", "duplicate_request", "unknown"] = (
-        "unknown"
-    )
+    kind: Literal[
+        "retryable",
+        "non_retryable",
+        "vendor",
+        "timeout",
+        "overloaded",
+        "unavailable",
+        "invalid",
+        "duplicate_request",
+        "unknown",
+    ] = "unknown"
 
 
 ChatStreamEvent = ContentDelta | ReasoningDelta | VendorMeta | Done | ChatErrorEvent

@@ -233,6 +233,30 @@ describe("InterviewRoomPage", () => {
     expect(vi.mocked(client.submitInterviewAnswer)).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the typed answer when the backend sheds load", async () => {
+    const client = fakeClient({
+      submitInterviewAnswer: vi.fn(() =>
+        Promise.reject(
+          new ApiError("rate limit exceeded for answer", {
+            kind: "rate_limited",
+            status: 429,
+            retryAfterSeconds: 1,
+          }),
+        ),
+      ),
+    });
+    renderRoom(client);
+
+    await screen.findByText("讲讲你最有挑战的项目");
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "别弄丢我" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交回答" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("服务繁忙，请 1 秒后重试");
+    expect(alert).toHaveTextContent("本题分数未记录，可直接重试");
+    expect(screen.getByLabelText("你的回答")).toHaveValue("别弄丢我");
+  });
+
   it("finishes the interview and navigates to the report", async () => {
     const client = fakeClient();
     renderRoom(client);

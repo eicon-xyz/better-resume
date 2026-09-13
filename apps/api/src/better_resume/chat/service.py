@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..ai_resilience import AiResilience, Stage
+from ..ai_resilience import AiResilience, AiResilienceError, Stage
 from ..conversation import (
     Conversation,
     Message,
@@ -43,10 +43,14 @@ logger = structlog.get_logger("better_resume.chat")
 CANCELLED_ERROR = "cancelled"
 
 
-def build_resilience_key(session_id: str, content: str) -> str:
-    """key = stage|sessionId|sha256(payload), per §12.2 (chat has no question number)."""
+def build_resilience_key(session_id: str, content: str, model_ref: str | None = None) -> str:
+    """key = stage|sessionId|model|sha256(payload), per §12.2 (chat has no question number).
+
+    The model is part of the key: the same question asked of two models is two different
+    upstream calls, and joining them would hand back the other model's answer.
+    """
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-    return f"chat|{session_id}|{digest}"
+    return f"chat|{session_id}|{model_ref or 'default'}|{digest}"
 
 
 class ChatService:
@@ -96,14 +100,14 @@ class ChatService:
             reasoning = ""
             usage: TokenUsage | None = None
             finish_reason: str | None = None
-            failure: LlmError | None = None
+            failure: LlmError | AiResilienceError | None = None
 
             persisted = False
             try:
                 try:
                     stream = await self._resilience.run(
                         Stage.CHAT,
-                        build_resilience_key(session.session_id, content),
+                        build_resilience_key(session.session_id, content, request.model_ref),
                         lambda: _open_stream(gateway, request),
                     )
                     async for event in stream:
@@ -116,7 +120,7 @@ class ChatService:
                         elif isinstance(event, Done):
                             finish_reason = event.finish_reason
                         yield event
-                except LlmError as exc:
+                except (LlmError, AiResilienceError) as exc:
                     failure = exc
                     logger.warning(
                         "chat_stream_failed", session_id=session.session_id, error=str(exc)
@@ -243,9 +247,9 @@ def _usage_from(event: VendorMeta) -> TokenUsage | None:
     )
 
 
-def _error_text(failure: LlmError | None) -> str | None:
+def _error_text(failure: LlmError | AiResilienceError | None) -> str | None:
     if failure is None:
         return None
-    if failure.kind is FailureKind.RETRYABLE:
+    if isinstance(failure, LlmError) and failure.kind is FailureKind.RETRYABLE:
         return f"upstream unavailable: {failure}"
     return str(failure)

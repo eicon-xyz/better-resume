@@ -166,9 +166,10 @@ def test_duplicate_request_replays(client: TestClient, gateway, migrated_databas
     assert fake.calls == 2  # one question batch + one score, never a second score
 
 
-def test_vendor_failure_is_502_and_stays_answerable(
+def test_vendor_timeout_is_504_and_stays_answerable(
     client: TestClient, app: FastAPI, gateway, migrated_database: str
 ) -> None:
+    """M3 contract change: the guard chain reports taxonomy kinds (timeout -> 504)."""
     login(client)
     fake = gateway(FakeGateway())
     session_id = prepare(client, fake)
@@ -176,8 +177,8 @@ def test_vendor_failure_is_502_and_stays_answerable(
     gateway(FakeGateway(error=LlmTimeoutError("scorer down")))
     failed = answer(client, session_id, "1", "ans-fail")
 
-    assert failed.status_code == 502
-    assert failed.json()["kind"] == "retryable"
+    assert failed.status_code == 504
+    assert failed.json()["kind"] == "timeout"
 
     gateway(FakeGateway(score=70.0, missing=[]))
     retried = answer(client, session_id, "1", "ans-fail-retry")

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { describeApiError, isRetryableError } from "../api/errors";
 import type { ModelView } from "../api/types";
 import { useApi } from "../api/useApi";
 import { Button } from "../components";
@@ -127,9 +128,25 @@ export function ChatPage() {
         </header>
 
         <div className={styles.messages}>
-          {controller.error ?? historyQuery.isError ? (
+          {controller.failure ? (
             <p className={styles.error} role="alert">
-              {controller.error ?? "加载历史失败"}
+              {describeApiError(controller.failure)}
+              {isRetryableError(controller.failure) ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={controller.streaming}
+                  onClick={() => void controller.retry()}
+                >
+                  重试
+                </Button>
+              ) : null}
+            </p>
+          ) : null}
+
+          {!controller.failure && historyQuery.isError ? (
+            <p className={styles.error} role="alert">
+              加载历史失败
             </p>
           ) : null}
 
