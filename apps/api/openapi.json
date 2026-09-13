@@ -549,6 +549,11 @@
             ],
             "title": "Summary"
           },
+          "summary_pending": {
+            "default": false,
+            "title": "Summary Pending",
+            "type": "boolean"
+          },
           "turns": {
             "items": {
               "$ref": "#/components/schemas/ReportTurnView"

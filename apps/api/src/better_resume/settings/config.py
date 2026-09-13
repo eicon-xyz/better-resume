@@ -131,6 +131,12 @@ class Settings(BaseSettings):
     lock_wait_seconds: float = 10.0
     hot_state_backend: Literal["memory", "redis"] = "memory"
     hot_state_ttl_seconds: int = 600
+
+    # M6: background jobs. Off by default (single-process dev); the compose
+    # worker runs with it enabled, and the drill exercises that path.
+    jobs_enabled: bool = False
+    jobs_stream: str = "br:jobs"
+    jobs_max_attempts: int = 3
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

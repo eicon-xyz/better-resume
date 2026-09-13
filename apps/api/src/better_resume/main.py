@@ -42,6 +42,7 @@ from .interview_engine import (
     SessionNotFound,
     build_hot_state,
 )
+from .jobs import JobQueue
 from .llm_gateway import (
     AdapterKind,
     LlmError,
@@ -66,6 +67,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ws_ticket_store = build_ws_ticket_store(settings)
     app.state.transcription_registry = ChannelRegistry()
     app.state.hot_state = build_hot_state(settings)
+    app.state.job_queue = JobQueue(
+        settings.redis_url,
+        stream=settings.jobs_stream,
+        max_attempts=settings.jobs_max_attempts,
+    )
     app.state.tts_synthesizer = EdgeTtsSynthesizer(
         cache=TtsCache(settings.media.tts_storage_dir),
         default_voice=settings.media.tts_voice,
@@ -100,6 +106,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.ai_resilience.aclose()
         await app.state.question_locks.aclose()
         await app.state.hot_state.aclose()
+        await app.state.job_queue.close()
         await app.state.ws_ticket_store.aclose()
         await app.state.session_store.aclose()
         await engine.dispose()
