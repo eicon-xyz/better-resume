@@ -59,6 +59,24 @@ HISTORY: [(1,'user',12,reasoning=False,token_count=None), (2,'assistant',50,reas
 
 > 注意：第 1–12 条就是 `.github/workflows/ci.yml` 两个 job 的 run 步骤（见 §4）。
 
+### 2.1 空库一致性（等价 CI 的起点）
+
+CI 的 Postgres 是全新空库，而本地库是增量迁移出来的，因此单独验证了一次「空库 → 迁移 → 全量测试」：
+
+```
+$ createdb better_resume_ci
+$ BR_DATABASE_URL=.../better_resume_ci uv run alembic upgrade head
+Running upgrade  -> 0001_baseline
+Running upgrade 0001_baseline -> b349260daa14   (conversations + conversation_messages)
+Running upgrade b349260daa14 -> 745c366ba82b   (ai_models + 种子)
+$ uv run alembic check        -> No new upgrade operations detected.
+$ uv run pytest               -> 94 passed
+```
+
+表：`ai_models` / `alembic_version` / `conversation_messages` / `conversations`；
+索引含 `ix_conversation_messages_meta`（GIN jsonb_path_ops）、
+`uq_conversation_messages_conversation_id_seq`、`uq_conversation_messages_client_message_id`（部分唯一）。
+
 ## 3. compose 三服务（重建后跑 M1 代码）
 
 ```
