@@ -16,6 +16,7 @@ from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
 from .singleflight import Flight, FlightState, SingleFlight
+from .stream import StreamBroadcast
 
 __all__ = [
     "AiInvalid",
@@ -35,6 +36,7 @@ __all__ = [
     "Stage",
     "StagePolicies",
     "StagePolicy",
+    "StreamBroadcast",
     "SystemClock",
     "UnimplementedAiResilience",
     "classify",
