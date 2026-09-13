@@ -1,9 +1,37 @@
-export function App() {
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+
+import { ApiProvider } from "./api/ApiContext";
+import { createApiClient } from "./api/client";
+import type { ApiClient } from "./api/client";
+import { ChatPage } from "./pages/ChatPage";
+
+import { createQueryClient } from "./queryClient";
+
+export interface AppProps {
+  client?: ApiClient;
+  queryClient?: QueryClient;
+}
+
+export function App({ client, queryClient }: AppProps = {}) {
+  const [activeClient] = useState(() => client ?? createApiClient({}));
+  const [activeQueryClient] = useState(() => queryClient ?? createQueryClient());
+
   return (
-    <main>
-      <h1>better-resume</h1>
-      <p>AI 模拟面试平台骨架：对话与面试界面自 M1 起在此实现。</p>
-    </main>
+    <QueryClientProvider client={activeQueryClient}>
+      <ApiProvider client={activeClient}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:sessionId" element={<ChatPage />} />
+            <Route path="*" element={<Navigate to="/chat" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ApiProvider>
+    </QueryClientProvider>
   );
 }
 

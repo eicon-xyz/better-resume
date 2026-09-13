@@ -20,8 +20,12 @@ export interface UseChatStreamOptions {
   onSessionCreated?: (sessionId: string) => void;
 }
 
+export interface SendOptions {
+  modelRef?: string | null;
+}
+
 export interface ChatStreamController {
-  send(content: string): Promise<void>;
+  send(content: string, options?: SendOptions): Promise<void>;
   cancel(): void;
   streaming: boolean;
   error: string | null;
@@ -60,7 +64,7 @@ export function useChatStream({
   }, []);
 
   const send = useCallback(
-    async (content: string) => {
+    async (content: string, options: SendOptions = {}) => {
       const trimmed = content.trim();
       if (!trimmed) return;
 
@@ -106,7 +110,11 @@ export function useChatStream({
 
       await client.streamChat(
         targetSessionId,
-        { content: trimmed, client_message_id: clientMessageId },
+        {
+          content: trimmed,
+          client_message_id: clientMessageId,
+          model_ref: options.modelRef ?? null,
+        },
         {
           onContent: (text) => renderer.push("content", text),
           onReasoning: (text) => renderer.push("reasoning", text),

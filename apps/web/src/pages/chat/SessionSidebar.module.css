@@ -1,0 +1,77 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+  width: 260px;
+  padding: var(--br-space-4);
+  border-right: 1px solid var(--br-color-border);
+  background: var(--br-color-surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--br-text-md);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-1);
+}
+
+.session {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--br-space-2);
+  padding: var(--br-space-2) var(--br-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--br-radius-md);
+  background: transparent;
+  color: var(--br-color-text);
+  font: inherit;
+  font-size: var(--br-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.active {
+  border-color: var(--br-color-border);
+  background: var(--br-color-surface-raised);
+}
+
+.sessionTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+}
+
+.delete {
+  border: 0;
+  background: transparent;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-md);
+  cursor: pointer;
+}

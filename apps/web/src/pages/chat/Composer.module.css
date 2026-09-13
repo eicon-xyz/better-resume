@@ -1,0 +1,13 @@
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
+  padding: var(--br-space-3) var(--br-space-4) var(--br-space-4);
+  border-top: 1px solid var(--br-color-border);
+  background: var(--br-color-bg);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -35,6 +35,28 @@ M1 的对外验收物：一个能演示「打字机对话 + reasoning 分流 + �
 - 动效只用 CSS（光标闪烁、面板展开），不引 framer-motion（Q6）。
 - 移动端只保证可用（不断点设计），M1 不做响应式打磨。
 
+## 实测记录（2026-09-13）
+
+同源链路端到端（Vite dev server 代理 → FastAPI → 真实 DeepSeek）：
+
+```
+login=200  建会话=ok  frames: content=25 reasoning=12 done=1
+ANSWER : 栈是一种后进先出（LIFO）的线性数据结构，只允许在同一端进行插入和删除操作。
+HISTORY: [(1,'user',10,reasoning=False,client_message_id='e2e-1'), (2,'assistant',39,reasoning=True)]
+```
+
+实现要点：
+
+- 路由 `/` 重定向 `/chat`；`/chat/:sessionId?` 同一页面组件（新增/切换会话就是改 URL）。
+- 历史回放走 `useInfiniteQuery` 的 seq 游标（每页 50，页内升序、页间倒序拼装），
+  「加载更早的消息」按钮触发 `fetchNextPage`。
+- reasoning 面板默认展开（流式时就是「显示思考」），折叠是每条消息各自的用户选择——
+  为此去掉了原先的 `useEffect + setState`（React 19 的 `set-state-in-effect` 会告警）。
+- 路由切换重置运行态，但**不会**重置刚创建的会话（send 里已经 openSession，避免把乐观消息清掉）。
+- 踩坑：本地冒烟一开始打到了 **compose 里旧镜像**（端口 8000），导致 chat 端点 404——
+  `BR_WEB_API_TARGET` 是给 dev 代理用的目标，默认 127.0.0.1:8000；对接本地 uvicorn 时要用
+  `BR_WEB_API_TARGET=http://127.0.0.1:<port>`。compose 镜像需 `docker compose up -d --build` 才含 M1 代码。
+
 ## 不做
 
 - 不做多模态、不做语音播报（TTS 归 M4）、不做消息编辑/重新生成（M2 再评估）。
