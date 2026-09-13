@@ -1,6 +1,8 @@
 # M5 验收证据（星云 WorkflowAdapter：双 adapter 对照）
 
 > 日期：2026-09-14 ｜ 分支：m5/scene-bindings ｜ 票据：docs/tickets/m5/（T1–T9 完成；T10 待凭据）
+> PR：https://github.com/eicon-xyz/better-resume/pull/5（双 job success，run 34765910165）
+> 合并：merge commit 630fdc7；合并后 main CI run 34765998116 **双 job success**。
 > 验收口径（§12.4 原文）：**场景绑定切换供应商不改业务码**。
 
 ## 1. 结论

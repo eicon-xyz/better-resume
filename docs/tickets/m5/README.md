@@ -92,7 +92,7 @@ T10 真机（需星云凭据）──> T9
 | T5 双 adapter 契约套件 | ✅ | tests/llm_gateway/test_adapter_contract.py：10 条契约 × 2 实现（20 例）；突变校验（reasoning 混进 content）当场红 |
 | T7 前端场景面板 | ✅ | src/pages/AiSettingsPage.tsx + 6 例（列表/未配置/切换/失败文案/401/脏行控制） |
 | T8 双供应商对照 | ✅ | scripts/adapter_smoke.py（真 DeepSeek vs 假星云：字段集合一致）+ tests/test_adapter_parity.py |
-| T9 验收 + PR | 🔶 | docs/tickets/m5/ACCEPTANCE.md + docs/resume/M5-resume-draft.md + README；本地 CI 12/12；PR 见收尾 |
-| T10 真机 | ⏸ 阻塞：等星云凭据（XINGCHEN_API_KEY / XINGCHEN_API_SECRET / 每场景 flow_id） |
+| T9 验收 + PR | ✅ | ACCEPTANCE + PROBLEMS + M5 简历草稿 + README；PR #5 双 job 绿 → merge 630fdc7 → main run 34765998116 绿 |
+| T10 真机 | ⏸ **唯一未完成**：等星云凭据（XINGCHEN_API_KEY / XINGCHEN_API_SECRET / 每场景 flow_id）；脚本已就位：scripts/adapter_smoke.py --real-xingyun |
 
 **续做入口**：`git checkout m5/scene-bindings` → 全量 `uv run pytest -q`（应为 506 例全绿）→ 从 T5 开始。
