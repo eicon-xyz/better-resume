@@ -1,0 +1,63 @@
+/* Design tokens: the single source of truth for colour, space and motion (D05 / §12.2).
+   Components must only consume these variables, never literal values. */
+
+:root {
+  color-scheme: light dark;
+
+  --br-color-bg: #ffffff;
+  --br-color-surface: #f6f7f9;
+  --br-color-surface-raised: #ffffff;
+  --br-color-border: #d8dce3;
+  --br-color-text: #16181d;
+  --br-color-text-muted: #5b6472;
+  --br-color-accent: #2f6feb;
+  --br-color-accent-contrast: #ffffff;
+  --br-color-danger: #c8372d;
+  --br-color-danger-surface: #fdeceb;
+  --br-color-success: #1f7a4d;
+
+  --br-space-1: 4px;
+  --br-space-2: 8px;
+  --br-space-3: 12px;
+  --br-space-4: 16px;
+  --br-space-5: 24px;
+  --br-space-6: 32px;
+
+  --br-radius-sm: 4px;
+  --br-radius-md: 8px;
+  --br-radius-lg: 14px;
+  --br-radius-pill: 999px;
+
+  --br-font-sans: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  --br-font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
+  --br-text-xs: 12px;
+  --br-text-sm: 14px;
+  --br-text-md: 16px;
+  --br-text-lg: 20px;
+  --br-text-xl: 26px;
+  --br-leading-tight: 1.3;
+  --br-leading-normal: 1.65;
+
+  --br-shadow-sm: 0 1px 2px rgb(15 23 42 / 8%);
+  --br-shadow-md: 0 6px 20px rgb(15 23 42 / 12%);
+
+  --br-duration-fast: 120ms;
+  --br-duration-normal: 200ms;
+  --br-z-overlay: 40;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --br-color-bg: #0f1115;
+    --br-color-surface: #171a21;
+    --br-color-surface-raised: #1d2129;
+    --br-color-border: #2c313b;
+    --br-color-text: #eef1f6;
+    --br-color-text-muted: #a3acbb;
+    --br-color-accent: #6d9bff;
+    --br-color-accent-contrast: #0f1115;
+    --br-color-danger: #ff8b80;
+    --br-color-danger-surface: #3a2020;
+    --br-color-success: #63d29a;
+  }
+}

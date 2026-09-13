@@ -1,0 +1,25 @@
+.spinner {
+  display: inline-flex;
+  align-items: center;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--br-color-border);
+  border-top-color: var(--br-color-accent);
+  border-radius: var(--br-radius-pill);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation-duration: 1600ms;
+  }
+}

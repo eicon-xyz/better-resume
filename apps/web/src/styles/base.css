@@ -1,0 +1,21 @@
+* { box-sizing: border-box; }
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--br-color-bg);
+  color: var(--br-color-text);
+  font-family: var(--br-font-sans);
+  font-size: var(--br-text-md);
+  line-height: var(--br-leading-normal);
+}
+
+:focus-visible {
+  outline: 2px solid var(--br-color-accent);
+  outline-offset: 2px;
+}
