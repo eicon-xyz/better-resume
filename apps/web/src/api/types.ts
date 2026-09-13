@@ -31,3 +31,7 @@ export type ReportTurnView = Schemas["ReportTurnView"];
 export type WsTicketView = components["schemas"]["WsTicketView"];
 export type TtsRequestView = components["schemas"]["TtsRequest"];
 export type TtsView = components["schemas"]["TtsView"];
+
+/** M5 scene bindings. */
+export type SceneView = components["schemas"]["SceneViewResponse"];
+export type SceneUpdateRequest = components["schemas"]["SceneUpdateRequest"];

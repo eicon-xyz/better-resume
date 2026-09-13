@@ -1,0 +1,66 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  font-size: 20px;
+  margin: 0;
+}
+
+.hint {
+  color: var(--br-text-muted, #666);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--br-border, #e5e7eb);
+  vertical-align: middle;
+}
+
+.label {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.sceneName {
+  color: var(--br-text-muted, #6b7280);
+  font-size: 12px;
+}
+
+.ok {
+  color: #15803d;
+}
+
+.missing {
+  color: #b45309;
+  font-size: 12px;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.loading {
+  padding: 24px;
+}
