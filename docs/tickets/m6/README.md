@@ -80,3 +80,19 @@ T7 skills 知识库 ────────────────────
 
 见 `OPEN-QUESTIONS.md`（5 项：部署/worker 范围、分布式单飞范围、压测形态、skills 范围、kill 验收口径）。
 
+
+## 进度（执行中）
+
+| 票 | 状态 | 证据 |
+| --- | --- | --- |
+| T1 分布式锁 | ✅ | tests/test_distributed_lock.py（10 例：互斥/不同题并行/有界等待/异常释放/取消/TTL 过期/续租/陈旧 owner 不误删/50 并发串行/memory 回归） |
+| T2 分布式单飞 | ✅ | tests/test_distributed_flight.py（10 例：两实例只调一次/跨实例回放/0 TTL 不缓存/可缓存失败回放/可重试失败不缓存/接管/fencing 拒写/有界等待/scalar 往返/拒绝外部模块） |
+| T3 会话热态与跨实例恢复 | ⬜ 未开始 | — |
+| T4 worker + 任务队列 | ⬜ 未开始 | — |
+| T5 nginx + 双实例 compose | ⬜ 未开始 | — |
+| T6 压测脚本 + 容量报告 | ⬜ 未开始 | — |
+| T7 skills 知识库 | ⬜ 未开始 | — |
+| T8 kill 实例 drill | ⬜ 未开始 | — |
+| T9 验收 + PR | ⬜ 未开始 | 分支 m6/distributed（未推送） |
+
+**续做入口**：`git checkout m6/distributed` → `uv run pytest -q`（应为 548 例全绿）→ 从 T3 开始。

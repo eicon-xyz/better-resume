@@ -9,6 +9,10 @@
 | --- | --- | --- | --- |
 | P0 | 提案阶段（环境核查） | Docker 又能用了（daemon 可达）→ kill 实例验收可以真跑，但镜像构建耗时需计入 | 已知事实 |
 | P1 | 提案阶段（读文档） | D07 写"分布式单飞只留接口不写 Lua"，M6 要把它变成**被验收覆盖**的实现 —— 冲突要在文档里讲清 | 预防中（T8 验收覆盖） |
+| P2 | T2 实现 | 单飞 follower 在 owner 完成并释放后"抢占空档"重跑了一遍上游（结果键明明已有） | 已修（先查结果再抢锁） |
+| P3 | T2 测试 | ManualClock 碰上轮询循环 → 永不前进的死循环（exit=124） | 已修（有界等待用真实短超时） |
+| P4 | T2 实现 | 结果编解码白名单只认 better_resume.* → 测试用本地模型时静默不回放（表现像功能没生效） | 已修（测试改用真实项目模型 + 文档写明约束） |
+| P5 | T2 实现 | 回放失败结果时重建异常漏了 stage 参数 → TypeError（缓存命中路径才炸） | 已修（错误负载带 stage） |
 
 ---
 
@@ -29,3 +33,39 @@
   否则才是死代码。我们也不写旧项目那套 6 段 Lua + fencing 全谱，而是 SET NX + owner token + 结果键的最简等价物。
 - **证据**：待 T8 的 drill 输出。
 
+
+## P2 — 分布式单飞的"空档重跑"竞态（最值得记的一条）
+
+- **症状**：两实例并发同 key，上游仍被调用 2 次；日志出现 `flight_takeover`（第二实例声称接管）。
+- **根因**：我的循环是「先抢 owner，抢不到再查结果」。owner 完成时**先写结果、再释放 owner**，
+  于是存在一个瞬间：owner 键已消失、结果键已存在——第二个实例在这一刻 `SET NX` 成功，
+  于是把已经完成的活又干了一遍（而且它连结果都没查）。
+- **修法**：循环改成「**先查结果，再抢 owner**」；只有结果缺席时才抢。语义上更准确：
+  owner 消失 + 结果存在 = 已完成；owner 消失 + 无结果 = 真的掉线，可以接管。
+- **证据**：tests/test_distributed_flight.py::test_two_instances_call_the_vendor_once（calls == 1）。
+
+## P3 — ManualClock + 轮询循环 = 死循环（M4 的老坑换了个马甲）
+
+- **症状**：`test_waiting_is_bounded_and_reports_overload` 挂死，pytest 被 timeout 杀（exit=124）。
+- **根因**：我用 ManualClock 测"等待超时"，但超时判定是 `clock.now() >= deadline`，
+  而 ManualClock 只在测试显式 `advance()` 时前进；循环里的 `clock.sleep()` 于是永远等不到唤醒。
+- **修法**：**有界等待**这类用真实长跑语义的用例改用真实短超时（wait_seconds=0.1）；
+  假时钟只用在"能显式推进"的地方（锁的续租/过期）。写进测试注释与台账。
+- **证据**：同用例改为真实 0.1s，断言 AiOverloaded 且总耗时 < 1s。
+
+## P4 — 结果回放的模块白名单：测试模型被静默拒绝
+
+- **症状**：`test_result_is_replayed_across_instances` 断言 calls == 1 失败（实为 2），但没有任何报错。
+- **根因**：跨实例回放要把 Pydantic 值序列化并重建类型；我只允许 `better_resume.*` 的模块，
+  而测试里定义的模型位于 `tests.*` → `_encode` 返回 None → 静默不回放（安全设计正确，可观测性不足）。
+- **修法**：测试改用真实项目模型（`interview_engine.evaluation.ScoreResult`）；
+  同时把"不可编码 → 不回放"写进模块 docstring，并在 `_encode` 返回 None 时记 debug 日志。
+- **证据**：同用例绿灯；`test_foreign_modules_are_refused` 断言 `os.system` 之类的负载被拒绝。
+
+## P5 — 回放失败结果时重建异常漏参数
+
+- **症状**：`test_cacheable_failure_is_replayed` 抛 TypeError: missing keyword-only argument: stage。
+- **根因**：错误负载只存了 kind/message，重建 `AiInvalid(message, stage=...)` 时没有 stage；
+  这条路径只在"命中了失败缓存"时才走到，单实例测试根本碰不到。
+- **修法**：错误负载带上 `stage`，重建时传回。
+- **证据**：同用例绿灯（两实例只调用一次上游，且第二次拿到同类异常）。
