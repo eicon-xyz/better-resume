@@ -64,6 +64,8 @@ jobs:
         run: uv run alembic check
       - name: Check OpenAPI document is up to date
         run: uv run python scripts/export_openapi.py --check
+      - name: Check generated skills API index is up to date
+        run: uv run python scripts/extract_api_index.py --check
 
   frontend:
     name: frontend (eslint + tsc + vitest)
