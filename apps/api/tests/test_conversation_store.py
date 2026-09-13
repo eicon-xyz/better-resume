@@ -1,6 +1,6 @@
-"""T1: conversation store against a real Postgres (skipped when none is reachable).
+"""T1: conversation store against a real Postgres (skipped when unreachable).
 
-Red-green discipline: these tests were written first and failed on import (no `SqlConversationStore`).
+Red-green discipline: written first, they failed on import (no `SqlConversationStore`).
 """
 
 from __future__ import annotations
