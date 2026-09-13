@@ -7,6 +7,7 @@ single file serves both docker compose (repo root) and local `uv run` (apps/api)
 from __future__ import annotations
 
 import functools
+import socket
 from pathlib import Path
 from typing import Literal
 
@@ -132,11 +133,15 @@ class Settings(BaseSettings):
     hot_state_backend: Literal["memory", "redis"] = "memory"
     hot_state_ttl_seconds: int = 600
 
+    # M6: which container answered. Compose sets it per replica; the default is the host.
+    instance_id: str = Field(default_factory=socket.gethostname)
+
     # M6: background jobs. Off by default (single-process dev); the compose
     # worker runs with it enabled, and the drill exercises that path.
     jobs_enabled: bool = False
     jobs_stream: str = "br:jobs"
     jobs_max_attempts: int = 3
+    jobs_heartbeat_ttl_seconds: int = 30
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

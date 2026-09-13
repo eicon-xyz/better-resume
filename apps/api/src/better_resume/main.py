@@ -52,7 +52,7 @@ from .llm_gateway import (
     build_llm_gateway,
 )
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
-from .observability import RequestIdMiddleware, configure_logging
+from .observability import InstanceIdMiddleware, RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
 
@@ -120,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     # add_middleware prepends, so the request id stays the outermost layer (added last).
     app.add_middleware(RateLimitMiddleware, settings=resolved)
+    app.add_middleware(InstanceIdMiddleware, instance_id=resolved.instance_id)
     app.add_middleware(RequestIdMiddleware, header_name=resolved.request_id_header)
     app.add_exception_handler(ConversationNotFoundError, _not_found)
     app.add_exception_handler(ConversationConflictError, _conflict)

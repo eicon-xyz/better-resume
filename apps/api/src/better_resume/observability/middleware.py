@@ -9,6 +9,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 REQUEST_ID_KEY = "request_id"
+INSTANCE_ID_HEADER = "X-Instance-Id"
 
 logger = structlog.get_logger("better_resume.http")
 
@@ -44,3 +45,30 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send_with_request_id)
         finally:
             structlog.contextvars.unbind_contextvars(REQUEST_ID_KEY)
+
+
+class InstanceIdMiddleware:
+    """Stamp every response with the instance that produced it.
+
+    nginx spreads requests over several api containers (M6-T5), so this header is how an
+    operator - and the kill-an-instance drill - knows who answered.
+    """
+
+    def __init__(
+        self, app: ASGIApp, instance_id: str, header_name: str = INSTANCE_ID_HEADER
+    ) -> None:
+        self.app = app
+        self.instance_id = instance_id
+        self.header_name = header_name
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_instance(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)[self.header_name] = self.instance_id
+            await send(message)
+
+        await self.app(scope, receive, send_with_instance)

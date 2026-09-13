@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import signal
+import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import redis.asyncio as aioredis
 import structlog
 
 from .ai_resilience import ResilientAiResilience
@@ -66,6 +68,32 @@ async def handle_report_summary(job: Job, runtime: dict[str, Any]) -> dict[str, 
 HANDLERS: dict[str, WorkerHandler] = {REPORT_SUMMARY: handle_report_summary}
 
 
+def loop_backoff_seconds(failures: int, *, base: float = 0.5, cap: float = 5.0) -> float:
+    """Bounded backoff between loop retries: a sick Redis must not spin the worker."""
+    return min(cap, base * max(1, failures))
+
+
+def heartbeat_key(settings: Settings) -> str:
+    """A queue worker has no port, so liveness is a Redis key with a short TTL."""
+    return f"{settings.jobs_stream}:health"
+
+
+async def beat(client: aioredis.Redis, *, key: str, consumer: str, ttl_seconds: int) -> None:
+    await client.set(key, consumer, ex=max(1, ttl_seconds))
+
+
+async def check_health(settings: Settings) -> bool:
+    """Used by the container health check: `python -m better_resume.worker --health`."""
+    client = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        return bool(await client.exists(heartbeat_key(settings)))
+    except Exception:  # noqa: BLE001 - an unreachable Redis is an unhealthy worker
+        logger.warning("worker_healthcheck_failed", error="redis unreachable")
+        return False
+    finally:
+        await client.aclose()
+
+
 async def run_once(
     queue: JobQueue, runtime: dict[str, Any], *, consumer: str, block_ms: int = 500
 ) -> int:
@@ -103,11 +131,34 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
     )
     stopping = stop or asyncio.Event()
     consumer = f"worker-{id(settings) & 0xFFFF:x}"
+    health = aioredis.from_url(settings.redis_url, decode_responses=True)
+    key = heartbeat_key(settings)
     logger.info("worker_started", stream=settings.jobs_stream, consumer=consumer)
+    failures = 0
     try:
         while not stopping.is_set():
-            await run_once(queue, runtime, consumer=consumer)
+            await beat(
+                health, key=key, consumer=consumer, ttl_seconds=settings.jobs_heartbeat_ttl_seconds
+            )
+            try:
+                await run_once(queue, runtime, consumer=consumer)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - a worker must not die on a Redis hiccup
+                failures += 1
+                logger.warning(
+                    "worker_loop_error",
+                    error=f"{type(exc).__name__}: {exc}",
+                    failures=failures,
+                )
+                await asyncio.sleep(loop_backoff_seconds(failures))
+            else:
+                failures = 0
     finally:
+        # Drop the key on a clean stop so the health check flips immediately.
+        with contextlib.suppress(Exception):
+            await health.delete(key)
+        await health.aclose()
         await queue.close()
         await runtime["resilience"].aclose()
         await runtime["engine"].dispose()
@@ -126,6 +177,8 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
 
 async def main() -> None:
     settings = get_settings()
+    if "--health" in sys.argv[1:]:
+        sys.exit(0 if await check_health(settings) else 1)
     stop = asyncio.Event()
     _install_signal_handlers(stop)
     await serve(settings, stop=stop)
