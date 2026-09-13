@@ -158,6 +158,7 @@ async def generate_questions(
         count=count,
     )
 
+    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
     return QuestionBatchView(
         session=_session_view(result.session),
         questions=[GeneratedQuestionView(**question) for question in result.questions],
@@ -205,6 +206,13 @@ class AnswerSubmitView(BaseModel):
     next_question_no: str | None = None
     next_question: GeneratedQuestionView | None = None
     replayed: bool = False
+
+
+async def _invalidate_hot(request: Request, *, user_id: str, session_id: str) -> None:
+    """Writes invalidate the hot view: a stale restore is worse than a slow one."""
+    hot = getattr(request.app.state, "hot_state", None)
+    if hot is not None:
+        await hot.invalidate(user_id=user_id, session_id=session_id)
 
 
 async def _load_question_view(
@@ -261,6 +269,7 @@ async def submit_answer(
         follow_up_gateway=follow_up_gateway,
     )
 
+    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
     return AnswerSubmitView(
         session=_session_view(result.session),
         answer=AnswerView(
@@ -333,6 +342,8 @@ class RestoreResponseView(BaseModel):
     total_questions: int = 0
     last_answer: AnswerView | None = None
     derived: bool = False
+    #: M6: whether this view came from the hot layer or was derived.
+    source: str = "derived"
 
 
 def _report_view(
@@ -356,7 +367,7 @@ async def restore_session(
     principal: Principal = Depends(current_principal),  # noqa: B008
 ) -> RestoreResponseView:
     state = request.app.state
-    view = await RestoreService(state.session_factory).restore(
+    view = await RestoreService(state.session_factory, hot_state=state.hot_state).restore(
         session_id=session_id, user_id=principal.user_id
     )
     current = (
@@ -373,6 +384,7 @@ async def restore_session(
     )
     last = view.last_result
     return RestoreResponseView(
+        source=view.source,
         session=_session_view(view.session),
         flow=FlowView(
             status=view.flow_status.value,
@@ -417,6 +429,7 @@ async def finish_interview(
     result = await ReportService(state.session_factory, resilience=state.ai_resilience).finish(
         session_id=session_id, user_id=principal.user_id, gateway=gateway
     )
+    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
     return _report_view(result.session, result.report, llm_summary_used=result.llm_summary_used)
 
 
