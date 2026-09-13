@@ -1,10 +1,28 @@
+from .answer_repo import AnswerRepository
+from .errors import (
+    FlowConflict,
+    FlowStateMissing,
+    IllegalFlowTransition,
+    IllegalSessionTransition,
+    InterviewEngineError,
+    QuestionNotFound,
+    SessionNotFound,
+)
+from .flow_fsm import FLOW_TRANSITIONS, FlowStatus, ensure_flow_transition
+from .flow_store import FlowStateStore
 from .models import (
+    AnswerRecord,
     AnswerTurn,
     Finished,
+    FlowState,
     FollowUp,
+    InterviewSession,
     NextStep,
     Question,
+    QuestionNo,
+    QuestionRecord,
     ReportHandle,
+    ReportRecord,
     ResumeUpload,
     SessionHandle,
     SessionId,
@@ -14,20 +32,52 @@ from .models import (
 )
 from .placeholder import UnimplementedInterviewEngine
 from .protocols import InterviewEngine
+from .session_fsm import (
+    ACTIVE_STATUSES,
+    SESSION_TRANSITIONS,
+    SessionStatus,
+    can_resume,
+    ensure_transition,
+)
+from .session_repo import InterviewSessionRepository
 
 __all__ = [
+    "ACTIVE_STATUSES",
+    "FLOW_TRANSITIONS",
+    "SESSION_TRANSITIONS",
+    "AnswerRecord",
+    "AnswerRepository",
     "AnswerTurn",
     "Finished",
+    "FlowConflict",
+    "FlowState",
+    "FlowStateMissing",
+    "FlowStateStore",
+    "FlowStatus",
     "FollowUp",
+    "IllegalFlowTransition",
+    "IllegalSessionTransition",
     "InterviewEngine",
+    "InterviewEngineError",
+    "InterviewSession",
+    "InterviewSessionRepository",
     "NextStep",
     "Question",
+    "QuestionNo",
+    "QuestionNotFound",
+    "QuestionRecord",
     "ReportHandle",
+    "ReportRecord",
     "ResumeUpload",
     "SessionHandle",
     "SessionId",
+    "SessionNotFound",
+    "SessionStatus",
     "SessionView",
     "TurnResult",
     "UnimplementedInterviewEngine",
     "UserId",
+    "can_resume",
+    "ensure_flow_transition",
+    "ensure_transition",
 ]
