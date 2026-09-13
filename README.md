@@ -5,20 +5,29 @@ SQLAlchemy 2.0(async) + Postgres/Redis + React 19 + Vite。
 
 ## 当前状态
 
-**M2 已完成（2026-09-13）**：确定性简历解析（pdfplumber + 章节启发式 + CJK 回退，不靠 LLM）、
-两层状态机（会话生命周期 / 答题流程，转移表穷举 + version CAS）、出题→答题→评分→追问全链路
-（schema 强校验 / requestId 幂等 / 题级锁 / 规则链追问）、恢复与冻结报告（四维雷达 + 逐题回放）、
-前端三段页面（上传 → 面试房间 → 报告，自绘 SVG 雷达）。
-后端 324 tests / 前端 104 tests 全绿；验收证据见 docs/tickets/m2/ACCEPTANCE.md。
+**M4 已完成（2026-09-14）**：media 语音链路 —— 句池归并（apd / rpl 删区间 / 时间重叠+文本演化 /
+尾缀合并 / final，D16 亮点③）、讯飞 AST WebSocket adapter（HmacSHA1 签名、1280B·40ms 推流、cn.st 解析、
+有界重连）、一次性 WS 票据（D11）、edge-tts 播报（内容寻址缓存 + 单例播放器 + 独立 Stage.TTS 接入韧性链）、
+浏览器端 16k PCM 采集与转写消费（一个通道两个消费方，转写不覆盖手写文本）。
+后端 473 / 前端 152 全绿；**讯飞真机与真实浏览器人工验证待做（本机缺凭据）**，
+证据与未验证项见 docs/tickets/m4/ACCEPTANCE.md，问题台账见 docs/tickets/m4/PROBLEMS.md（P0–P12）。
 
-历史：M1（对话链路）docs/tickets/m1/ACCEPTANCE.md，M0（骨架）docs/tickets/m0/ACCEPTANCE.md。
-下一步 M3：ai-resilience 真实现（单飞 + 熔断 + 限流）。
+**M3 已完成（2026-09-13）**：ai-resilience 真实现 —— run(stage, key, fn) 一个方法藏着进程内单飞（含流式广播）、
+按 stage 熔断、舱壁、注入时钟超时与分桶限流；四条 AI 链路全部接上；失败三态映射 504/503，限流 429 + Retry-After。
+证据 docs/tickets/m3/ACCEPTANCE.md。
+
+**M2 已完成**：确定性简历解析 + 两层状态机 + 出题→答题→评分→追问 + 冻结报告（四维雷达）+ 前端三段页面。
+证据 docs/tickets/m2/ACCEPTANCE.md。
+
+历史：M1 docs/tickets/m1/ACCEPTANCE.md，M0 docs/tickets/m0/ACCEPTANCE.md。
+下一步 M5：星云 WorkflowAdapter（双 adapter 对照）。
 
 ## 必读
 
 1. docs/DECISIONS.md —— 17 项技术栈/范围决议（开工依据，冲突时以它为准）
 2. docs/ai-meeting-architecture-analysis.md —— 原项目全景分析（§12 为新项目模块蓝图）
-3. docs/tickets/m2/ —— 当前里程碑票据与验收证据（M0/M1 存档在 docs/tickets/m0|m1/）
+3. docs/tickets/m4/ —— 当前里程碑票据与验收证据（含 PROBLEMS.md 问题台账）；
+   M0–M3 存档在 docs/tickets/m0|m1|m2|m3/
 
 ## 结构
 
@@ -44,6 +53,17 @@ pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test -- 
 
 # 本地数据库与缓存（本机无 Docker 时）：原生 Postgres 5433 + 原生 Redis 6379，
 # 用 BR_DATABASE_URL / BR_REDIS_URL 指定；CI 与 compose 使用各自的默认值。
+
+# M3 韧性参数（全部有默认值，重启生效）：BR_RESILIENCE__* / BR_RATE_LIMIT__*；
+#   运行态快照（需登录）：GET /api/v1/resilience/stats
+#   证据脚本：uv run --project apps/api python apps/api/scripts/resilience_smoke.py
+
+# M4 语音（默认 adapter=scripted，本地/CI 无需凭据；真机需要讯飞三件套）：
+#   BR_MEDIA__TRANSCRIPTION_ADAPTER=xunfei|scripted
+#   BR_XUNFEI_APP_ID / BR_XUNFEI_ACCESS_KEY_ID / BR_XUNFEI_ACCESS_KEY_SECRET（只放 gitignored .env）
+#   WS：POST /api/v1/auth/ws-ticket → WS /api/v1/media/transcribe?ticket=...
+#   TTS：POST /api/v1/media/tts → GET /api/v1/media/tts/{digest}.mp3（同源 audio 带 cookie）
+#   冒烟：uv run --project apps/api python apps/api/scripts/media_smoke.py --scripted
 
 # 三服务（改完后端记得 --build）
 docker compose up -d --build --wait

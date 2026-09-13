@@ -21,6 +21,7 @@
 | P10 | T8 实现 | 页面级语音测试用全局桩（WebSocket/AudioContext）时点击麦克风无反应；改为注入 capture/socket 工厂后 8 例全绿 | 已修（测试策略） |
 | P11 | T8 实现 | jsdom 没有 URL.createObjectURL / 媒体播放 → 播放器静默失败；判定为浏览器边界后显式打桩 | 已修 |
 | P12 | T8 实现 | React 19 规则：useMemo 里写 ref 触发 react-hooks/refs；方法引用触发 unbound-method | 已修 |
+| P13 | T11 收尾 | M3 的 README 更新其实没进提交（脚本打印 updated，但 git 里没有）——收尾必须核对 git show --stat | 已修（本次一并补上） |
 
 ---
 
@@ -150,3 +151,10 @@
 - **修法**：删掉多余的 playerRef（memo 已经持有实例）；能力探测改为只看 mediaDevices 是否存在；
   `useEffect(() => stop, [stop])` 改成 `useEffect(() => () => stop(), [stop])`。
 - **证据**：pnpm lint 0 warning / 0 error；tsc 干净；前端 152 例全绿。
+
+## P13 — 脚本说已更新，git 里却没有：M3 的 README 更新丢了两个里程碑
+
+- **症状**：M4 收尾写文档时打开 README，发现状态段仍停在 M2；M3 那次 README 补丁（M3 完成说明 + BR_RESILIENCE__* 参数）从未出现在任何提交里。
+- **根因**：M3 期间用 python 脚本改 README，脚本打印了 README updated，但随后做把 M3 提交从 main 挪到分支的 git 操作时用了 git reset --hard origin/main，把**未提交**的 README 改动一起丢掉了；之后提交文档时只看脚本输出，没有核对 git show --stat。
+- **教训（写进流程）**：改完文档立刻 diff + commit；任何 reset --hard 之前先 git status 确认没有未提交内容；收尾用 git show --stat 核对文件清单。
+- **证据**：README 现含 M4/M3/M2 状态段 + BR_MEDIA__* 与 WS/TTS 端点说明（git diff --stat README.md = 28 insertions）。
