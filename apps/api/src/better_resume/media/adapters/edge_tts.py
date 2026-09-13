@@ -24,7 +24,9 @@ DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 async def _edge_engine(text: str, voice: str, rate: str | None) -> bytes:
     import edge_tts  # imported lazily: the package is only needed when TTS is used
 
-    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    # edge-tts insists on a string rate (+0% style); None must be omitted entirely.
+    options = {"rate": rate} if rate else {}
+    communicate = edge_tts.Communicate(text, voice, **options)
     audio = bytearray()
     async for chunk in communicate.stream():
         if chunk.get("type") == "audio":
