@@ -10,6 +10,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 REQUEST_ID_KEY = "request_id"
 
+logger = structlog.get_logger("better_resume.http")
+
 
 class RequestIdMiddleware:
     """Pure-ASGI middleware so it stays testable without spinning up a server."""
@@ -30,6 +32,12 @@ class RequestIdMiddleware:
         async def send_with_request_id(message: Message) -> None:
             if message["type"] == "http.response.start":
                 MutableHeaders(scope=message)[self.header_name] = request_id
+                logger.info(
+                    "http_request",
+                    method=scope.get("method"),
+                    path=scope.get("path"),
+                    status=message["status"],
+                )
             await send(message)
 
         try:
