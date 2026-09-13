@@ -10,3 +10,4 @@ class Stage(StrEnum):
     EXTRACTION = "extraction"
     EVALUATION = "evaluation"
     FOLLOWUP = "followup"
+    TTS = "tts"

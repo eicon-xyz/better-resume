@@ -31,10 +31,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    // Test files only read mock metadata (toHaveBeenCalledWith etc.); there is no `this` to bind.
+    // Test files: mocks of async APIs need no await, casts of fakes are intentional, and
+    // there is no `this` to bind when reading mock metadata.
     files: ["**/*.test.{ts,tsx}"],
     rules: {
       "@typescript-eslint/unbound-method": "off",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
     },
   },
 );

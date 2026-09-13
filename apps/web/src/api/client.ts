@@ -18,6 +18,9 @@ import type {
   Principal,
   QuestionBatchView,
   RestoreResponseView,
+  WsTicketView,
+  TtsRequestView,
+  TtsView,
 } from "./types";
 
 export interface ApiClientOptions {
@@ -78,6 +81,9 @@ export interface ApiClient {
   getInterviewReport(sessionId: string, options?: CallOptions): Promise<InterviewReportView>;
 
   listModels(options?: CallOptions): Promise<ModelView[]>;
+  createWsTicket(): Promise<WsTicketView>;
+  synthesizeSpeech(body: TtsRequestView): Promise<TtsView>;
+  fetchTtsAudio(url: string, options?: CallOptions): Promise<Blob>;
   devLogin(body: AuthSessionRequest): Promise<Principal>;
   currentPrincipal(options?: CallOptions): Promise<Principal>;
   logout(): Promise<void>;
@@ -195,6 +201,18 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
     listModels: (options = {}) =>
       request<ModelView[]>("/api/v1/models", { signal: options.signal }),
+
+    createWsTicket: () => request<WsTicketView>("/api/v1/auth/ws-ticket", { method: "POST" }),
+
+    synthesizeSpeech: (body) =>
+      request<TtsView>("/api/v1/media/tts", { method: "POST", body }),
+
+    fetchTtsAudio: async (url, options = {}) => {
+      // Same-origin audio: the session cookie authenticates the GET.
+      const response = await fetch(url, { credentials: "include", signal: options.signal });
+      if (!response.ok) throw await fromResponse(response);
+      return response.blob();
+    },
 
     devLogin: (body) => request<Principal>("/api/v1/auth/session", { method: "POST", body }),
 

@@ -27,6 +27,6 @@ def test_stats_report_the_guard_chain(client: TestClient, migrated_database: str
     assert payload["enabled"] is True
     assert payload["policies"]["evaluation"]["timeout"] == 20.0
     assert payload["policies"]["chat"]["is_stream"] is True
-    assert set(payload["policies"]) == {"chat", "extraction", "evaluation", "followup"}
+    assert set(payload["policies"]) == {"chat", "extraction", "evaluation", "followup", "tts"}
     assert payload["singleflight"]["entries"] == 0
     assert "singleflight_leader" in payload["metrics"]

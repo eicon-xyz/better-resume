@@ -930,6 +930,72 @@
         "title": "StreamRequest",
         "type": "object"
       },
+      "TtsRequest": {
+        "properties": {
+          "rate": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TtsRequest",
+        "type": "object"
+      },
+      "TtsView": {
+        "properties": {
+          "cached": {
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "mime_type",
+          "cached",
+          "digest"
+        ],
+        "title": "TtsView",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -968,6 +1034,25 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WsTicketView": {
+        "description": "Short-lived, single-use ticket for the WebSocket handshake.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_in"
+        ],
+        "title": "WsTicketView",
         "type": "object"
       }
     }
@@ -1047,6 +1132,28 @@
           }
         },
         "summary": "Create Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/ws-ticket": {
+      "post": {
+        "description": "Browsers cannot set headers on a WebSocket, so the cookie buys a one-shot ticket.",
+        "operationId": "create_ws_ticket_api_v1_auth_ws_ticket_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsTicketView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Ws Ticket",
         "tags": [
           "auth"
         ]
@@ -1650,6 +1757,88 @@
         "summary": "Restore Session",
         "tags": [
           "interview"
+        ]
+      }
+    },
+    "/api/v1/media/tts": {
+      "post": {
+        "operationId": "synthesize_speech_api_v1_media_tts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TtsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synthesize Speech",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/tts/{digest}.mp3": {
+      "get": {
+        "description": "Same-origin audio requests carry the session cookie, so keep it private.",
+        "operationId": "get_speech_api_v1_media_tts__digest__mp3_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "title": "Digest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Speech",
+        "tags": [
+          "media"
         ]
       }
     },

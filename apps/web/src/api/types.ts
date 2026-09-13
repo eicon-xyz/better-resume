@@ -26,3 +26,8 @@ export type RestoreResponseView = Schemas["RestoreResponseView"];
 export type InterviewReportView = Schemas["InterviewReportView"];
 export type DimensionView = Schemas["DimensionView"];
 export type ReportTurnView = Schemas["ReportTurnView"];
+
+/** M4 media contracts (generated names are re-exported for readability). */
+export type WsTicketView = components["schemas"]["WsTicketView"];
+export type TtsRequestView = components["schemas"]["TtsRequest"];
+export type TtsView = components["schemas"]["TtsView"];

@@ -27,18 +27,21 @@ class ResilienceSettings(BaseModel):
     extraction_timeout_seconds: float = 60.0
     evaluation_timeout_seconds: float = 20.0
     followup_timeout_seconds: float = 20.0
+    tts_timeout_seconds: float = 20.0
 
     chat_max_concurrency: int = 16
     extraction_max_concurrency: int = 8
     evaluation_max_concurrency: int = 30
     followup_max_concurrency: int = 20
     queue_wait_seconds: float = 2.0
+    tts_max_concurrency: int = 8
 
     # Completed-call replay: 0 disables it for that stage (chat must never replay).
     chat_replay_seconds: float = 0.0
     evaluation_replay_seconds: float = 60.0
     followup_replay_seconds: float = 60.0
     extraction_replay_seconds: float = 300.0
+    tts_replay_seconds: float = 300.0
     negative_cache_seconds: float = 10.0
 
     breaker_window: int = 50
@@ -49,6 +52,16 @@ class ResilienceSettings(BaseModel):
 
     singleflight_max_entries: int = 256
     stream_buffer_frames: int = 1024
+
+
+class MediaSettings(BaseModel):
+    """M4 media wiring: which transcription adapter, and how TTS behaves."""
+
+    transcription_adapter: Literal["xunfei", "scripted"] = "scripted"
+    xunfei_ws_url: str = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_storage_dir: Path = Path("data/tts")
+    tts_max_chars: int = 500
 
 
 class RateLimitSettings(BaseModel):
@@ -100,6 +113,13 @@ class Settings(BaseSettings):
     # M3: resilience budgets and in-process rate limiting.
     resilience: ResilienceSettings = Field(default_factory=ResilienceSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    media: MediaSettings = Field(default_factory=MediaSettings)
+
+    # M4: D11 one-shot WS ticket lifetime, plus vendor credentials (env only).
+    ws_ticket_ttl_seconds: int = 30
+    xunfei_app_id: str = ""
+    xunfei_access_key_id: str = ""
+    xunfei_access_key_secret: str = ""
 
     @field_validator("log_level")
     @classmethod
