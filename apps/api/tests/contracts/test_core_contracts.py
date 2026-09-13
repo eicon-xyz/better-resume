@@ -106,7 +106,7 @@ def test_stream_event_union_members() -> None:
 def test_ai_resilience_shape() -> None:
     assert isinstance(UnimplementedAiResilience(), AiResilience)
     assert params_of(AiResilience.run) == ["self", "stage", "key", "fn"]
-    assert [stage.value for stage in Stage] == ["extraction", "evaluation", "followup"]
+    assert [stage.value for stage in Stage] == ["chat", "extraction", "evaluation", "followup"]
 
 
 async def test_ai_resilience_placeholder_fails_loudly() -> None:

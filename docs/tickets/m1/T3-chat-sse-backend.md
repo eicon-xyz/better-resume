@@ -41,6 +41,22 @@ ConversationStreamingSupport 的经验）。
 - 会话标题默认取首条用户消息前 30 字（不让 LLM 起标题，省一次调用，Q10）。
 - 单条消息内容上限（如 8k 字符）在 API 层校验，防止超长注入 payload。
 
+## 实测记录（2026-09-13，真实模型端到端）
+
+`uvicorn` + 真 DeepSeek + 真 Postgres，`curl -N` 抓到的帧统计：
+`41 event: content` / `12 event: reasoning` / `1 event: meta` / `1 event: done`；
+历史回放 `[(1,'user',13),(2,'assistant',75,reasoning=True,token_count=151)]`。
+
+实现要点（与原提案的差异）：
+
+- **取消落库要处理两条路径**：任务被 cancel（CancelledError）与消费者提前关闭生成器
+  （GeneratorExit）都会中断流；只捕 CancelledError 会漏掉后者 → 改为 `try/finally` +
+  `persisted` 标志，`_persist_aborted()` 用 shield 保证半截答案落库（error_message="cancelled"）。
+- **心跳不能取消上游**：SSE 用「生产者任务 + 队列」拆开，`asyncio.wait_for(queue.get(), 心跳)`
+  超时只发 `: ping`，绝不 cancel 正在跑的模型流。
+- **未配置密钥时不假装能跑**：`POST .../stream` 直接 503 并说明缺哪个环境变量。
+- 会话归属错误统一 404（不泄露存在性），seq 冲突 409。
+
 ## 不做
 
 - 不做断线自动重连与「续传」；不做多会话并行流的服务端串行化（M3 单飞覆盖）。

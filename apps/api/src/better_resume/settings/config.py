@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     request_id_header: str = "X-Request-Id"
 
+    # SSE keep-alive: comment frames every N seconds (old project used 15s).
+    sse_heartbeat_seconds: float = 15.0
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, value: str) -> str:

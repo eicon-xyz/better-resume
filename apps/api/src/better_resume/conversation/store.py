@@ -144,6 +144,17 @@ class SqlConversationStore:
             ) from exc
         return seq
 
+    async def has_client_message_id(self, session: SessionRef, client_message_id: str) -> bool:
+        """Idempotency probe: has this client turn already been stored?"""
+        await self._fetch(session)
+        found = await self._session.execute(
+            select(ConversationMessageRow.id).where(
+                ConversationMessageRow.conversation_id == session.session_id,
+                ConversationMessageRow.client_message_id == client_message_id,
+            )
+        )
+        return found.scalar_one_or_none() is not None
+
     async def history(
         self, session: SessionRef, *, before: int | None = None, limit: int = 50
     ) -> list[StoredMessage]:

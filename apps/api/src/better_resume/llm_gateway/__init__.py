@@ -7,6 +7,7 @@ from .errors import (
     LlmTimeoutError,
     LlmVendorError,
 )
+from .factory import build_llm_gateway
 from .firewall import FirewallVerdict, harden_system_prompt, inspect_prompt
 from .models import (
     ChatRequest,
@@ -48,6 +49,7 @@ __all__ = [
     "TokenUsage",
     "VendorContext",
     "VendorMeta",
+    "build_llm_gateway",
     "harden_system_prompt",
     "inspect_prompt",
 ]

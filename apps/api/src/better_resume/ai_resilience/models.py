@@ -6,6 +6,7 @@ from enum import StrEnum
 
 
 class Stage(StrEnum):
+    CHAT = "chat"
     EXTRACTION = "extraction"
     EVALUATION = "evaluation"
     FOLLOWUP = "followup"
