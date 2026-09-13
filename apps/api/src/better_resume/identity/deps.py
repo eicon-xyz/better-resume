@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request, status
 from ..settings import Settings
 from .models import Principal
 from .store import SessionStore
+from .tickets import WsTicketStore
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -31,3 +32,8 @@ async def current_principal(
     if record is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session expired")
     return record.principal
+
+
+def get_ws_ticket_store(request: Request) -> WsTicketStore:
+    """Ticket store for the WS handshake (Redis in real runs, memory in tests)."""
+    return request.app.state.ws_ticket_store

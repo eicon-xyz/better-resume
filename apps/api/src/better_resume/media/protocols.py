@@ -15,6 +15,14 @@ class TranscriptionChannel(Protocol):
 
     async def stop(self) -> None: ...
 
+    async def wait(self) -> None:
+        """Block until the channel ends; raise its failure if it failed.
+
+        Added in M4: the M0 sketch (start/feed/stop) could not tell the WS
+        endpoint whether the vendor dropped us.
+        """
+        ...
+
 
 @runtime_checkable
 class TtsSynthesizer(Protocol):
