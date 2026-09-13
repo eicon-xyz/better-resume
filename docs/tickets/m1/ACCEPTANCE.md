@@ -96,9 +96,22 @@ redis      Up (healthy)    6379/tcp          <- 不发布宿主端口（D-C）
   sync → ruff → format → pytest → alembic upgrade/check → openapi 漂移；
   frontend：pnpm install → lint → typecheck → test → 生成类型漂移）。
 - main 上 run #2/#3/#4 全绿（M0 与提案阶段）。
-- **分支 `m1/chat-milestone` 的 CI 需要 PR 触发**：本机无 GitHub token，PR 需在网页点一下
-  （https://github.com/eicon-xyz/better-resume/pull/new/m1/chat-milestone ）。合并进 main 后
-  `push: branches: [main]` 也会再跑一次。
+- **PR [#1](https://github.com/eicon-xyz/better-resume/pull/1) 的 CI run #5
+  （[34750591783](https://github.com/eicon-xyz/better-resume/actions/runs/34750591783)，sha `fe30e3e`）
+  双 job 全绿**：
+
+```
+backend  (ruff + pytest + alembic): success
+  Initialize containers → setup-uv@v10.1.0 → uv sync --frozen → ruff check → ruff format --check
+  → pytest(94) → alembic upgrade head → alembic check → **OpenAPI drift check** ✅
+frontend (eslint + tsc + vitest): success
+  pnpm/action-setup@v6 → setup-node@v7 → pnpm install --frozen-lockfile
+  → lint → typecheck → vitest(65) → **generated API types drift check** ✅
+```
+
+- 这是 M1 代码（conversation / llm-gateway / chat SSE / OpenAPI→TS / 前端四件套）在 CI 上的首次真跑，
+  两个 job 的每一步都是 success，包含 M1 新增的两条契约漂移检查。
+- 合并进 main 后 `push: branches: [main]` 还会再跑一次同样的双 job。
 
 ## 5. 票据完成情况
 
