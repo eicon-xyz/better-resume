@@ -38,7 +38,14 @@ from .interview_engine import (
     QuestionLockRegistry,
     SessionNotFound,
 )
-from .llm_gateway import LlmError, ModelRegistry, SceneResolver, build_llm_gateway
+from .llm_gateway import (
+    AdapterKind,
+    LlmError,
+    ModelRegistry,
+    SceneResolver,
+    XingyunGatewayFactory,
+    build_llm_gateway,
+)
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
 from .observability import RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
@@ -61,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.model_registry = ModelRegistry(app.state.session_factory)
     # M5: scenes resolve to a gateway through their binding row (cached).
     app.state.scene_resolver = SceneResolver(app.state.session_factory)
+    app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     app.state.ai_resilience = ResilientAiResilience(settings)
     app.state.llm_gateway_factory = build_llm_gateway

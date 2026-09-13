@@ -39,7 +39,9 @@ from .resolver import (
     SceneResolver,
     SceneView,
 )
+from .scene_mapping import to_xingyun_payload, validate_structured
 from .scenes import AdapterKind, LlmScene, scene_label
+from .xingyun_factory import XingyunGatewayFactory
 
 __all__ = [
     "DEFAULT_ADAPTER",
@@ -47,6 +49,9 @@ __all__ = [
     "GatewayFactory",
     "OpenAiCompatFactory",
     "SceneResolver",
+    "XingyunGatewayFactory",
+    "to_xingyun_payload",
+    "validate_structured",
     "SceneView",
     "AdapterKind",
     "LlmScene",
