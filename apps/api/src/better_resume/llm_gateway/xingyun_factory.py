@@ -31,6 +31,15 @@ class XingyunGatewayFactory:
         api_key, api_secret = self.credentials
         return bool(api_key and api_secret and binding.target_ref)
 
+    def credential_hint(self, binding: SceneBinding) -> str | None:
+        api_key, api_secret = self.credentials
+        missing = [
+            name
+            for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))
+            if not value
+        ]
+        return " and ".join(missing) if missing else None
+
     async def build(self, binding: SceneBinding) -> LlmGateway:
         api_key, api_secret = self.credentials
         if not api_key or not api_secret:

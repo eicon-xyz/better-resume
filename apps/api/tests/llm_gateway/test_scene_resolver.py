@@ -55,6 +55,35 @@ class FakeFactory:
         return object()  # type: ignore[return-value]
 
 
+class AsyncFakeFactory:
+    """Like the real OpenAiCompatFactory, whose check consults the model registry (async)."""
+
+    def __init__(self, *, configured: bool = True) -> None:
+        self.configured = configured
+
+    async def is_configured(self, binding: SceneBinding) -> bool:
+        return self.configured
+
+    async def build(self, binding: SceneBinding) -> LlmGateway:
+        raise AssertionError("build must not run for an unconfigured scene")
+
+
+async def test_async_factory_checks_are_awaited(factory) -> None:
+    """A coroutine is always truthy: forgetting the await silently disables the guard."""
+    resolver = SceneResolver(
+        factory, factories={AdapterKind.XINGYUN: AsyncFakeFactory(configured=False)}
+    )
+    async with factory() as session:
+        await SceneBindingStore(session).upsert(LlmScene.CHAT, AdapterKind.XINGYUN, "flow-async")
+        await session.commit()
+
+    with pytest.raises(LlmConfigError, match="not configured"):
+        await resolver.resolve(LlmScene.CHAT)
+
+    views = {view.scene: view for view in await resolver.views()}
+    assert views[LlmScene.CHAT].configured is False
+
+
 async def test_resolve_returns_the_bound_adapter(factory) -> None:
     fake = FakeFactory()
     resolver = SceneResolver(factory, factories={AdapterKind.XINGYUN: fake})
