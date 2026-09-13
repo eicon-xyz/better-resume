@@ -41,6 +41,7 @@ class ChatMessageView(BaseModel):
     id: str
     seq: int
     role: str
+    client_message_id: str | None = None
     content: str
     reasoning: str | None = None
     token_count: int | None = None

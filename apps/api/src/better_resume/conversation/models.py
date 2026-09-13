@@ -39,6 +39,7 @@ class StoredMessage(BaseModel):
     id: str
     seq: int
     role: MessageRole
+    client_message_id: str | None = None
     content: str
     reasoning: str | None = None
     token_count: int | None = None

@@ -159,6 +159,8 @@ export interface components {
         };
         /** ChatMessageView */
         ChatMessageView: {
+            /** Client Message Id */
+            client_message_id?: string | null;
             /** Content */
             content: string;
             /**

@@ -203,6 +203,7 @@ def _to_stored(row: ConversationMessageRow) -> StoredMessage:
         id=row.id,
         seq=row.seq,
         role=row.role,  # type: ignore[arg-type]
+        client_message_id=row.client_message_id,
         content=row.content,
         reasoning=row.reasoning,
         token_count=row.token_count,

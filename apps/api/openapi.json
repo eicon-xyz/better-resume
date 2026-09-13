@@ -26,6 +26,17 @@
       },
       "ChatMessageView": {
         "properties": {
+          "client_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Message Id"
+          },
           "content": {
             "title": "Content",
             "type": "string"

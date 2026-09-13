@@ -63,6 +63,7 @@ def _message_view(message: StoredMessage) -> ChatMessageView:
         id=message.id,
         seq=message.seq,
         role=message.role,
+        client_message_id=message.client_message_id,
         content=message.content,
         reasoning=message.reasoning,
         token_count=message.token_count,
