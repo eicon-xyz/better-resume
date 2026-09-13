@@ -8,10 +8,10 @@
 
 | # | 发现于 | 一句话 | 状态 |
 | --- | --- | --- | --- |
-| P0 | 提案阶段（读代码） | M2 遗留：四个 resilience key 里有三个不满足去重语义前提（回放一开就串号） | 待修（T8） |
+| P0 | 提案阶段（读代码） | M2 遗留：四个 resilience key 里有三个不满足去重语义前提（回放一开就串号） | 已修（T8） |
 | P1 | T2 实现 | 单飞失败分支漏 settle → follower 永久挂死（测试被 timeout 杀掉） | 已修 |
 | P2 | T2 实现 | 负缓存只对"有等待者的失败"生效，与提案语义不符；future 异常无人取会告警 | 已修 |
-| P3 | T1 运行 | M2 遗留：storage.py docstring 的 \` 触发 SyntaxWarning（干净环境才复现） | 待修（T8） |
+| P3 | T1 运行 | M2 遗留：storage.py docstring 的 \` 触发 SyntaxWarning（干净环境才复现） | 已修（T8） |
 | P4 | T3 实现 | 背压断言差一帧（生成器先 append 后 yield，生产者在途多一帧） | 已修（改断言） |
 | P5 | T5 实现 | ManualClock 只唤醒已注册 sleeper → 任务启动前推时间导致测试挂死（exit=124） | 已修（测试先 settle） |
 | P6 | T5 调试 | 工具坑：pytest 输出重定向后尾部丢失 → 改用 --junitxml 读结果 | 已绕过（写进纪律） |
@@ -32,7 +32,7 @@
 - **为什么现在必须修**：M3 打开回放后，"不同输入命中同一 key"不再只是浪费，
   而是**返回错误结果**（换简历出题命中旧批次、换答案复用旧追问、换模型串流）。
 - **修法**：T8 把四个 key 收敛成显式纯函数并单测（同输入同 key / 换任一维度 key 必变 / key 不含原文）。
-- **证据**：待 T8 测试输出。
+- **证据（T8 落地）**：`test_resilience_concurrency.py` 的四个 key 纯函数用例（同输入同 key / 换 resume·count·language·答案·模型 key 必变 / key 不含原文）；`build_generation_key` / `build_follow_up_key` / `build_report_key` / `build_resilience_key` 各自成为显式纯函数。
 
 ## P1 — 单飞：非缓存失败分支漏了唤醒等待者 → follower 永久挂死
 
@@ -60,7 +60,7 @@
   之后因 pyc 缓存不再出现——**干净环境（CI/新克隆）会重新出现**。
 - **根因**：非 raw 字符串里的 `\`` 不是合法转义。
 - **修法**：改 raw docstring（`r"""...`）或去掉反斜杠（T8 顺手修，改动一行）。
-- **证据**：`uv run python -W error::SyntaxWarning -c "import better_resume.interview_engine.storage"`（T8 复验）。
+- **证据（T8 落地）**：storage.py docstring 改为 raw 字符串，`tests/interview_engine` 188 例全绿、`ruff` 干净。
 ## P4 — 背压测试断言差一帧（测试假设 vs 实现语义）
 
 - **症状**：`test_backpressure_stops_the_producer_at_the_buffer_limit` 断言 `len(produced) <= 3` 失败（实为 4）。
