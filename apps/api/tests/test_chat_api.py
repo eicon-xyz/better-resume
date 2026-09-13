@@ -185,7 +185,9 @@ def test_stream_error_frame_is_persisted(
 
     events = parse_sse(text)
     assert [name for name, _ in events] == ["content", "error"]
-    assert events[-1][1]["kind"] == "retryable"
+    # M3: the resilience seam normalises vendor failures, so the frame carries the
+    # taxonomy kind (timeout/overloaded/unavailable/invalid) instead of "retryable".
+    assert events[-1][1]["kind"] == "timeout"
 
     messages = client.get(f"/api/v1/chat/sessions/{session_id}/messages").json()
     assert messages[1]["content"] == "半句"

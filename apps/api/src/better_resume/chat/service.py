@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..ai_resilience import AiResilience, Stage
+from ..ai_resilience import AiResilience, AiResilienceError, Stage
 from ..conversation import (
     Conversation,
     Message,
@@ -96,7 +96,7 @@ class ChatService:
             reasoning = ""
             usage: TokenUsage | None = None
             finish_reason: str | None = None
-            failure: LlmError | None = None
+            failure: LlmError | AiResilienceError | None = None
 
             persisted = False
             try:
@@ -116,7 +116,7 @@ class ChatService:
                         elif isinstance(event, Done):
                             finish_reason = event.finish_reason
                         yield event
-                except LlmError as exc:
+                except (LlmError, AiResilienceError) as exc:
                     failure = exc
                     logger.warning(
                         "chat_stream_failed", session_id=session.session_id, error=str(exc)
@@ -243,9 +243,9 @@ def _usage_from(event: VendorMeta) -> TokenUsage | None:
     )
 
 
-def _error_text(failure: LlmError | None) -> str | None:
+def _error_text(failure: LlmError | AiResilienceError | None) -> str | None:
     if failure is None:
         return None
-    if failure.kind is FailureKind.RETRYABLE:
+    if isinstance(failure, LlmError) and failure.kind is FailureKind.RETRYABLE:
         return f"upstream unavailable: {failure}"
     return str(failure)

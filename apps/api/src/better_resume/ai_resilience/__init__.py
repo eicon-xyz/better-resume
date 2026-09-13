@@ -18,6 +18,7 @@ from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
 from .ratelimit import Bucket, RateLimitDecision, RateLimiter, TokenBucket
+from .resilient import ResilientAiResilience
 from .singleflight import Flight, FlightState, SingleFlight
 from .stream import StreamBroadcast
 from .timeout import with_timeout, wrap_stream_timeout
@@ -45,6 +46,7 @@ __all__ = [
     "RateLimitDecision",
     "RateLimiter",
     "ResilienceMetrics",
+    "ResilientAiResilience",
     "SingleFlight",
     "Stage",
     "StagePolicies",
