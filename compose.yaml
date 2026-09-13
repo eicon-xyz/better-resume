@@ -37,6 +37,8 @@ services:
       BR_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-better_resume}:${POSTGRES_PASSWORD:-better_resume}@postgres:5432/${POSTGRES_DB:-better_resume}
       BR_REDIS_URL: redis://redis:6379/0
       BR_SESSION_COOKIE_SECURE: ${BR_SESSION_COOKIE_SECURE:-false}
+      # Vendor key comes from the environment / gitignored .env — never from the repo.
+      BR_DEEPSEEK_API_KEY: ${BR_DEEPSEEK_API_KEY:-}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

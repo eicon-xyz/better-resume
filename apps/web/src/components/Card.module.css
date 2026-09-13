@@ -1,0 +1,17 @@
+.card {
+  padding: var(--br-space-4);
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-surface);
+}
+
+.raised {
+  background: var(--br-color-surface-raised);
+  box-shadow: var(--br-shadow-sm);
+}
+
+.title {
+  margin: 0 0 var(--br-space-3);
+  font-size: var(--br-text-lg);
+  line-height: var(--br-leading-tight);
+}

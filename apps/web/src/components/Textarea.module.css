@@ -1,0 +1,16 @@
+.textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--br-space-3);
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+  font-family: inherit;
+  font-size: var(--br-text-md);
+  line-height: var(--br-leading-normal);
+}
+
+.textarea::placeholder {
+  color: var(--br-color-text-muted);
+}

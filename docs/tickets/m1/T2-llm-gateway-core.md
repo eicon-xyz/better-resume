@@ -45,6 +45,16 @@ reasoning_content 归一，结构化输出强校验，换模型只改库。
   重试（而不是 json_schema，兼容面更广）。
 - raw 响应只记 `usage/latency/finish_reason` 到 structlog，不落原始 payload（Q8）。
 
+## 实测记录（2026-09-13，用真实 key 跑通）
+
+- 真实 stream：`ContentDelta` 与 `ReasoningDelta` 均正确归一，`Done` 收尾；
+  真实 complete + `response_schema`：`parsed=Answer(answer='ok')`，usage 含 `reasoning_tokens`。
+- **坑**：reasoning 与 content 共用 `max_tokens` 预算——`max_tokens=64` 时推理把预算吃光，
+  content 为空 → 结构化输出必然失败（会被判成 LlmSchemaError）。注册表默认 2048/4096 没问题，
+  但任何调用方都不要把 max_tokens 调得过小（已记入 T3/T9 注意事项）。
+- **坑**：httpx 构造客户端时会急于解析 `NO_PROXY`，像 `::1`、`[::1]`、`<local>` 这类条目会抛
+  `InvalidURL`（本机 WSL 环境就是如此）→ 适配器加了回退：`trust_env=False` + 告警日志。
+
 ## 不做
 
 - 不做单飞/熔断/限流（M3）；不做 XingyunWorkflowAdapter（M5）；不做流式结构化输出。

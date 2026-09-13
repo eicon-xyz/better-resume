@@ -26,6 +26,35 @@ class TokenUsage(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+
+
+class ModelSpec(BaseModel):
+    """One row of the model registry; the API key itself is only referenced by env name."""
+
+    name: str
+    provider: str
+    base_url: str
+    model_id: str
+    api_key_env: str
+    max_tokens: int = 2048
+    temperature: float = 0.7
+    system_prompt: str | None = None
+    supports_reasoning: bool = False
+    is_enabled: bool = True
+    priority: int = 100
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelView(BaseModel):
+    """Public projection of a registry row (never contains credentials)."""
+
+    name: str
+    model_id: str
+    provider: str
+    supports_reasoning: bool
+    configured: bool
+    is_default: bool = False
 
 
 class ChatRequest(BaseModel):
@@ -37,6 +66,8 @@ class ChatRequest(BaseModel):
     model_ref: str | None = None
     response_schema: type[BaseModel] | None = None
     vendor_ctx: VendorContext | None = None
+    max_tokens: int | None = None
+    temperature: float | None = None
 
 
 class ChatResult(BaseModel):
@@ -45,6 +76,7 @@ class ChatResult(BaseModel):
     reasoning: str | None = None
     usage: TokenUsage | None = None
     raw_response: dict[str, Any] | None = None
+    parsed: BaseModel | None = None
 
 
 class ContentDelta(BaseModel):

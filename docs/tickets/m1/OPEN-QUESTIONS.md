@@ -1,5 +1,32 @@
 # M1 待确认项（决策请拍板，我不自行决议）
 
+## 0. 结论回填（2026-09-13 已拍板）
+
+| 编号 | 你的决定 | 落地方式 |
+| --- | --- | --- |
+| Q1 | **提供了 DeepSeek API key** | 只写入本机 `.env`（已被 .gitignore 忽略，已用 `git grep` 验证零入库）；CI 永不使用；compose 通过 `${BR_DEEPSEEK_API_KEY:-}` 透传；**建议 M1 演示后轮换该 key**（它已出现在聊天记录里） |
+| Q2 | **不保留 shadcn/ui 叙事** | 走自研 tokens + CSS Modules + 6 个原子组件（原提议 A） |
+| Q3 | 照准 | M1 用 dev 会话入口，真实 users 表/登录页归 M2 |
+| Q4–Q10 | 照准 | 幂等键 / 状态分工 / react-markdown + CSS 动效 / 40ms+15s / 不落 raw payload / 生成物入库 / 标题取首条 30 字 + 会话侧栏 |
+
+### 0.1 实测事实（影响 T2 的模型注册表）
+
+用你的 key 实际探测（2026-09-13）：
+
+- `GET /models` 返回两个模型：**`deepseek-flash`**、**`deepseek-v4-pro`**
+  —— 不是 D12 字面上的「DeepSeek-V3 / DeepSeek-R1」（供应商已改名），意图不变：一个快、一个强。
+- 两个模型**流式与非流式都会返回 `reasoning_content`**，第一帧常是
+  `{"content": null, "reasoning_content": ""}`（解析器必须同时容忍两个通道的空值）。
+- SSE 帧格式：`data: {json}` + 结束帧 `data: [DONE]`。
+- `response_format={"type":"json_object"}` 可用，返回 content 为 JSON 字符串，
+  usage 里带 `completion_tokens_details.reasoning_tokens`。
+- 原始样本已存为回放夹具：`apps/api/tests/fixtures/llm/`（3 个文件，已确认不含密钥）。
+
+**待你追认（不阻塞动工）**：注册表种子用真实模型名 `deepseek-flash` / `deepseek-v4-pro`，
+`supports_reasoning=true` 两个都置；如果你希望保留 V3/R1 的叙事命名，我把 `model_ref`
+取名为 `deepseek-v3`/`deepseek-r1`、`model_id` 指向真实模型即可（一行种子数据的事）。
+
+---
 | 编号 | 一句话 | 我的提议 |
 | --- | --- | --- |
 | Q1 | 真实 LLM 调用的密钥与范围 | 环境变量 `BR_DEEPSEEK_API_KEY`；CI 永不真调用；本地可选 smoke 脚本 |

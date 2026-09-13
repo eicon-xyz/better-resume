@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import inspect
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
@@ -17,7 +18,7 @@ from better_resume.conversation import (
     ConversationStore,
     Message,
     SessionRef,
-    UnimplementedConversationStore,
+    SqlConversationStore,
 )
 from better_resume.llm_gateway import (
     ChatRequest,
@@ -25,9 +26,18 @@ from better_resume.llm_gateway import (
     ContentDelta,
     Done,
     LlmGateway,
+    ModelSpec,
+    OpenAICompatAdapter,
     ReasoningDelta,
-    UnimplementedLlmGateway,
     VendorMeta,
+)
+
+GATEWAY_SPEC = ModelSpec(
+    name="deepseek-flash",
+    provider="deepseek",
+    base_url="https://api.deepseek.com",
+    model_id="deepseek-flash",
+    api_key_env="BR_DEEPSEEK_API_KEY",
 )
 
 MODULES = ("conversation", "llm_gateway", "ai_resilience")
@@ -43,7 +53,9 @@ def test_module_is_importable_from_outside(module: str) -> None:
 
 
 def test_conversation_store_shape() -> None:
-    assert isinstance(UnimplementedConversationStore(), ConversationStore)
+    # T1 replaced the M0 placeholder with the Postgres implementation; the protocol
+    # conformance check stays (no session is touched by isinstance).
+    assert isinstance(SqlConversationStore(session=None), ConversationStore)  # type: ignore[arg-type]
     assert params_of(ConversationStore.append) == ["self", "session", "msg"]
     assert params_of(ConversationStore.history) == ["self", "session", "before", "limit"]
     assert params_of(ConversationStore.require_owner) == ["self", "session", "user_id"]
@@ -53,16 +65,16 @@ def test_conversation_store_shape() -> None:
     assert Message(role="user", content="hi").meta == {}
 
 
-async def test_conversation_placeholder_fails_loudly() -> None:
-    store = UnimplementedConversationStore()
-    with pytest.raises(NotImplementedError):
-        await store.append(
-            SessionRef(kind="chat", session_id="s1"), Message(role="user", content="hi")
-        )
-
-
 def test_llm_gateway_shape() -> None:
-    assert isinstance(UnimplementedLlmGateway(), LlmGateway)
+    # T2 replaced the placeholder with the OpenAI-compatible adapter.
+    adapter = OpenAICompatAdapter(
+        GATEWAY_SPEC,
+        api_key="test",
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200))
+        ),
+    )
+    assert isinstance(adapter, LlmGateway)
     assert params_of(LlmGateway.complete) == ["self", "req"]
     assert params_of(LlmGateway.stream) == ["self", "req"]
     assert inspect.iscoroutinefunction(LlmGateway.complete)
@@ -91,18 +103,10 @@ def test_stream_event_union_members() -> None:
     assert ChatResult(content="x", model="m").usage is None
 
 
-async def test_llm_gateway_placeholder_fails_loudly() -> None:
-    gateway = UnimplementedLlmGateway()
-    with pytest.raises(NotImplementedError):
-        await gateway.complete(ChatRequest(messages=[]))
-    with pytest.raises(NotImplementedError):
-        gateway.stream(ChatRequest(messages=[]))
-
-
 def test_ai_resilience_shape() -> None:
     assert isinstance(UnimplementedAiResilience(), AiResilience)
     assert params_of(AiResilience.run) == ["self", "stage", "key", "fn"]
-    assert [stage.value for stage in Stage] == ["extraction", "evaluation", "followup"]
+    assert [stage.value for stage in Stage] == ["chat", "extraction", "evaluation", "followup"]
 
 
 async def test_ai_resilience_placeholder_fails_loudly() -> None:

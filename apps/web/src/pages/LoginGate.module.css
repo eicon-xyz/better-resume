@@ -1,0 +1,25 @@
+.gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--br-space-6);
+}
+
+.hint {
+  margin-top: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--br-space-3);
+}
+
+.error {
+  margin-bottom: 0;
+  color: var(--br-color-danger);
+  font-size: var(--br-text-sm);
+}
