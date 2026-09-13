@@ -85,7 +85,9 @@ class XingyunWorkflowAdapter:
         attempts = self._schema_retries + 1
         last_error: LlmSchemaError | None = None
         for _ in range(attempts):
-            content, usage = await self._retrying(lambda: self._collect(req))
+            # One retry boundary per call: _stream() already retries opening the connection,
+            # and retrying a half-consumed stream would double-count attempts.
+            content, usage = await self._collect(req)
             if req.response_schema is None:
                 return ChatResult(content=content, model=self.model_name, parsed=None)
             try:
