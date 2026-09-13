@@ -23,7 +23,11 @@ from .follow_up import (
     decide_follow_up_or_fallback,
 )
 from .follow_up_service import FollowUpQuestion, FollowUpService
-from .locks import QuestionLockRegistry
+from .locks import (
+    QuestionLockRegistry,
+    QuestionLockTimeout,
+    RedisQuestionLockRegistry,
+)
 from .models import (
     AnswerRecord,
     AnswerTurn,
@@ -75,6 +79,8 @@ __all__ = [
     "AnswerResult",
     "AnswerService",
     "QuestionLockRegistry",
+    "QuestionLockTimeout",
+    "RedisQuestionLockRegistry",
     "QuestionNotCurrent",
     "ScoreResult",
     "MAX_QUESTIONS",
