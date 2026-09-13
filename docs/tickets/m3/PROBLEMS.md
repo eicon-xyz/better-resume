@@ -13,6 +13,8 @@
 | P2 | T2 实现 | 负缓存只对"有等待者的失败"生效，与提案语义不符；future 异常无人取会告警 | 已修 |
 | P3 | T1 运行 | M2 遗留：storage.py docstring 的 \` 触发 SyntaxWarning（干净环境才复现） | 待修（T8） |
 | P4 | T3 实现 | 背压断言差一帧（生成器先 append 后 yield，生产者在途多一帧） | 已修（改断言） |
+| P5 | T5 实现 | ManualClock 只唤醒已注册 sleeper → 任务启动前推时间导致测试挂死（exit=124） | 已修（测试先 settle） |
+| P6 | T5 调试 | 工具坑：pytest 输出重定向后尾部丢失 → 改用 --junitxml 读结果 | 已绕过（写进纪律） |
 
 ---
 
@@ -63,3 +65,27 @@
 - **修法**：断言拆成两条——`broadcast.frame_count <= limit`（真不变式）与
   `len(produced) <= limit + 1`（在途一帧）；不修改实现。
 - **证据**：`tests/ai_resilience/test_stream_fanout.py` 34 例全绿。
+## P5 — ManualClock.advance() 只唤醒"已注册"的 sleeper → 测试在任务启动前推时间会永久等待
+
+- **症状**：`test_stream_timeout_before_the_first_frame` 挂死，pytest 被 `timeout 120` 杀掉（exit=124），
+  连 junit XML 都来不及写；表现为"输出只有进度点、没有失败详情"。
+- **根因**：`asyncio.create_task(anext(stream))` 之后只 `await asyncio.sleep(0)` 一次，
+  包装器内部的 `clock.sleep(timeout)` 定时任务**还没开始执行**（未注册 waiter），
+  此时 `clock.advance(1.0)` 推进了时间但不唤醒任何人；等定时任务真正注册时，
+  它的 deadline 已经从推进后的时间起算 → 永远不触发。
+- **修法**：测试里显式让出若干次事件循环（`for _ in range(5): await asyncio.sleep(0)`）
+  等任务启动后再推进时间。**没有**把"宽容逻辑"塞进 ManualClock：
+  时钟语义保持"时间只前进 + 唤醒已注册者"，这类顺序约束写进测试注释，
+  否则真正的时序 bug 会被时钟掩盖。
+- **证据**：`tests/ai_resilience/test_timeout.py` 7 例全绿；`tests/ai_resilience` 56 例 **0.081s** 跑完。
+
+## P6 — 工具坑：pytest 输出重定向到文件时尾部（失败详情/汇总）丢失
+
+- **症状**：`uv run pytest ... > /tmp/x.log 2>&1` 后文件里只剩进度点（如 `....F.....`），
+  没有 traceback、没有 "N passed"；管道（`| tail`）也时常只剩进度行。
+- **根因**：本机沙箱下 pytest 终端写入器的后续输出没有落到重定向文件里（未定位到 pytest 侧原因，
+  疑似与 harness 的输出捕获/缓冲有关）；`timeout` 杀进程时也会丢掉尾部。
+- **修法（今后照做）**：需要失败详情时用 **`--junitxml=/tmp/junit.xml`** 再解析 XML
+  （`testsuite` 的 tests/failures + `failure.text`），或用 `-x` 先停在一个失败上。
+  验收命令矩阵里同时保留 exit code 与 junit 计数，避免"看起来绿了"。
+- **证据**：`python3 -c "import xml.etree.ElementTree ..." /tmp/junit.xml` → `tests 56 failures 0 time 0.081`。
