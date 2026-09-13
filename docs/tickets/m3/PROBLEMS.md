@@ -9,6 +9,9 @@
 | # | 发现于 | 一句话 | 状态 |
 | --- | --- | --- | --- |
 | P0 | 提案阶段（读代码） | M2 遗留：四个 resilience key 里有三个不满足去重语义前提（回放一开就串号） | 待修（T8） |
+| P1 | T2 实现 | 单飞失败分支漏 settle → follower 永久挂死（测试被 timeout 杀掉） | 已修 |
+| P2 | T2 实现 | 负缓存只对"有等待者的失败"生效，与提案语义不符；future 异常无人取会告警 | 已修 |
+| P3 | T1 运行 | M2 遗留：storage.py docstring 的 \` 触发 SyntaxWarning（干净环境才复现） | 待修（T8） |
 
 ---
 
@@ -24,3 +27,30 @@
 - **修法**：T8 把四个 key 收敛成显式纯函数并单测（同输入同 key / 换任一维度 key 必变 / key 不含原文）。
 - **证据**：待 T8 测试输出。
 
+## P1 — 单飞：非缓存失败分支漏了唤醒等待者 → follower 永久挂死
+
+- **症状**：T2 测试跑到第 6 个用例失败后进程不再结束（`timeout 240` 杀进程，exit=124）。
+- **根因**：leader 失败时我按"是否保留条目做负缓存"来决定是否 `future.set_exception(...)`，
+  于是**不可缓存**的失败（超时）只移除条目、不 settle future —— 已经 `await shield(future)`
+  的 follower 永远等不到结果。
+- **修法**：把"通知等待者"和"是否保活条目"解耦——**失败一律 settle**（等待者必须知道结果），
+  条目是否保留只由 `negative_ttl` 与 `cacheable` 决定。
+- **证据**：`tests/ai_resilience/test_singleflight.py::test_followers_see_the_very_same_failure`。
+
+## P2 — 负缓存只对"有 follower 的失败"生效（与提案语义不符）；future 异常无人取会告警
+
+- **症状**：`test_cacheable_failure_is_replayed_then_retried` 红：同一个 schema 失败第二次仍打上游。
+- **根因**：我加了个自以为聪明的启发式"没有等待者就不缓存"，与提案
+  "FAILED 且在 negative_ttl 内且 cacheable → 重放"不一致；另外 future 上设置异常而无人 await
+  会触发 asyncio 的 "Future exception was never retrieved" 噪音。
+- **修法**：去掉启发式，缓存只看 TTL/cacheable；`future.add_done_callback` 里消费一次异常，
+  既保留语义又消除告警。
+- **证据**：同上测试文件 12 例全绿。
+
+## P3 — M2 遗留：`interview_engine/storage.py` 文档字符串里的 `\`` 触发 SyntaxWarning
+
+- **症状**：首次编译时 `SyntaxWarning: invalid escape sequence '\`'`（pytest 警告摘要里可见），
+  之后因 pyc 缓存不再出现——**干净环境（CI/新克隆）会重新出现**。
+- **根因**：非 raw 字符串里的 `\`` 不是合法转义。
+- **修法**：改 raw docstring（`r"""...`）或去掉反斜杠（T8 顺手修，改动一行）。
+- **证据**：`uv run python -W error::SyntaxWarning -c "import better_resume.interview_engine.storage"`（T8 复验）。
