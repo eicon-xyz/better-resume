@@ -104,7 +104,7 @@ function reportView(overrides: Partial<InterviewReportView> = {}): InterviewRepo
     summary: "整体不错",
     llm_summary_used: true,
     ...overrides,
-  } as InterviewReportView;
+  };
 }
 
 describe("buildReportViewModel", () => {
