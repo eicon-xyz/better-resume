@@ -102,8 +102,19 @@ $ python3 -m check_jsonschema --builtin-schema vendor.github-workflows .github/w
 ok -- validation done
 ```
 
-action 版本（查证 GitHub releases 后固定）：`actions/checkout@v7`、`astral-sh/setup-uv@v10`、
+action 版本（查证 GitHub releases 后固定）：`actions/checkout@v7`、`astral-sh/setup-uv@v10.1.0`、
 `pnpm/action-setup@v6`、`actions/setup-node@v7`（node 22）。
+
+**GitHub 首次真实跑（push 到 main）**：
+
+- run #1（`eae2ffc`）：frontend 全绿；backend 在 Set up job 失败——
+  `Unable to resolve action astral-sh/setup-uv@v10, unable to find version v10`
+  （该 action 已不再发布移动 major 标签，只发布 v10.1.0 这类精确标签）。
+- 修复 commit `c90e8aa`：钉 `astral-sh/setup-uv@v10.1.0`。
+- run #2（`c90e8aa`，https://github.com/eicon-xyz/better-resume/actions/runs/34744837952 ）：
+  **两个 job 全绿**——backend 含 Initialize containers（postgres+redis service）、
+  Sync/Lint/Format/Test/Migrate/alembic check 每步 success；frontend 含
+  Install/Lint/Typecheck/Test 每步 success。
 
 ### 1.6 六模块包外可导入 + 占位测试
 
@@ -128,9 +139,8 @@ settings identity conversation llm_gateway ai_resilience interview_engine resume
 ## 3. 还需要你做的事
 
 1. 确认本文件与 `OPEN-QUESTIONS.md` 的结论回填。
-2. 提供 GitHub remote：已配置 `origin = git@github.com:eicon-xyz/better-resume.git`，
-   SSH 认证已验证（`Hi eicon-xyz!`）；GitHub 上该仓库尚未创建（API 404），
-   建好空仓库后即可 `git push -u origin main` 并开 PR。
+2. ~~提供 GitHub remote~~ ✅ 已完成：`origin = git@github.com:eicon-xyz/better-resume.git`，
+   `main` 已推送，CI run #2 双 job 全绿（见 §1.5）。
 3. 审阅 `docs/resume/M0-resume-draft.md`（D14 硬规则）。
 
 ## 4. M0 明确未做（防蔓延）
