@@ -17,6 +17,7 @@
 | P6 | T5 调试 | 工具坑：pytest 输出重定向后尾部丢失 → 改用 --junitxml 读结果 | 已绕过（写进纪律） |
 | P7 | T6 实现 | TokenBucket.idle 未按时间投影 → 惰性淘汰从未生效（测试抓到） | 已修 |
 | P8 | T7 联调 | 韧性 kind 不在 ChatErrorEvent Literal → SSE 兜底把 timeout 降级成 unknown | 已修（契约同步） |
+| P9 | T8 实现 | 并发测试用 sleep(0) 等 follower，DB await 无法推进 → 误判单飞失效 | 已修（事件+真实小睡轮询） |
 
 ---
 
@@ -112,3 +113,15 @@
 - **为什么值得记**：这是"跨里程碑契约漂移"的典型——单测全绿、端到端一跑就露；
   也说明兜底 `except` 会把"类型错误"伪装成"上游抖动"。
 - **证据**：`tests/test_chat_api.py::test_stream_error_frame_is_persisted` 绿；后端 407 例全绿。
+## P9 — 并发测试的时序假设：follower 在到达接缝前还有 DB I/O
+
+- **症状**：`test_concurrent_identical_chat_streams_share_one_vendor_call` 断言 `gateway.calls == 1` 失败（实为 2），
+  单飞 follower 计数为 0——第二个请求另起了一次上游调用。
+- **根因（两次踩）**：
+  1) 用固定次数 `await asyncio.sleep(0)` 等 follower 到接缝，但 `ChatService` 在调用 `run()` 前
+     有多次数据库往返；**`sleep(0)` 不让事件循环去 poll socket**，DB await 根本没机会完成，
+     于是我在 follower 还没进接缝时就 `release`，leader 的流结束、条目被清理，follower 自然另起炉灶；
+  2) 第一次修法（用指标轮询）只在 `sleep(0)` 上循环，同样的问题再犯一次。
+- **修法**：用"事件 + 有限真实小睡轮询"同步：先 `await gateway.started.wait()` 确认 leader 已打上游，
+  再以 `asyncio.sleep(0.005)` 轮询 `singleflight_follower == 1`（上限 1s）后才放行。
+- **证据**：`tests/test_resilience_concurrency.py` 8 例全绿，含"两路并发聊天流 → 上游恰好 1 次"。

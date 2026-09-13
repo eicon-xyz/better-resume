@@ -15,7 +15,7 @@ class StoredResume:
 
 
 class ResumeStorage:
-    """\`data/resumes/<user>/<sha256>.pdf\` — identical uploads collapse to one file."""
+    r"""\`data/resumes/<user>/<sha256>.pdf\` — identical uploads collapse to one file."""
 
     def __init__(self, root: Path) -> None:
         self._root = Path(root)
