@@ -15,7 +15,9 @@ from .ai_resilience import (
     AiResilienceError,
     AiTimeout,
     AiUnavailable,
+    DistributedAiResilience,
     RateLimiter,
+    RedisFlight,
     ResilientAiResilience,
 )
 from .conversation import ConversationConflictError, ConversationNotFoundError
@@ -74,7 +76,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
-    app.state.ai_resilience = ResilientAiResilience(settings)
+    resilience: object = ResilientAiResilience(settings)
+    if settings.resilience.distributed:
+        resilience = DistributedAiResilience(
+            resilience,
+            RedisFlight(
+                settings.redis_url,
+                lease_seconds=settings.resilience.flight_lease_seconds,
+                wait_seconds=settings.resilience.flight_wait_seconds,
+                poll_seconds=settings.resilience.flight_poll_seconds,
+            ),
+        )
+    app.state.ai_resilience = resilience
     app.state.llm_gateway_factory = build_llm_gateway
     app.state.rate_limiter = RateLimiter(settings.rate_limit)
     # Process-local question locks; M6 swaps them for Redis behind the same seam.

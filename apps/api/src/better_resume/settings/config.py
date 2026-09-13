@@ -51,6 +51,13 @@ class ResilienceSettings(BaseModel):
     breaker_half_open_permits: int = 10
 
     singleflight_max_entries: int = 256
+
+    # M6: cross-instance single flight (Redis). Off by default; the kill
+    # drill exercises it, so it is not a dead branch.
+    distributed: bool = False
+    flight_lease_seconds: float = 30.0
+    flight_wait_seconds: float = 10.0
+    flight_poll_seconds: float = 0.1
     stream_buffer_frames: int = 1024
 
 
