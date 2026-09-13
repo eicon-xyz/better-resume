@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import __version__
+from .db import build_engine, build_session_factory
 from .http import health_router
 from .identity import auth_router, build_session_store
 from .observability import RequestIdMiddleware, configure_logging
@@ -17,11 +18,15 @@ from .settings import Settings, get_settings
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
+    engine = build_engine(settings.database_url)
+    app.state.db_engine = engine
+    app.state.session_factory = build_session_factory(engine)
     app.state.session_store = build_session_store(settings)
     try:
         yield
     finally:
         await app.state.session_store.aclose()
+        await engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
