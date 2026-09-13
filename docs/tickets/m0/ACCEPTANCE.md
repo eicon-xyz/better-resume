@@ -128,7 +128,9 @@ settings identity conversation llm_gateway ai_resilience interview_engine resume
 ## 3. 还需要你做的事
 
 1. 确认本文件与 `OPEN-QUESTIONS.md` 的结论回填。
-2. 提供 GitHub remote（建仓后即可 push 并开 PR，CI 会自动跑）。
+2. 提供 GitHub remote：已配置 `origin = git@github.com:eicon-xyz/better-resume.git`，
+   SSH 认证已验证（`Hi eicon-xyz!`）；GitHub 上该仓库尚未创建（API 404），
+   建好空仓库后即可 `git push -u origin main` 并开 PR。
 3. 审阅 `docs/resume/M0-resume-draft.md`（D14 硬规则）。
 
 ## 4. M0 明确未做（防蔓延）

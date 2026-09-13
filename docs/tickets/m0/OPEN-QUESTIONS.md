@@ -15,6 +15,8 @@
 | D-I | 照准 | Python 包 `better_resume`；web 包 `@better-resume/web` |
 | 提案 | 同意 | T1–T9 全部执行完毕，证据见 `ACCEPTANCE.md` |
 
+> 用户已确认本表结论与 M0 验收证据（2026-09-13）。
+
 ---
 ## D-A 工具链安装（阻塞 T1 起全部后端票）
 
