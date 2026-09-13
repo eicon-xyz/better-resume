@@ -67,7 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.model_registry = ModelRegistry(app.state.session_factory)
     # M5: scenes resolve to a gateway through their binding row (cached).
-    app.state.scene_resolver = SceneResolver(app.state.session_factory)
+    app.state.scene_resolver = SceneResolver(
+        app.state.session_factory,
+        gateway_builder=lambda: app.state.llm_gateway_factory,
+    )
     app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     app.state.ai_resilience = ResilientAiResilience(settings)

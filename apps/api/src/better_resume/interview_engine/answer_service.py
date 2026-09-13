@@ -85,6 +85,8 @@ class AnswerService:
         answer: str,
         request_id: str,
         gateway: LlmGateway,
+        #: M5: follow-up questions may run on a different provider than scoring.
+        follow_up_gateway: LlmGateway | None = None,
     ) -> AnswerResult:
         async with self._locks.acquire(session_id, question_no):
             return await self._submit_locked(
@@ -94,6 +96,7 @@ class AnswerService:
                 answer=answer,
                 request_id=request_id,
                 gateway=gateway,
+                follow_up_gateway=follow_up_gateway,
             )
 
     # ---- internals --------------------------------------------------------------
@@ -107,6 +110,7 @@ class AnswerService:
         answer: str,
         request_id: str,
         gateway: LlmGateway,
+        follow_up_gateway: LlmGateway | None = None,
     ) -> AnswerResult:
         async with self._session_factory() as db:
             repo = InterviewSessionRepository(db)
@@ -148,6 +152,7 @@ class AnswerService:
 
         try:
             return await self._persist_result(
+                follow_up_gateway=follow_up_gateway or gateway,
                 session_id=session_id,
                 user_id=user_id,
                 question_no=question_no,
@@ -229,6 +234,7 @@ class AnswerService:
     async def _persist_result(
         self,
         *,
+        follow_up_gateway: LlmGateway | None = None,
         session_id: str,
         user_id: str,
         question_no: str,
@@ -271,7 +277,7 @@ class AnswerService:
                     question_text=question.text,
                     answer=answer,
                     missing_points=list(score.missing_points),
-                    gateway=gateway,
+                    gateway=follow_up_gateway or gateway,
                 )
                 next_question_no: str | None = follow_up.question_no
                 next_action: NextAction = "follow_up"

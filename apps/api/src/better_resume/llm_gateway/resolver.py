@@ -7,8 +7,9 @@ how to materialise a gateway for that binding, and how to describe both honestly
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -39,6 +40,9 @@ class SceneView:
     is_default: bool
 
 
+GatewayBuilder = Callable[[Any, str], LlmGateway]
+
+
 @runtime_checkable
 class GatewayFactory(Protocol):
     """One per adapter kind: knows if it *can* run a binding and how to build the gateway."""
@@ -51,8 +55,15 @@ class GatewayFactory(Protocol):
 class OpenAiCompatFactory:
     """Wraps the existing model registry: target_ref is a model name, the key lives in env."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        gateway_builder: Callable[[], GatewayBuilder] | None = None,
+    ) -> None:
         self._registry = ModelRegistry(session_factory)
+        # Resolved lazily so tests can swap app.state.llm_gateway_factory after startup.
+        self._gateway_builder = gateway_builder or (lambda: build_llm_gateway)
 
     async def is_configured(self, binding: SceneBinding) -> bool:
         try:
@@ -62,9 +73,13 @@ class OpenAiCompatFactory:
         return self._registry.is_configured(spec)
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
-        spec = await self._registry.resolve(binding.target_ref)
+        return await self.build_for_model(binding.target_ref)
+
+    async def build_for_model(self, model_ref: str | None) -> LlmGateway:
+        """Explicit model selection (the M1 model picker) keeps working through this path."""
+        spec = await self._registry.resolve(model_ref)
         # api_key() raises LlmConfigError with the variable name when the env var is missing.
-        return build_llm_gateway(spec, self._registry.api_key(spec))
+        return self._gateway_builder()(spec, self._registry.api_key(spec))
 
 
 class SceneResolver:
@@ -75,10 +90,13 @@ class SceneResolver:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         factories: dict[AdapterKind, GatewayFactory] | None = None,
+        gateway_builder: Callable[[], GatewayBuilder] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._factories: dict[AdapterKind, GatewayFactory] = factories or {
-            AdapterKind.OPENAI_COMPAT: OpenAiCompatFactory(session_factory)
+            AdapterKind.OPENAI_COMPAT: OpenAiCompatFactory(
+                session_factory, gateway_builder=gateway_builder
+            )
         }
         self._bindings: dict[LlmScene, SceneBinding] = {}
         self._lock = asyncio.Lock()
@@ -113,6 +131,14 @@ class SceneResolver:
                 )
             self._bindings[scene] = binding
             return binding
+
+    async def resolve_model(self, model_ref: str | None) -> LlmGateway:
+        """Explicit model_ref override (chat picker); bypasses scene bindings on purpose."""
+        factory = self._factories.get(AdapterKind.OPENAI_COMPAT)
+        builder = getattr(factory, "build_for_model", None)
+        if builder is None:
+            raise LlmConfigError("this build has no openai-compatible provider")
+        return await builder(model_ref)
 
     async def resolve(self, scene: LlmScene) -> LlmGateway:
         binding = await self.binding_for(scene)
