@@ -178,17 +178,18 @@ def test_unparsable_resume_returns_400_and_stays_retryable(
     assert listed[0]["question_count"] == 0
 
 
-def test_vendor_failure_maps_to_bad_gateway(
+def test_vendor_timeout_maps_to_gateway_timeout(
     client: TestClient, gateway, migrated_database: str
 ) -> None:
+    """M3 contract change: a vendor timeout leaves as 504 + kind=timeout (was 502)."""
     login(client)
     session_id = client.post("/api/v1/interview/sessions", json={}).json()["id"]
     gateway(FakeGateway(error=LlmTimeoutError("upstream slow")))
 
     response = upload(client, session_id)
 
-    assert response.status_code == 502
-    assert response.json()["kind"] == "retryable"
+    assert response.status_code == 504
+    assert response.json()["kind"] == "timeout"
 
     listed = client.get("/api/v1/interview/sessions").json()
     assert listed[0]["status"] == "draft"

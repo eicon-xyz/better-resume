@@ -16,6 +16,7 @@
 | P5 | T5 实现 | ManualClock 只唤醒已注册 sleeper → 任务启动前推时间导致测试挂死（exit=124） | 已修（测试先 settle） |
 | P6 | T5 调试 | 工具坑：pytest 输出重定向后尾部丢失 → 改用 --junitxml 读结果 | 已绕过（写进纪律） |
 | P7 | T6 实现 | TokenBucket.idle 未按时间投影 → 惰性淘汰从未生效（测试抓到） | 已修 |
+| P8 | T7 联调 | 韧性 kind 不在 ChatErrorEvent Literal → SSE 兜底把 timeout 降级成 unknown | 已修（契约同步） |
 
 ---
 
@@ -99,3 +100,15 @@
   （先写测试的价值就在这：单看实现很难发现"惰性淘汰其实一次都没生效"。）
 - **修法**：`idle` 按当前时钟**投影**补充后的令牌数再比较容量。
 - **证据**：`tests/ai_resilience/test_ratelimit.py` 6 例全绿；HTTP 侧 8 例全绿（合计 14 例）。
+## P8 — 韧性错误 kind 不在 M1 的 `ChatErrorEvent.kind` Literal 里 → SSE 生产任务崩成 "unknown"
+
+- **症状**：`test_stream_error_frame_is_persisted` 红：客户端收到 `{"kind":"unknown","message":"internal error while streaming"}`，
+  真实的 `timeout` 分类丢失；日志里 `chat_stream_crashed` 带一条 pydantic ValidationError。
+- **根因**：`ChatErrorEvent.kind` 是 `Literal["retryable","non_retryable","vendor","duplicate_request","unknown"]`，
+  而 M3 的分类是 `timeout/overloaded/unavailable/invalid`；构造错误帧时 pydantic 直接抛错，
+  被 `http/chat.py` 的兜底 `except` 吞成 "unknown"——**分类信息在最外层被静默降级**。
+- **修法**：把韧性四态并入该 Literal，并在注释里写明两套分类并存的原因；
+  同时更新三条 M2 契约测试（502 → 504/timeout，503/unavailable 用于熔断与舱壁）。
+- **为什么值得记**：这是"跨里程碑契约漂移"的典型——单测全绿、端到端一跑就露；
+  也说明兜底 `except` 会把"类型错误"伪装成"上游抖动"。
+- **证据**：`tests/test_chat_api.py::test_stream_error_frame_is_persisted` 绿；后端 407 例全绿。

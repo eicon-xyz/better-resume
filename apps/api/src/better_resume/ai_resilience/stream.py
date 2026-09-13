@@ -100,6 +100,7 @@ class StreamBroadcast[T]:
         """Shutdown path: stop the producer and let both parties settle."""
         if self._task is None or self._task.done():
             return
+        self._metrics.singleflight_abandoned += 1
         self._task.cancel()
         with contextlib.suppress(BaseException):
             await self._task
