@@ -1,0 +1,67 @@
+.source {
+  margin-top: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.stats {
+  display: flex;
+  gap: var(--br-space-5);
+  margin: 0 0 var(--br-space-3);
+}
+
+.stats dt {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+}
+
+.stats dd {
+  margin: 0;
+  font-size: var(--br-text-lg);
+}
+
+.questions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+  margin: var(--br-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.questions li {
+  display: flex;
+  gap: var(--br-space-3);
+}
+
+.number {
+  min-width: 24px;
+  color: var(--br-color-accent);
+  font-family: var(--br-font-mono);
+}
+
+.text {
+  margin: 0;
+}
+
+.points {
+  margin: var(--br-space-1) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.suggestions {
+  margin-top: var(--br-space-4);
+}
+
+.suggestions h3 {
+  margin: 0 0 var(--br-space-2);
+  font-size: var(--br-text-md);
+}
+
+.suggestions ul {
+  margin: 0;
+  padding-left: var(--br-space-4);
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}

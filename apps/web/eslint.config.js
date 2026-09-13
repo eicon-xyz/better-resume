@@ -30,4 +30,11 @@ export default tseslint.config(
     files: ["vite.config.ts"],
     languageOptions: { globals: globals.node },
   },
+  {
+    // Test files only read mock metadata (toHaveBeenCalledWith etc.); there is no `this` to bind.
+    files: ["**/*.test.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/unbound-method": "off",
+    },
+  },
 );

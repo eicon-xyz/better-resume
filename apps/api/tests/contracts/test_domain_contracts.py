@@ -28,9 +28,9 @@ from better_resume.media import (
     VoiceSpec,
 )
 from better_resume.resume_parser import (
+    HybridResumeParser,
     ResumeContext,
     ResumeParser,
-    UnimplementedResumeParser,
 )
 
 MODULES = ("interview_engine", "resume_parser", "media")
@@ -86,7 +86,8 @@ async def test_interview_engine_placeholder_fails_loudly() -> None:
 
 
 def test_resume_parser_shape() -> None:
-    assert isinstance(UnimplementedResumeParser(), ResumeParser)
+    # T1 replaced the M0 placeholder with the deterministic hybrid parser.
+    assert isinstance(HybridResumeParser(), ResumeParser)
     assert params_of(ResumeParser.parse) == ["self", "pdf"]
     assert not inspect.iscoroutinefunction(ResumeParser.parse)
 
