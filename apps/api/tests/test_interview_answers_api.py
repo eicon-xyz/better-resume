@@ -19,9 +19,18 @@ from .interview_engine.test_parser_helpers import build_resume_pdf
 class FakeGateway:
     """Answers whichever schema the caller asked for (question batch or score)."""
 
-    def __init__(self, *, error: Exception | None = None, score: float = 84.0) -> None:
+    def __init__(
+        self,
+        *,
+        error: Exception | None = None,
+        score: float = 84.0,
+        missing: list[str] | None = None,
+        follow_up_needed: bool = False,
+    ) -> None:
         self._error = error
         self._score = score
+        self._missing = list(missing or [])
+        self._follow_up_needed = follow_up_needed
         self.calls = 0
         self.batch = QuestionBatch(
             questions=[
@@ -39,7 +48,17 @@ class FakeGateway:
             return ChatResult(
                 content=self.batch.model_dump_json(), model="deepseek-flash", parsed=self.batch
             )
-        score = ScoreResult(score=self._score, feedback="回答到位", missing_points=["缺少量化"])
+        if req.response_schema is not None and req.response_schema.__name__ == "FollowUpQuestion":
+            follow_up = req.response_schema(text="能具体说说当时的取舍吗？")
+            return ChatResult(
+                content=follow_up.model_dump_json(), model="deepseek-flash", parsed=follow_up
+            )
+        score = ScoreResult(
+            score=self._score,
+            feedback="回答到位",
+            missing_points=self._missing,
+            follow_up_needed=self._follow_up_needed,
+        )
         return ChatResult(content=score.model_dump_json(), model="deepseek-flash", parsed=score)
 
     def stream(self, req: ChatRequest) -> AsyncIterator[StreamEvent]:  # pragma: no cover
@@ -105,7 +124,7 @@ def test_answer_is_scored_and_returns_the_next_question(
     payload = response.json()
     assert payload["answer"]["score"] == 91.5
     assert payload["answer"]["feedback"] == "回答到位"
-    assert payload["answer"]["missing_points"] == ["缺少量化"]
+    assert payload["answer"]["missing_points"] == []
     assert payload["next_action"] == "next_question"
     assert payload["next_question_no"] == "2"
     assert payload["next_question"]["text"] == "第 2 题"
@@ -160,12 +179,31 @@ def test_vendor_failure_is_502_and_stays_answerable(
     assert failed.status_code == 502
     assert failed.json()["kind"] == "retryable"
 
-    gateway(FakeGateway(score=70.0))
+    gateway(FakeGateway(score=70.0, missing=[]))
     retried = answer(client, session_id, "1", "ans-fail-retry")
 
     assert retried.status_code == 201
     assert retried.json()["answer"]["score"] == 70.0
     assert retried.json()["next_question_no"] == "2"
+
+
+def test_low_score_follow_up_is_surfaced(
+    client: TestClient, gateway, migrated_database: str
+) -> None:
+    login(client)
+    fake = gateway(FakeGateway(score=38.0, missing=[]))
+    session_id = prepare(client, fake)
+
+    payload = answer(client, session_id, "1", "答得很浅").json()
+
+    assert payload["next_action"] == "follow_up"
+    assert payload["next_question_no"] == "1-F1"
+    assert payload["next_question"]["text"] == "能具体说说当时的取舍吗？"
+    assert payload["answer"]["follow_up_needed"] is True
+    assert payload["answer"]["follow_up_reason"] == "LOW_SCORE"
+    assert payload["answer"]["rule_version"]
+    assert payload["flow"]["status"] == "follow_up"
+    assert payload["flow"]["follow_up_count"] == 1
 
 
 def test_wrong_question_is_conflict(client: TestClient, gateway, migrated_database: str) -> None:

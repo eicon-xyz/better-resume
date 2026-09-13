@@ -128,7 +128,8 @@ def service(factory, *, locks: QuestionLockRegistry | None = None) -> AnswerServ
 
 async def test_answer_is_scored_and_flow_advances(factory, ready_session: str) -> None:
     gateway = FakeGateway(
-        [ScoreResult(score=88.5, feedback="结构清晰", missing_points=["量化结果"])]
+        # Passing score, no missing points: the T5 chain finds no reason to follow up.
+        [ScoreResult(score=88.5, feedback="结构清晰")]
     )
 
     result = await service(factory).submit(
@@ -143,7 +144,7 @@ async def test_answer_is_scored_and_flow_advances(factory, ready_session: str) -
     assert result.replayed is False
     assert result.answer.score == 88.5
     assert result.answer.feedback == "结构清晰"
-    assert result.answer.missing_points == ["量化结果"]
+    assert result.answer.missing_points == []
     assert result.next_action == "next_question"
     assert result.flow.status is FlowStatus.ASKING
     assert result.flow.current_question_no == "2"

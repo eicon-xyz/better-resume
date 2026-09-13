@@ -13,6 +13,16 @@ from .errors import (
 from .evaluation import LOW_SCORE_THRESHOLD, ScoreResult
 from .flow_fsm import FLOW_TRANSITIONS, FlowStatus, ensure_flow_transition
 from .flow_store import FlowStateStore
+from .follow_up import (
+    DEFAULT_LOW_SCORE_THRESHOLD,
+    RULE_VERSION,
+    FollowUpContext,
+    FollowUpDecision,
+    FollowUpReason,
+    decide_follow_up,
+    decide_follow_up_or_fallback,
+)
+from .follow_up_service import FollowUpQuestion, FollowUpService
 from .locks import QuestionLockRegistry
 from .models import (
     AnswerRecord,
@@ -50,7 +60,16 @@ from .storage import ResumeStorage, StoredResume
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "DEFAULT_LOW_SCORE_THRESHOLD",
     "LOW_SCORE_THRESHOLD",
+    "RULE_VERSION",
+    "FollowUpContext",
+    "FollowUpDecision",
+    "FollowUpQuestion",
+    "FollowUpReason",
+    "FollowUpService",
+    "decide_follow_up",
+    "decide_follow_up_or_fallback",
     "AnswerResult",
     "AnswerService",
     "QuestionLockRegistry",
