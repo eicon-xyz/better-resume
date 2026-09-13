@@ -31,9 +31,23 @@ from .models import (
 )
 from .protocols import LlmGateway
 from .registry import ModelRegistry
+from .resolver import (
+    DEFAULT_ADAPTER,
+    DEFAULT_TARGET_REF,
+    GatewayFactory,
+    OpenAiCompatFactory,
+    SceneResolver,
+    SceneView,
+)
 from .scenes import AdapterKind, LlmScene, scene_label
 
 __all__ = [
+    "DEFAULT_ADAPTER",
+    "DEFAULT_TARGET_REF",
+    "GatewayFactory",
+    "OpenAiCompatFactory",
+    "SceneResolver",
+    "SceneView",
     "AdapterKind",
     "LlmScene",
     "SceneBinding",
