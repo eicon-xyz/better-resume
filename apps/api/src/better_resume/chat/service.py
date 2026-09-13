@@ -43,10 +43,14 @@ logger = structlog.get_logger("better_resume.chat")
 CANCELLED_ERROR = "cancelled"
 
 
-def build_resilience_key(session_id: str, content: str) -> str:
-    """key = stage|sessionId|sha256(payload), per §12.2 (chat has no question number)."""
+def build_resilience_key(session_id: str, content: str, model_ref: str | None = None) -> str:
+    """key = stage|sessionId|model|sha256(payload), per §12.2 (chat has no question number).
+
+    The model is part of the key: the same question asked of two models is two different
+    upstream calls, and joining them would hand back the other model's answer.
+    """
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-    return f"chat|{session_id}|{digest}"
+    return f"chat|{session_id}|{model_ref or 'default'}|{digest}"
 
 
 class ChatService:
@@ -103,7 +107,7 @@ class ChatService:
                 try:
                     stream = await self._resilience.run(
                         Stage.CHAT,
-                        build_resilience_key(session.session_id, content),
+                        build_resilience_key(session.session_id, content, request.model_ref),
                         lambda: _open_stream(gateway, request),
                     )
                     async for event in stream:

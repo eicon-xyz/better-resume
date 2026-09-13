@@ -38,9 +38,21 @@ class QuestionGenerationResult:
     replayed: bool
 
 
-def build_generation_key(session_id: str, resume_sha: str) -> str:
-    digest = hashlib.sha256(resume_sha.encode("utf-8")).hexdigest()[:16]
-    return f"extraction|{session_id}|{digest}"
+def build_generation_key(session_id: str, *, resume_digest: str, count: int, language: str) -> str:
+    """stage|session|count|language|sha256(resume) — every input the prompt depends on.
+
+    The M2 version keyed on session + email/name only, so a different resume (or a
+    different question count) could hit a cached batch once replay is switched on.
+    """
+    digest = hashlib.sha256(resume_digest.encode("utf-8")).hexdigest()[:16]
+    return f"extraction|{session_id}|{count}|{language}|{digest}"
+
+
+def _resume_digest(context: ResumeContext, stored: StoredResume | None) -> str:
+    """Prefer the stored file hash; fall back to the parsed context for synthetic uploads."""
+    if stored is not None and getattr(stored, "sha256", None):
+        return str(stored.sha256)
+    return context.model_dump_json()
 
 
 class QuestionService:
@@ -91,7 +103,14 @@ class QuestionService:
 
         try:
             context = await asyncio.to_thread(self._parse, resume_pdf, stored_resume)
-            batch = await self._ask_model(session_id, context, requested, gateway, language)
+            batch = await self._ask_model(
+                session_id,
+                context,
+                requested,
+                gateway,
+                language,
+                resume_digest=_resume_digest(context, stored_resume),
+            )
         except Exception:
             await self._rollback_to_draft(session_id)
             raise
@@ -130,12 +149,16 @@ class QuestionService:
         count: int,
         gateway: LlmGateway,
         language: str,
+        *,
+        resume_digest: str,
     ) -> QuestionBatch:
         request = ChatRequest(
             messages=build_messages(context, count=count, language=language),
             response_schema=QuestionBatch,
         )
-        key = build_generation_key(session_id, context.contact.email or context.contact.name or "")
+        key = build_generation_key(
+            session_id, resume_digest=resume_digest, count=count, language=language
+        )
 
         async def call() -> QuestionBatch:
             result = await gateway.complete(request)
