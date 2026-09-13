@@ -39,6 +39,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/ws-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ws Ticket
+         * @description Browsers cannot set headers on a WebSocket, so the cookie buys a one-shot ticket.
+         */
+        post: operations["create_ws_ticket_api_v1_auth_ws_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/sessions": {
         parameters: {
             query?: never;
@@ -204,6 +224,43 @@ export interface paths {
         };
         /** Restore Session */
         get: operations["restore_session_api_v1_interview_sessions__session_id__restore_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media/tts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Synthesize Speech */
+        post: operations["synthesize_speech_api_v1_media_tts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media/tts/{digest}.mp3": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Speech
+         * @description Same-origin audio requests carry the session cookie, so keep it private.
+         */
+        get: operations["get_speech_api_v1_media_tts__digest__mp3_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -615,6 +672,26 @@ export interface components {
             /** Model Ref */
             model_ref?: string | null;
         };
+        /** TtsRequest */
+        TtsRequest: {
+            /** Rate */
+            rate?: string | null;
+            /** Text */
+            text: string;
+            /** Voice */
+            voice?: string | null;
+        };
+        /** TtsView */
+        TtsView: {
+            /** Cached */
+            cached: boolean;
+            /** Digest */
+            digest: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Url */
+            url: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -627,6 +704,16 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WsTicketView
+         * @description Short-lived, single-use ticket for the WebSocket handshake.
+         */
+        WsTicketView: {
+            /** Expires In */
+            expires_in: number;
+            /** Ticket */
+            ticket: string;
         };
     };
     responses: never;
@@ -705,6 +792,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    create_ws_ticket_api_v1_auth_ws_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WsTicketView"];
+                };
             };
         };
     };
@@ -1108,6 +1215,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RestoreResponseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    synthesize_speech_api_v1_media_tts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TtsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TtsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_speech_api_v1_media_tts__digest__mp3_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

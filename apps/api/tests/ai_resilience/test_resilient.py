@@ -261,7 +261,7 @@ async def test_stats_describe_every_stage() -> None:
     stats = service.stats()
 
     assert stats["enabled"] is True
-    assert set(stats["policies"]) == {"chat", "extraction", "evaluation", "followup"}
+    assert set(stats["policies"]) == {"chat", "extraction", "evaluation", "followup", "tts"}
     assert stats["policies"]["chat"]["is_stream"] is True
     assert stats["policies"]["evaluation"]["is_stream"] is False
     assert set(stats["metrics"]) >= {"singleflight_leader", "breaker_opened", "rate_limited"}

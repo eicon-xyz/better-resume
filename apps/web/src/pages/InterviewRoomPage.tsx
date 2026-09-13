@@ -1,6 +1,10 @@
+import { useCallback, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
+import { mergeTranscript } from "../audio/transcriptStore";
+import { useTranscription } from "../audio/useTranscription";
+import { useTtsPlayback } from "../audio/useTtsPlayback";
 import { Button, Empty, Spinner } from "../components";
 import { useInterviewRoom } from "../interview/useInterviewRoom";
 import { useRoomStore } from "../interview/roomStore";
@@ -19,6 +23,24 @@ export function InterviewRoomPage() {
       void navigate(`/interview/report/${id}`);
     },
   });
+
+  const [answer, setAnswer] = useState("");
+  const [notice, setNotice] = useState(false);
+  const answerRef = useRef("");
+  const speech = useTtsPlayback({ client: api });
+
+  const changeAnswer = useCallback((text: string) => {
+    answerRef.current = text;
+    setAnswer(text);
+  }, []);
+
+  const onTranscript = useCallback((text: string) => {
+    const merged = mergeTranscript(answerRef.current, text);
+    setNotice(merged.notice);
+    if (merged.text !== answerRef.current) changeAnswer(merged.text);
+  }, [changeAnswer]);
+
+  const transcription = useTranscription({ client: api, onTranscript });
 
   const answeredTurns = state.turns.filter((turn) => !turn.pending && turn.score !== null);
   const current = state.currentQuestion
@@ -72,7 +94,11 @@ export function InterviewRoomPage() {
       <div className={styles.body}>
         <section className={styles.main} aria-label="当前题目">
           {current ? (
-            <QuestionCard turn={current} />
+            <QuestionCard
+              turn={current}
+              speaking={speech.state === "playing"}
+              onSpeak={(text) => void speech.speak(text)}
+            />
           ) : (
             <Empty
               title={finished ? "面试已结束" : "没有待答题目"}
@@ -98,7 +124,24 @@ export function InterviewRoomPage() {
       <AnswerComposer
         disabled={!current || finished}
         submitting={state.submitting}
-        onSubmit={(text) => controller.submitAnswer(text)}
+        value={answer}
+        onChange={changeAnswer}
+        onSubmit={async (text) => {
+          const accepted = await controller.submitAnswer(text);
+          if (accepted) {
+            changeAnswer("");
+            setNotice(false);
+          }
+          return accepted;
+        }}
+        recording={transcription.recording}
+        onToggleRecording={() => {
+          if (transcription.recording) transcription.stop();
+          else void transcription.start();
+        }}
+        recordingError={transcription.error}
+        micSupported={transcription.supported}
+        transcriptNotice={notice}
       />
     </div>
   );
