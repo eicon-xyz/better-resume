@@ -89,7 +89,16 @@ finish idempotent: True
 4. 建议行对模型写的长缺失要点做 32 字截断（真实演示后新增）。
 5. 本地新增原生 Postgres/Redis（Docker 不可用），CI 配置未变。
 
-## 5. 剩余人工事项
+## 5. 发布流程证据（gh CLI，2026-09-13）
 
-1. 合并 PR（本分支的 PR 由我创建，CI 绿后合并）。
+| 步骤 | 结果 |
+| --- | --- |
+| PR | [#2](https://github.com/eicon-xyz/better-resume/pull/2) `M2: interview milestone …`（`gh pr create`，由我创建） |
+| PR CI | run [34756266934](https://github.com/eicon-xyz/better-resume/actions/runs/34756266934)：**backend pass 53s / frontend pass 41s** |
+| 合并 | `gh pr merge 2 --merge` → merge commit `6f94684` |
+| main CI | run [34756320012](https://github.com/eicon-xyz/better-resume/actions/runs/34756320012)：**success**（backend 15 步 / frontend 13 步，failed=none） |
+
+## 6. 剩余人工事项
+
+1. ~~合并 PR~~ ✅ 已完成（本文件提交时 main 已是 M2 完成态）。
 2. **轮换 DeepSeek API key**（曾出现在聊天记录里；`.env` 已被 gitignore，仓库内零命中）。
