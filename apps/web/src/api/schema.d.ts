@@ -256,7 +256,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Speech */
+        /**
+         * Get Speech
+         * @description Same-origin audio requests carry the session cookie, so keep it private.
+         */
         get: operations["get_speech_api_v1_media_tts__digest__mp3_get"];
         put?: never;
         post?: never;
