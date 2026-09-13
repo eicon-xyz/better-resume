@@ -9,7 +9,9 @@ dependencies = [
     "asyncpg>=0.30",
     "fastapi>=0.115",
     "httpx>=0.28",
+    "pdfplumber>=0.11.10",
     "pydantic-settings>=2.6",
+    "python-multipart>=0.0.32",
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0.36",
     "structlog>=24.4",
@@ -21,6 +23,7 @@ dev = [
     "fakeredis>=2.26",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "reportlab>=5.0.1",
     "ruff>=0.8",
 ]
 
