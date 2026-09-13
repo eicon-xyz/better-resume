@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     lock_backend: Literal["memory", "redis"] = "memory"
     lock_ttl_seconds: float = 30.0
     lock_wait_seconds: float = 10.0
+    hot_state_backend: Literal["memory", "redis"] = "memory"
+    hot_state_ttl_seconds: int = 600
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

@@ -23,6 +23,12 @@ from .follow_up import (
     decide_follow_up_or_fallback,
 )
 from .follow_up_service import FollowUpQuestion, FollowUpService
+from .hot_state import (
+    HotStateStore,
+    InMemoryHotState,
+    RedisHotState,
+    build_hot_state,
+)
 from .locks import (
     QuestionLockRegistry,
     QuestionLockTimeout,
@@ -78,7 +84,11 @@ __all__ = [
     "decide_follow_up_or_fallback",
     "AnswerResult",
     "AnswerService",
+    "HotStateStore",
+    "InMemoryHotState",
     "QuestionLockRegistry",
+    "RedisHotState",
+    "build_hot_state",
     "QuestionLockTimeout",
     "RedisQuestionLockRegistry",
     "QuestionNotCurrent",

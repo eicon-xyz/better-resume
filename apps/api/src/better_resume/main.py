@@ -40,6 +40,7 @@ from .interview_engine import (
     QuestionLockRegistry,
     RedisQuestionLockRegistry,
     SessionNotFound,
+    build_hot_state,
 )
 from .llm_gateway import (
     AdapterKind,
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_store = build_session_store(settings)
     app.state.ws_ticket_store = build_ws_ticket_store(settings)
     app.state.transcription_registry = ChannelRegistry()
+    app.state.hot_state = build_hot_state(settings)
     app.state.tts_synthesizer = EdgeTtsSynthesizer(
         cache=TtsCache(settings.media.tts_storage_dir),
         default_voice=settings.media.tts_voice,
@@ -97,6 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         await app.state.ai_resilience.aclose()
         await app.state.question_locks.aclose()
+        await app.state.hot_state.aclose()
         await app.state.ws_ticket_store.aclose()
         await app.state.session_store.aclose()
         await engine.dispose()

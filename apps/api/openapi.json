@@ -862,6 +862,11 @@
           "session": {
             "$ref": "#/components/schemas/InterviewSessionView"
           },
+          "source": {
+            "default": "derived",
+            "title": "Source",
+            "type": "string"
+          },
           "total_questions": {
             "default": 0,
             "title": "Total Questions",

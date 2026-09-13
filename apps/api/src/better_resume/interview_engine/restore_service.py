@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from .answer_repo import AnswerRepository
 from .flow_fsm import FlowStatus
 from .flow_store import FlowStateStore
+from .hot_state import HotStateStore
 from .models import AnswerRecord, FlowState, InterviewSession, QuestionRecord
 from .orm import InterviewQuestionRow
 from .session_repo import InterviewSessionRepository
@@ -30,15 +31,29 @@ class RestoreView(BaseModel):
     total_questions: int = 0
     last_result: AnswerRecord | None = None
     derived: bool = False
+    #: M6: "hot" when served from the Redis cache, "derived" from Postgres.
+    source: str = "derived"
 
 
 class RestoreService:
     """One instance per request."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        hot_state: HotStateStore | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._hot_state = hot_state
+        self._hot_ttl = 600
 
     async def restore(self, *, session_id: str, user_id: str) -> RestoreView:
+        if self._hot_state is not None:
+            cached = await self._hot_state.get(user_id=user_id, session_id=session_id)
+            if cached is not None:
+                return cached
+
         async with self._session_factory() as db:
             session = await InterviewSessionRepository(db).get_for_user(session_id, user_id)
             questions = await self._questions(db, session_id)
@@ -60,7 +75,7 @@ class RestoreService:
                 [item for item in main_questions if item.question_no in answered_numbers]
             )
 
-        return RestoreView(
+        view = RestoreView(
             session=session,
             flow_status=flow.status,
             current_question_no=flow.current_question_no,
@@ -70,6 +85,9 @@ class RestoreService:
             last_result=scored[-1] if scored else None,
             derived=derived,
         )
+        if self._hot_state is not None:
+            await self._hot_state.put(view, user_id=user_id, ttl_seconds=self._hot_ttl)
+        return view
 
     async def _questions(self, db: AsyncSession, session_id: str) -> list[QuestionRecord]:
         rows = (
