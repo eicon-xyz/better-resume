@@ -1,13 +1,27 @@
-from .models import Message, SessionId, SessionKind, SessionRef, UserId
-from .placeholder import UnimplementedConversationStore
+from .errors import ConversationConflictError, ConversationError, ConversationNotFoundError
+from .models import (
+    Conversation,
+    Message,
+    SessionId,
+    SessionKind,
+    SessionRef,
+    StoredMessage,
+    UserId,
+)
 from .protocols import ConversationStore
+from .store import SqlConversationStore
 
 __all__ = [
+    "Conversation",
+    "ConversationConflictError",
+    "ConversationError",
+    "ConversationNotFoundError",
     "ConversationStore",
     "Message",
     "SessionId",
     "SessionKind",
     "SessionRef",
-    "UnimplementedConversationStore",
+    "SqlConversationStore",
+    "StoredMessage",
     "UserId",
 ]

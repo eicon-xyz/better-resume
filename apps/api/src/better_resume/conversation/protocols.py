@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from .models import Message, SessionRef, UserId
+from .models import Message, SessionRef, StoredMessage, UserId
 
 
 @runtime_checkable
@@ -15,8 +15,8 @@ class ConversationStore(Protocol):
 
     async def history(
         self, session: SessionRef, *, before: int | None = None, limit: int = 50
-    ) -> list[Message]:
-        """Return the most recent messages, optionally before a sequence number."""
+    ) -> list[StoredMessage]:
+        """Return messages in ascending seq order, optionally before a sequence number."""
         ...
 
     async def require_owner(self, session: SessionRef, user_id: UserId) -> None:

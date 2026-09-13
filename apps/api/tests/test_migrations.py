@@ -2,48 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-
 import pytest
 from alembic import command
-from alembic.config import Config
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 
-from better_resume.settings import Settings, get_settings
+from better_resume.settings import get_settings
 
-API_ROOT = Path(__file__).resolve().parents[1]
+from .db_utils import alembic_config
 
 
-def alembic_config() -> Config:
-    config = Config(str(API_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(API_ROOT / "migrations"))
-    return config
-
-
-async def _can_connect(database_url: str) -> bool:
-    engine = create_async_engine(database_url, poolclass=NullPool)
-    try:
-        async with engine.connect() as connection:
-            await connection.execute(text("select 1"))
-    except Exception:  # noqa: BLE001 - any driver/connection error means "no database here"
-        return False
-    finally:
-        await engine.dispose()
-    return True
-
-
-def test_alembic_upgrade_and_check(
-    ambient_br_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    database_url = ambient_br_env.get("BR_DATABASE_URL") or Settings(_env_file=None).database_url
-    if not asyncio.run(_can_connect(database_url)):
-        pytest.skip(f"postgres not reachable at {database_url}")
-
+def test_alembic_upgrade_and_check(migrated_database: str, monkeypatch: pytest.MonkeyPatch) -> None:
     # Alembic's env.py resolves the URL through Settings, so restore the ambient value.
-    monkeypatch.setenv("BR_DATABASE_URL", database_url)
+    monkeypatch.setenv("BR_DATABASE_URL", migrated_database)
     get_settings.cache_clear()
 
     config = alembic_config()

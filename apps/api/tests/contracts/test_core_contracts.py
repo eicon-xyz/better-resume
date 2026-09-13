@@ -17,7 +17,7 @@ from better_resume.conversation import (
     ConversationStore,
     Message,
     SessionRef,
-    UnimplementedConversationStore,
+    SqlConversationStore,
 )
 from better_resume.llm_gateway import (
     ChatRequest,
@@ -43,7 +43,9 @@ def test_module_is_importable_from_outside(module: str) -> None:
 
 
 def test_conversation_store_shape() -> None:
-    assert isinstance(UnimplementedConversationStore(), ConversationStore)
+    # T1 replaced the M0 placeholder with the Postgres implementation; the protocol
+    # conformance check stays (no session is touched by isinstance).
+    assert isinstance(SqlConversationStore(session=None), ConversationStore)  # type: ignore[arg-type]
     assert params_of(ConversationStore.append) == ["self", "session", "msg"]
     assert params_of(ConversationStore.history) == ["self", "session", "before", "limit"]
     assert params_of(ConversationStore.require_owner) == ["self", "session", "user_id"]
@@ -51,14 +53,6 @@ def test_conversation_store_shape() -> None:
     ref = SessionRef(kind="interview", session_id="s1")
     assert ref.kind == "interview"
     assert Message(role="user", content="hi").meta == {}
-
-
-async def test_conversation_placeholder_fails_loudly() -> None:
-    store = UnimplementedConversationStore()
-    with pytest.raises(NotImplementedError):
-        await store.append(
-            SessionRef(kind="chat", session_id="s1"), Message(role="user", content="hi")
-        )
 
 
 def test_llm_gateway_shape() -> None:
