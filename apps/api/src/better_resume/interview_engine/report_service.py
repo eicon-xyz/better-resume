@@ -255,11 +255,22 @@ def _dimensions(
     ]
 
 
+MAX_SUGGESTION_POINT_LENGTH = 32
+
+
+def shorten_point(point: str, limit: int = MAX_SUGGESTION_POINT_LENGTH) -> str:
+    """Model-written missing points are whole sentences; keep the advice readable."""
+    cleaned = " ".join(point.split())
+    return cleaned if len(cleaned) <= limit else f"{cleaned[:limit]}…"
+
+
 def _suggestions(turns: list[dict], dimensions: list[dict]) -> list[str]:
     by_key = {item["key"]: item["score"] for item in dimensions}
     tips: list[str] = []
     if by_key.get("coverage", 100) < 80:
-        repeated = sorted({point for turn in turns for point in turn["missing_points"]})
+        repeated = sorted(
+            {shorten_point(point) for turn in turns for point in turn["missing_points"]}
+        )
         if repeated:
             tips.append("反复缺失的要点：" + "、".join(repeated[:4]))
     if by_key.get("depth", 100) < 70:
