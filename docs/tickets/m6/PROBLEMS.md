@@ -69,3 +69,109 @@
   这条路径只在"命中了失败缓存"时才走到，单实例测试根本碰不到。
 - **修法**：错误负载带上 `stage`，重建时传回。
 - **证据**：同用例绿灯（两实例只调用一次上游，且第二次拿到同类异常）。
+
+---
+
+## P6 — 热层加了读缓存却忘了失效（T3）
+
+- **症状**：T3 让 `restore` 先读热快照，结果 6 个已存在的报告/恢复测试变红：答题/完成之后再看
+  restore，拿到的是**旧的**进度（`answered` 少 1、`current_question_no` 停在上一步）。
+- **根因**：`RestoreService.derive()` 之后写热键，但写路径（出题 / 答题 / finish）没有失效热键；
+  热层 TTL 600s，测试与真实用户都会在这段时间里读到过期视图。
+- **修法**：`http/interview.py` 里三个写接口统一调 `_invalidate_hot(...)`。原则写进代码注释：
+  **过期视图比慢一点的视图更糟**。热层只是缓存，真值永远在 Postgres。
+- **证据**：tests/test_hot_state.py（失效用例）+ 6 个回归用例转绿；drill 里 kill 前后 restore 视图一致。
+
+## P7 — Redis 6.0 的 XPENDING/XCLAIM 形状（T4）
+
+- **症状**：`test_unacked_jobs_are_reclaimed_after_a_crash` 连续三种失败：`ResponseError: syntax error`、
+  `TypeError: unhashable type: 'dict'`、`ValueError: not enough values to unpack (expected 3, got 1)`。
+- **根因**：三件事叠在一起。① `XPENDING key group IDLE ms -` 这种带 IDLE 过滤的形式是 Redis 6.2+，
+  我们的下限是 6.0（本机 6.0.16 + compose 的 redis:7）；② redis-py 的 `xpending_range(min={...})`
+  不接受 dict；③ `XAUTOCLAIM` 返回 `(cursor, entries, deleted)`，而 **`XCLAIM` 只返回条目列表**，
+  我按 XAUTOCLAIM 的形状解包了。
+- **修法**：用最朴素的 `XPENDING key group - + 100`（它本来就带每条的 idle 时间），在 Python 侧按
+  `time_since_delivered >= min_idle_ms` 过滤，再让 `XCLAIM` 在服务端二次确认；解包改成
+  `for claimed_id, fields in entries`。
+- **证据**：tests/test_job_queue.py 7 例全绿；drill 的 redis key sample 里能看到 `br:jobs:dead`（重试耗尽）。
+
+## P8 — 场景配置校验从来没被执行过（M5 遗留，M6 发现）
+
+- **症状**：新增 worker API 测试时出现 `RuntimeWarning: coroutine 'OpenAiCompatFactory.is_configured'
+  was never awaited`。也就是说"场景没配好就报错"的守卫**一直没生效**。
+- **根因**：`GatewayFactory.is_configured` 在协议里是同步的，`XingyunGatewayFactory` 也是同步实现，
+  但 `OpenAiCompatFactory` 因为要查模型注册表写成了 `async def`；`SceneResolver.resolve()` 直接
+  `if not factory.is_configured(binding)` —— 协程对象恒为真值，于是守卫被静默跳过，
+  真正的报错退化成 `build()` 里的"环境变量 XX 未设置"（信息更少）。
+- **修法**：resolver 侧统一成"同步或异步都接受"（`inspect.isawaitable`），并给工厂加可选
+  `credential_hint()`，把 503 的文案变成"set BR_DEEPSEEK_API_KEY / XINGCHEN_API_KEY and XINGCHEN_API_SECRET"。
+  测试先红后绿（新增 `AsyncFakeFactory` 用例，断言守卫会拦下未配置的场景）。
+- **教训**：**没有 await 的协程是最安静的 bug**——它让"检查"变成"永远通过"。测试里加 RuntimeWarning 断言成本极低。
+
+## P9 — worker 被信号打断后把"取消"当异常抛出，任务永远排队（T4/T5）
+
+- **症状**：drill 跑到 finish 后，报告 `summary` 30s 都没出现；`XPENDING` 为 0、状态键停在
+  `status=queued`；worker 容器日志最后是一段 `redis.exceptions.TimeoutError: Timeout reading from redis:6379`。
+- **根因**：两层。① compose 重建容器时 worker 收到 SIGTERM，而它正阻塞在 `XREADGROUP BLOCK 500`；
+  redis-py 把"被取消的读"包装成 `TimeoutError`，这个异常从 `serve()` 逃出去 → 进程非零退出、容器死掉；
+  ② redis-py 8 的默认 `socket_timeout` 是 5s，阻塞读没有和 block 窗口对齐。
+- **修法**：① `serve()` 的循环体 try/except：Redis 抖动记 warning + 有界退避后继续，只有
+  `CancelledError` 才向上抛（worker 不该被一次 Redis 打嗝杀死）；② `JobQueue` 显式设置
+  `socket_timeout`（默认 15s）并新增 `blocking_block_ms()` 把 block 窗口压在 socket 超时之下。
+- **证据**：tests/test_worker_loop.py（瞬时 Redis 错误后循环继续、干净停止时删心跳）+ 之后的 drill
+  里 worker 成功把 summary 写进报告。
+
+## P10 — compose 没有迁移步骤：新卷直接 500（T5）
+
+- **症状**：drill 第一步 `PUT /api/v1/scenes/chat` 返回 500，日志是
+  `asyncpg.exceptions.UndefinedTableError: relation "llm_scene_bindings" does not exist`。
+- **根因**：M0 的 compose 只有 api/worker/postgres/redis，**没人跑 alembic**：卷是 M1 时代建的，
+  缺 M5 的表；镜像里也没 `COPY alembic.ini`/`COPY migrations`。
+- **修法**：加一次性 `migrate` 服务（同镜像、命令 `alembic upgrade head`），api/worker 用
+  `depends_on: {migrate: {condition: service_completed_successfully}}`；Dockerfile 补 COPY 两个路径；
+  清单测试断言这条依赖存在。
+- **证据**：`docker compose ps` 里 `migrate-1 Exited(0)`，之后 PUT scenes 200。
+
+## P11 — 非 root 容器写不了 data/：上传简历 500（T5）
+
+- **症状**：`POST /interview/sessions/{id}/questions` 500，
+  `PermissionError: [Errno 13] Permission denied: 'data'`。
+- **根因**：`WORKDIR /app` 由 root 创建，`COPY --chown=app:app` 只改了拷进去内容的属主，
+  目录本身仍是 root:755 → 非 root 进程无法 `mkdir data/resumes`。
+- **修法**：镜像里 `RUN mkdir -p /app/data/resumes /app/data/tts && chown -R app:app /app/data`；
+  同时给 api 挂共享命名卷 `uploads:/app/data` —— 多实例下简历必须**每个副本都看得见**，
+  这也是"状态在 Postgres/Redis，文件在共享卷"这条不变量的落地。
+- **证据**：compose smoke 的 non-root 检查 + drill 里上传出题成功。
+
+## P12 — nginx 只在启动时解析一次 upstream：扩容后仍打一个副本（T5）
+
+- **症状**：`--scale api=2` 之后连打 10 次 `/healthz`，`X-Instance-Id` 只有一个值；
+  另外 api 容器重建后 nginx 直接 502（upstream IP 已失效）。
+- **根因**：`upstream { server api:8000; }` 里 nginx 只在加载配置时解析一次 DNS，
+  Docker 的内嵌 DNS 之后返回几个地址它都不看。
+- **修法**：`resolver 127.0.0.11 valid=10s` + 把目标写成变量
+  `set $api_upstream http://api:8000; proxy_pass $api_upstream$request_uri;`
+  （变量形式必须自己拼 URI）。这样扩容/重建都能在 `valid` 窗口内被发现。
+- **证据**：round-robin 12 次拿到两个不同实例 id（compose smoke 的 "nginx reached at least two api instances"）。
+
+## P13 — 构建期网络：Docker Desktop 的 VM 到不了 WSL 里的代理（T5/T8）
+
+- **症状**：重新构建镜像时 `uv sync` 报 `Failed to fetch https://pypi.org/simple/hatchling/`；
+  换成 npm 构建则是 `ECONNREFUSED 127.0.0.1:7897`。
+- **根因**：本机出口代理跑在 WSL 发行版的 127.0.0.1:7897，而构建容器在 Docker Desktop 的 VM 里：
+  桥接下 `127.0.0.1` 是容器自己，`--network=host` 又是**VM 的** host 网络，都不是 WSL 的 loopback。
+  我还试过把代理写进 `~/.docker/config.json` 的 `proxies`（反而让 daemon 自带的
+  `http.docker.internal:3128` 路径失效，已回滚）。
+- **修法/结论**：保留 `build.network: host` 并把代理留在**环境变量**里（compose 会把
+  HTTP_PROXY/HTTPS_PROXY 自动转成 build args），先 `docker compose build api` 验证再起栈；
+  这条写进 PROBLEMS 而不是写进 compose，因为它是**本机环境**的特性，不该污染部署清单。
+- **证据**：`docker compose build api` 成功；T5 smoke/T8 drill 的完整链路都在这之后跑通。
+
+## P14 — 两处小坑（测试与脚本）
+
+- **httpx 客户端不能进两次上下文**：drill 的 `_session()` 里先发了一次请求（客户端自动 open），
+  调用方再 `with client` 就抛 `RuntimeError: Cannot open a client instance more than once`；
+  改成 `@contextlib.contextmanager` + `finally: client.close()`。
+- **指纹键前缀别靠猜**：drill 最初用 `br:lock:*`/`br:hot:*`/`br:flight:*` 统计 Redis 键，
+  结果全是 0 也解释不出原因。现在 drill 同时打印**它统计用的原始 key 样本**，
+  让"0"变成可核对的事实（对照 `locks.py`/`hot_state.py`/`distributed.py` 里的键构造）。
