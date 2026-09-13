@@ -1,10 +1,16 @@
-import { useState } from "react";
-
 import { Button, Card, Textarea } from "../../components";
 import type { InterviewTurn } from "../../interview/roomStore";
 import styles from "./RoomParts.module.css";
 
-export function QuestionCard({ turn }: { turn: InterviewTurn }) {
+export function QuestionCard({
+  turn,
+  onSpeak,
+  speaking = false,
+}: {
+  turn: InterviewTurn;
+  onSpeak?: (text: string) => void;
+  speaking?: boolean;
+}) {
   return (
     <Card title={turn.kind === "follow_up" ? "追问" : "当前题目"}>
       <div className={styles.questionHeader}>
@@ -18,6 +24,11 @@ export function QuestionCard({ turn }: { turn: InterviewTurn }) {
         ) : null}
       </div>
       <p className={styles.questionText}>{turn.question}</p>
+      {onSpeak ? (
+        <Button variant="ghost" size="sm" onClick={() => onSpeak(turn.question)}>
+          {speaking ? "停止朗读" : "朗读题目"}
+        </Button>
+      ) : null}
       {turn.focusPoints.length > 0 ? (
         <p className={styles.points}>考察要点：{turn.focusPoints.join("、")}</p>
       ) : null}
@@ -57,13 +68,29 @@ export function FeedbackCard({ turn }: { turn: InterviewTurn }) {
 export interface AnswerComposerProps {
   disabled: boolean;
   submitting: boolean;
+  value: string;
+  onChange: (text: string) => void;
   /** Resolves false when the backend rejected the answer: the text must stay put. */
   onSubmit: (text: string) => Promise<boolean> | boolean | void;
+  recording?: boolean;
+  onToggleRecording?: () => void;
+  recordingError?: string | null;
+  transcriptNotice?: boolean;
+  micSupported?: boolean;
 }
 
-export function AnswerComposer({ disabled, submitting, onSubmit }: AnswerComposerProps) {
-  const [value, setValue] = useState("");
-
+export function AnswerComposer({
+  disabled,
+  submitting,
+  value,
+  onChange,
+  onSubmit,
+  recording = false,
+  onToggleRecording,
+  recordingError = null,
+  transcriptNotice = false,
+  micSupported = true,
+}: AnswerComposerProps) {
   return (
     <form
       className={styles.composer}
@@ -73,15 +100,23 @@ export function AnswerComposer({ disabled, submitting, onSubmit }: AnswerCompose
         if (!trimmed) return;
         // Clear only once the backend accepted it: a 429/503/504 must not eat the answer.
         void Promise.resolve(onSubmit(trimmed)).then((accepted) => {
-          if (accepted !== false) setValue("");
+          if (accepted !== false) onChange("");
         });
       }}
     >
+      {recordingError ? (
+        <p className={styles.error} role="alert">
+          {recordingError}
+        </p>
+      ) : null}
+      {transcriptNotice ? (
+        <p className={styles.hint}>已检测到新的转写文本：请手动确认后再插入，避免覆盖你写的内容。</p>
+      ) : null}
       <Textarea
         name="answer"
         aria-label="你的回答"
         value={value}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder="用具体案例回答（Ctrl/Cmd + Enter 提交）"
         disabled={disabled || submitting}
         onKeyDown={(event) => {
@@ -92,6 +127,18 @@ export function AnswerComposer({ disabled, submitting, onSubmit }: AnswerCompose
         }}
       />
       <div className={styles.actions}>
+        {onToggleRecording ? (
+          <Button
+            type="button"
+            variant={recording ? "secondary" : "ghost"}
+            size="sm"
+            disabled={disabled || submitting || !micSupported}
+            onClick={onToggleRecording}
+            aria-pressed={recording}
+          >
+            {recording ? "停止录音" : "语音输入"}
+          </Button>
+        ) : null}
         <Button type="submit" loading={submitting} disabled={disabled || submitting}>
           提交回答
         </Button>

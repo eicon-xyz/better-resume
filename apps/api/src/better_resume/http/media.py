@@ -102,7 +102,12 @@ async def synthesize_speech(
 
 
 @router.get("/tts/{digest}.mp3")
-async def get_speech(request: Request, digest: str) -> Response:
+async def get_speech(
+    request: Request,
+    digest: str,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+) -> Response:
+    """Same-origin audio requests carry the session cookie, so keep it private."""
     settings: Settings = request.app.state.settings
     if not _DIGEST.match(digest):
         raise HTTPException(status_code=404, detail="tts audio not found")

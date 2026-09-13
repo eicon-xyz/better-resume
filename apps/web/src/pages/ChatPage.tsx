@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { describeApiError, isRetryableError } from "../api/errors";
 import type { ModelView } from "../api/types";
 import { useApi } from "../api/useApi";
+import { mergeTranscript } from "../audio/transcriptStore";
+import { useTranscription } from "../audio/useTranscription";
 import { Button } from "../components";
 import { DEFAULT_AUTH_EPOCH, flattenHistory, useChatHistory, useChatSessions, useModels } from "../chat/queries";
 import { mergeHistory } from "../chat/selectors";
@@ -31,6 +33,19 @@ export function ChatPage() {
 
   const storeMessages = useChatStore((state) => state.messages);
   const [modelRef, setModelRef] = useState<string | null>(null);
+
+  const [draft, setDraft] = useState("");
+  const draftRef = useRef("");
+
+  const onTranscript = useCallback((text: string) => {
+    const merged = mergeTranscript(draftRef.current, text);
+    if (merged.text !== draftRef.current) {
+      draftRef.current = merged.text;
+      setDraft(merged.text);
+    }
+  }, []);
+
+  const transcription = useTranscription({ client: api, onTranscript });
 
   const controller = useChatStream({
     client: api,
@@ -163,7 +178,16 @@ export function ChatPage() {
 
         <Composer
           streaming={controller.streaming}
+          transcript={draft}
+          recording={transcription.recording}
+          recordingError={transcription.error}
+          onToggleRecording={() => {
+            if (transcription.recording) transcription.stop();
+            else void transcription.start();
+          }}
           onSend={(content) => {
+            draftRef.current = "";
+            setDraft("");
             void controller.send(content, { modelRef });
           }}
           onCancel={() => {
