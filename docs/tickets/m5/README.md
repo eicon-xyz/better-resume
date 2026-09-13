@@ -79,3 +79,20 @@ T10 真机（需星云凭据）──> T9
 
 见 `OPEN-QUESTIONS.md`（5 项：凭据策略、绑定存储、切换粒度、流式范围、前端范围）。
 
+
+## 进度（执行中）
+
+| 票 | 状态 | 证据 |
+| --- | --- | --- |
+| T1 场景与绑定 | ✅ | tests/llm_gateway/test_scene_binding_store.py（9 例）+ 迁移 9f2c1a7b5d31（五场景默认 openai_compat） |
+| T2 Resolver + /scenes | ✅ | tests/llm_gateway/test_scene_resolver.py（8 例：缓存/未配置/切换/404/422/401） |
+| T3 星云 adapter | ✅ | tests/llm_gateway/test_xingyun_adapter.py（11 例，本地假 HTTP+SSE 服务端） |
+| T4 场景映射 | ✅ | 同上：payload 形状快照、严格 schema、**旧别名被拒**（反例用例） |
+| T6 四链路按场景解析 | ✅ | tests/test_scene_routing.py（5 例）；M1–M4 全量回归绿 → 「换供应商不改业务码」 |
+| T5 双 adapter 契约套件 | ⬜ 未开始 | — |
+| T7 前端场景面板 | ⬜ 未开始 | — |
+| T8 双供应商对照 | ⬜ 未开始 | — |
+| T9 验收 + PR | ⬜ 未开始 | 当前分支 m5/scene-bindings（未推送） |
+| T10 真机 | ⏸ 阻塞：等星云凭据（XINGCHEN_API_KEY / XINGCHEN_API_SECRET / 每场景 flow_id） |
+
+**续做入口**：`git checkout m5/scene-bindings` → 全量 `uv run pytest -q`（应为 506 例全绿）→ 从 T5 开始。
