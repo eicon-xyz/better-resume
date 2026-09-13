@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import statistics
 import uuid
 from dataclasses import dataclass
@@ -58,6 +60,21 @@ def build_summary_messages(
         Message(role="system", content=SUMMARY_SYSTEM_PROMPT),
         Message(role="user", content="\n".join(lines) + "\n\n请给出 JSON 总结。"),
     ]
+
+
+def build_report_key(payload: dict) -> str:
+    """stage|session|sha256(the exact numbers the narrative is written from)."""
+    material = json.dumps(
+        {
+            "overall": payload["overall_score"],
+            "dimensions": payload["dimensions"],
+            "missing": [point for turn in payload["turns"] for point in turn["missing_points"]],
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+    return f"report|{payload['session_id']}|{digest}"
 
 
 class ReportService:
@@ -219,9 +236,7 @@ class ReportService:
             return parsed
 
         try:
-            summary = await self._resilience.run(
-                Stage.EVALUATION, f"report|{payload['session_id']}", call
-            )
+            summary = await self._resilience.run(Stage.EVALUATION, build_report_key(payload), call)
         except Exception as exc:  # noqa: BLE001 - the report must survive a vendor outage
             logger.warning("report_summary_failed", error=str(exc))
             return None, False

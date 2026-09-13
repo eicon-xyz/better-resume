@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 
@@ -24,6 +25,16 @@ FOLLOW_UP_SYSTEM_PROMPT = (
     "2) 不要引入简历或回答中不存在的信息；\n"
     "3) 只输出 JSON：{text}。"
 )
+
+
+def build_follow_up_key(session_id: str, question_no: str, answer: str) -> str:
+    """stage|session|question|sha256(answer): the prompt is built from the answer text.
+
+    M2 keyed on session + question only, so a different answer to the same question
+    would have reused the previous follow-up once replay was switched on.
+    """
+    digest = hashlib.sha256(answer.encode("utf-8")).hexdigest()[:16]
+    return f"followup|{session_id}|{question_no}|{digest}"
 
 
 class FollowUpQuestion(BaseModel):
@@ -87,7 +98,7 @@ class FollowUpService:
             return parsed
 
         payload = await self._resilience.run(
-            Stage.FOLLOWUP, f"followup|{session_id}|{question_no}", call
+            Stage.FOLLOWUP, build_follow_up_key(session_id, question_no, answer), call
         )
 
         now = datetime.now(UTC)

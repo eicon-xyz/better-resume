@@ -98,7 +98,7 @@ export function InterviewRoomPage() {
       <AnswerComposer
         disabled={!current || finished}
         submitting={state.submitting}
-        onSubmit={(text) => void controller.submitAnswer(text)}
+        onSubmit={(text) => controller.submitAnswer(text)}
       />
     </div>
   );

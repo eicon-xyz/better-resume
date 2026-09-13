@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ApiClient } from "../api/client";
+import { ApiError, toApiError } from "../api/errors";
 import { createStreamRenderer } from "../stream/renderer";
 import type { StreamRenderer } from "../stream/renderer";
 import { chatKeys, DEFAULT_AUTH_EPOCH } from "./queries";
@@ -26,9 +27,13 @@ export interface SendOptions {
 
 export interface ChatStreamController {
   send(content: string, options?: SendOptions): Promise<void>;
+  /** Re-send the last user turn (used by the overload banner). */
+  retry(): Promise<void>;
   cancel(): void;
   streaming: boolean;
   error: string | null;
+  /** Typed failure so the page can explain 429/503/504 and offer a retry. */
+  failure: ApiError | null;
 }
 
 function newId(): string {
@@ -45,7 +50,9 @@ export function useChatStream({
   const store = useChatStore();
   const rendererRef = useRef<StreamRenderer | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const modelRefRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<ApiError | null>(null);
 
   useEffect(() => {
     return () => {
@@ -69,6 +76,8 @@ export function useChatStream({
       if (!trimmed) return;
 
       setError(null);
+      setFailure(null);
+      modelRefRef.current = options.modelRef ?? null;
       let targetSessionId = sessionId;
 
       try {
@@ -80,9 +89,10 @@ export function useChatStream({
           onSessionCreated?.(targetSessionId);
         }
       } catch (createError) {
-        const message = createError instanceof Error ? createError.message : "建立会话失败";
-        setError(message);
-        useChatStore.getState().setError(message);
+        const apiError = toApiError(createError);
+        setFailure(apiError);
+        setError(apiError.message);
+        useChatStore.getState().setError(apiError.message);
         return;
       }
 
@@ -121,6 +131,7 @@ export function useChatStream({
           onDone: () => renderer.done(),
           onError: (streamError) => {
             renderer.stop();
+            setFailure(streamError);
             setError(streamError.message);
             useChatStore.getState().finishAssistant(requestId, streamError.message);
           },
@@ -131,5 +142,12 @@ export function useChatStream({
     [authEpoch, client, onSessionCreated, queryClient, sessionId],
   );
 
-  return { send, cancel, streaming: store.streaming, error };
+  const retry = useCallback(async () => {
+    const messages = useChatStore.getState().messages;
+    const lastUser = [...messages].reverse().find((message) => message.role === "user");
+    if (!lastUser) return;
+    await send(lastUser.content, { modelRef: modelRefRef.current });
+  }, [send]);
+
+  return { send, retry, cancel, streaming: store.streaming, error, failure };
 }

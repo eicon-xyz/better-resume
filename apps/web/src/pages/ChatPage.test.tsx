@@ -203,6 +203,37 @@ describe("ChatPage", () => {
     expect(await screen.findByText("已取消")).toBeInTheDocument();
   });
 
+  it("explains an overload failure and retries the same turn", async () => {
+    const { client, streams } = fakeClient({ history: [] });
+    renderPage(client);
+
+    await screen.findByRole("button", { name: "发送" });
+    typeAndSend("会被限流的问题");
+    await waitFor(() => {
+      expect(streams).toHaveLength(1);
+    });
+
+    act(() => {
+      streams[0]?.handlers.onError?.(
+        new ApiError("rate limit exceeded for read", {
+          kind: "rate_limited",
+          status: 429,
+          retryAfterSeconds: 2,
+        }),
+      );
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("服务繁忙，请 2 秒后重试");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(streams).toHaveLength(2);
+    });
+    expect(streams[1]?.body.content).toBe("会被限流的问题");
+  });
+
   it("shows the empty state when a session has no messages", async () => {
     const { client } = fakeClient({ history: [] });
     renderPage(client);

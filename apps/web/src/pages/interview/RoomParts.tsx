@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { Button, Card, Textarea } from "../../components";
 import type { InterviewTurn } from "../../interview/roomStore";
 import styles from "./RoomParts.module.css";
@@ -55,26 +57,31 @@ export function FeedbackCard({ turn }: { turn: InterviewTurn }) {
 export interface AnswerComposerProps {
   disabled: boolean;
   submitting: boolean;
-  onSubmit: (text: string) => void;
+  /** Resolves false when the backend rejected the answer: the text must stay put. */
+  onSubmit: (text: string) => Promise<boolean> | boolean | void;
 }
 
 export function AnswerComposer({ disabled, submitting, onSubmit }: AnswerComposerProps) {
+  const [value, setValue] = useState("");
+
   return (
     <form
       className={styles.composer}
       onSubmit={(event) => {
         event.preventDefault();
-        const raw = new FormData(event.currentTarget).get("answer");
-        const value = typeof raw === "string" ? raw : "";
-        if (value.trim()) {
-          onSubmit(value);
-          event.currentTarget.reset();
-        }
+        const trimmed = value.trim();
+        if (!trimmed) return;
+        // Clear only once the backend accepted it: a 429/503/504 must not eat the answer.
+        void Promise.resolve(onSubmit(trimmed)).then((accepted) => {
+          if (accepted !== false) setValue("");
+        });
       }}
     >
       <Textarea
         name="answer"
         aria-label="你的回答"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
         placeholder="用具体案例回答（Ctrl/Cmd + Enter 提交）"
         disabled={disabled || submitting}
         onKeyDown={(event) => {
