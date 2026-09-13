@@ -1,4 +1,10 @@
 from .adapters import OpenAICompatAdapter
+from .binding_store import (
+    SceneBinding,
+    SceneBindingError,
+    SceneBindingStore,
+    validate_binding,
+)
 from .errors import (
     FailureKind,
     LlmConfigError,
@@ -25,8 +31,35 @@ from .models import (
 )
 from .protocols import LlmGateway
 from .registry import ModelRegistry
+from .resolver import (
+    DEFAULT_ADAPTER,
+    DEFAULT_TARGET_REF,
+    GatewayFactory,
+    OpenAiCompatFactory,
+    SceneResolver,
+    SceneView,
+)
+from .scene_mapping import to_xingyun_payload, validate_structured
+from .scenes import AdapterKind, LlmScene, scene_label
+from .xingyun_factory import XingyunGatewayFactory
 
 __all__ = [
+    "DEFAULT_ADAPTER",
+    "DEFAULT_TARGET_REF",
+    "GatewayFactory",
+    "OpenAiCompatFactory",
+    "SceneResolver",
+    "XingyunGatewayFactory",
+    "to_xingyun_payload",
+    "validate_structured",
+    "SceneView",
+    "AdapterKind",
+    "LlmScene",
+    "SceneBinding",
+    "SceneBindingError",
+    "SceneBindingStore",
+    "scene_label",
+    "validate_binding",
     "ChatRequest",
     "ChatResult",
     "ContentDelta",

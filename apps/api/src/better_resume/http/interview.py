@@ -31,7 +31,8 @@ from ..interview_engine import (
     ResumeStorage,
 )
 from ..interview_engine.orm import InterviewQuestionRow
-from ..llm_gateway import LlmConfigError, ModelRegistry
+from ..llm_gateway import LlmScene
+from .gateway import gateway_for
 
 logger = structlog.get_logger("better_resume.interview_engine.http")
 
@@ -130,15 +131,8 @@ async def generate_questions(
     principal: Principal = Depends(current_principal),  # noqa: B008
 ) -> QuestionBatchView:
     state = request.app.state
-    registry: ModelRegistry = state.model_registry
 
-    try:
-        spec = await registry.resolve(model_ref)
-        api_key = registry.api_key(spec)
-    except LlmConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
+    gateway = await gateway_for(request, LlmScene.QUESTION_EXTRACTION, model_ref=model_ref)
 
     content = await file.read()
     if len(content) > MAX_RESUME_BYTES:
@@ -149,7 +143,6 @@ async def generate_questions(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="简历文件为空")
 
-    gateway = state.llm_gateway_factory(spec, api_key)
     service = QuestionService(
         state.session_factory,
         resilience=state.ai_resilience,
@@ -248,15 +241,10 @@ async def submit_answer(
     principal: Principal = Depends(current_principal),  # noqa: B008
 ) -> AnswerSubmitView:
     state = request.app.state
-    registry: ModelRegistry = state.model_registry
-
-    try:
-        spec = await registry.resolve(payload.model_ref)
-        api_key = registry.api_key(spec)
-    except LlmConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
+    answer_gateway = await gateway_for(
+        request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref
+    )
+    follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)
 
     service = AnswerService(
         state.session_factory,
@@ -269,7 +257,8 @@ async def submit_answer(
         question_no=payload.question_no,
         answer=payload.answer,
         request_id=payload.request_id,
-        gateway=state.llm_gateway_factory(spec, api_key),
+        gateway=answer_gateway,
+        follow_up_gateway=follow_up_gateway,
     )
 
     return AnswerSubmitView(
@@ -412,16 +401,8 @@ async def restore_session(
 
 
 async def _resolve_gateway(request: Request, model_ref: str | None):
-    state = request.app.state
-    registry: ModelRegistry = state.model_registry
-    try:
-        spec = await registry.resolve(model_ref)
-        api_key = registry.api_key(spec)
-    except LlmConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
-    return state.llm_gateway_factory(spec, api_key)
+    """Report summary scene (kept as a helper so the endpoint stays readable)."""
+    return await gateway_for(request, LlmScene.REPORT_SUMMARY, model_ref=model_ref)
 
 
 @router.post("/sessions/{session_id}/finish", status_code=status.HTTP_201_CREATED)
