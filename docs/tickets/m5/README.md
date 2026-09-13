@@ -91,7 +91,7 @@ T10 真机（需星云凭据）──> T9
 | T6 四链路按场景解析 | ✅ | tests/test_scene_routing.py（5 例）；M1–M4 全量回归绿 → 「换供应商不改业务码」 |
 | T5 双 adapter 契约套件 | ✅ | tests/llm_gateway/test_adapter_contract.py：10 条契约 × 2 实现（20 例）；突变校验（reasoning 混进 content）当场红 |
 | T7 前端场景面板 | ⬜ 未开始 | — |
-| T8 双供应商对照 | ⬜ 未开始 | — |
+| T8 双供应商对照 | ✅ | scripts/adapter_smoke.py（真 DeepSeek vs 假星云：字段集合一致）+ tests/test_adapter_parity.py |
 | T9 验收 + PR | ⬜ 未开始 | 当前分支 m5/scene-bindings（未推送） |
 | T10 真机 | ⏸ 阻塞：等星云凭据（XINGCHEN_API_KEY / XINGCHEN_API_SECRET / 每场景 flow_id） |
 
