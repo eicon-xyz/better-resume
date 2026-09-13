@@ -9,11 +9,13 @@ from .errors import (
     classify,
     wrap,
 )
+from .metrics import ResilienceMetrics
 from .models import Stage
 from .passthrough import DirectAiResilience
 from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
+from .singleflight import Flight, FlightState, SingleFlight
 
 __all__ = [
     "AiInvalid",
@@ -25,7 +27,11 @@ __all__ = [
     "Clock",
     "DirectAiResilience",
     "FailureKind",
+    "Flight",
+    "FlightState",
     "ManualClock",
+    "ResilienceMetrics",
+    "SingleFlight",
     "Stage",
     "StagePolicies",
     "StagePolicy",
