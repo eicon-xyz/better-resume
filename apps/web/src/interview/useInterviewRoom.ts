@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
-import { ApiError } from "../api/errors";
+import { ApiError, describeApiError, isRetryableError, toApiError } from "../api/errors";
 import { useRoomStore } from "./roomStore";
 
 const DOUBLE_SUBMIT_WINDOW_MS = 250;
@@ -17,7 +17,8 @@ export interface UseInterviewRoomOptions {
 export interface InterviewRoomController {
   restoring: boolean;
   restoreError: string | null;
-  submitAnswer(text: string): Promise<void>;
+  /** Resolves true when the backend accepted the answer (so the composer may clear). */
+  submitAnswer(text: string): Promise<boolean>;
   finish(): Promise<void>;
   finishing: boolean;
 }
@@ -61,11 +62,11 @@ export function useInterviewRoom({
     async (text: string) => {
       const trimmed = text.trim();
       const question = useRoomStore.getState().currentQuestion;
-      if (!trimmed || !question) return;
+      if (!trimmed || !question) return false;
 
       // Two guards: an in-flight request and a 250ms window (double click / double Enter).
       const now = Date.now();
-      if (inFlight.current || now - lastSubmitAt.current < DOUBLE_SUBMIT_WINDOW_MS) return;
+      if (inFlight.current || now - lastSubmitAt.current < DOUBLE_SUBMIT_WINDOW_MS) return false;
       inFlight.current = true;
       lastSubmitAt.current = now;
 
@@ -81,9 +82,16 @@ export function useInterviewRoom({
         if (result.next_action === "finished") {
           onFinished?.(sessionId);
         }
+        return true;
       } catch (error) {
-        const message = error instanceof ApiError ? error.message : "提交失败，请重试";
-        useRoomStore.getState().failSubmit(message);
+        const apiError = toApiError(error);
+        const copy = describeApiError(apiError);
+        // The backend rolled the question back, so the same text can be submitted again;
+        // say so, and never lose what the candidate typed.
+        useRoomStore
+          .getState()
+          .failSubmit(isRetryableError(apiError) ? `${copy}（本题分数未记录，可直接重试）` : copy);
+        return false;
       } finally {
         inFlight.current = false;
       }

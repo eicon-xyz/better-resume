@@ -147,6 +147,6 @@ describe("streamChat", () => {
 
     await streamChat("/stream", { content: "hi" }, { onError }, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
-    expect(onError.mock.calls[0]?.[0]).toMatchObject({ kind: "server", status: 503 });
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({ kind: "unavailable", status: 503 });
   });
 });

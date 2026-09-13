@@ -18,6 +18,7 @@
 | P7 | T6 实现 | TokenBucket.idle 未按时间投影 → 惰性淘汰从未生效（测试抓到） | 已修 |
 | P8 | T7 联调 | 韧性 kind 不在 ChatErrorEvent Literal → SSE 兜底把 timeout 降级成 unknown | 已修（契约同步） |
 | P9 | T8 实现 | 并发测试用 sleep(0) 等 follower，DB await 无法推进 → 误判单飞失效 | 已修（事件+真实小睡轮询） |
+| P10 | T9 实现 | M2 遗留：提交失败清空候选人输入；修的过程中返回值又被 void 吞一次 | 已修（前端 115 例绿） |
 
 ---
 
@@ -125,3 +126,20 @@
 - **修法**：用"事件 + 有限真实小睡轮询"同步：先 `await gateway.started.wait()` 确认 leader 已打上游，
   再以 `asyncio.sleep(0.005)` 轮询 `singleflight_follower == 1`（上限 1s）后才放行。
 - **证据**：`tests/test_resilience_concurrency.py` 8 例全绿，含"两路并发聊天流 → 上游恰好 1 次"。
+## P10 — 提交失败会清空候选人输入（M2 遗留 UX bug）+ 两次"返回值被吞"
+
+- **症状**：T9 新用例 `keeps the typed answer when the backend sheds load` 失败：
+  429 之后输入框内容为空——**候选人写了几百字的回答，一次限流就没了**。
+- **根因（三层，逐层暴露）**：
+  1. `AnswerComposer` 在 `onSubmit(value)` 之后**立刻** `form.reset()`，与提交成败无关；
+     M2 时没有"可重试的过载错误"，所以没暴露。
+  2. 修法第一步把 `onSubmit` 契约改成 `Promise<boolean>`，但页面仍写成
+     `onSubmit={(text) => void controller.submitAnswer(text)}` —— `void` 把返回值吞了，
+     组件收到 `undefined`，于是照样清空。测试第二次抓到。
+  3. 用脚本打补丁时把 TS 模板字符串二次转义（`\`` 与 `\${copy}`），
+     vite/oxc 直接报 "Invalid Unicode escape sequence" 与字面量 `${copy}`；
+     改用 `chr(92)/chr(36)` 构造字符串后正常。
+- **修法（最终）**：受控 textarea + `onSubmit: (text) => Promise<boolean> | boolean | void`，
+  仅当返回 `false` 之外才清空；房间控制器在过载失败时回 `false` 并提示
+  "本题分数未记录，可直接重试"。
+- **证据**：前端 115 例全绿（104 → 115）、eslint 0 warning、`tsc --noEmit` 干净。
