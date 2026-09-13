@@ -5,8 +5,10 @@ SQLAlchemy 2.0(async) + Postgres/Redis + React 19 + Vite。
 
 ## 当前状态
 
-M0（骨架）进行中：monorepo 结构 + compose 三服务（postgres/redis/api，全健康检查）+
+**M0 已完成（2026-09-13）**：monorepo 结构 + compose 三服务（postgres/redis/api，全健康检查）+
 CI 双 job + settings/identity 最小可用 + 六个后端模块 Protocol 占位。
+验收证据见 docs/tickets/m0/ACCEPTANCE.md；下一步 M1（conversation 真表 + llm-gateway +
+chat SSE 页）。
 
 ## 必读
 

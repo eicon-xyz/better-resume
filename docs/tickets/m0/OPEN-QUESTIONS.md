@@ -1,5 +1,21 @@
 # M0 待确认项（决策请拍板，我不自行决议）
 
+## 0. 结论回填（2026-09-13 已拍板）
+
+| 编号 | 你的决定 | 落地情况 |
+| --- | --- | --- |
+| D-A | **A1** | uv 0.12.7 装到 `/root/.local/bin`，Python 3.12.14 就位（沙箱内需 `UV_CACHE_DIR` 指向工作区，已记入 ACCEPTANCE.md） |
+| D-B | 给了 GitHub 主页 | 采用 repo-local 身份 `eicon-xyz <eicon-xyz@users.noreply.github.com>`（未动全局配置，随时可改） |
+| D-C | 照准 | compose 中 redis 不发布宿主端口；api 8000 / postgres 5432 |
+| D-D | 照准 | `skills/` 仅 `.gitkeep`，知识库内容留 M6 |
+| D-E | 照准 | CI 用 node 22（与本地 v22.23.2 一致） |
+| D-F | **算** | 已产出 `docs/resume/M0-resume-draft.md`（骨架期口径，亮点条目待 M1–M4 回填） |
+| D-G | 同意建议 | compose 写官方镜像名；本机用 daocloud 镜像 retag 补同名（`postgres:16-alpine` / `redis:7-alpine`） |
+| D-H | 照准 | M0 无 users 表，dev 直发会话端点；`SessionRef` 只含 `chat|interview` |
+| D-I | 照准 | Python 包 `better_resume`；web 包 `@better-resume/web` |
+| 提案 | 同意 | T1–T9 全部执行完毕，证据见 `ACCEPTANCE.md` |
+
+---
 ## D-A 工具链安装（阻塞 T1 起全部后端票）
 
 事实：本机 `python3` = 3.10.12，**无 python3.12、无 uv**（D02/D17 要求 Python 3.12 + uv）；
