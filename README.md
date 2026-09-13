@@ -1,6 +1,6 @@
 # better-resume
 
-AI 模拟面试平台（对 AI-Meeting / 码上面试平台的重写）：Python 3.12 + FastAPI +
+AI 模拟面试平台：Python 3.12 + FastAPI +
 SQLAlchemy 2.0(async) + Postgres/Redis + React 19 + Vite。
 
 ## 当前状态
