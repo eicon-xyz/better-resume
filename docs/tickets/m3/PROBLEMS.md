@@ -15,6 +15,7 @@
 | P4 | T3 实现 | 背压断言差一帧（生成器先 append 后 yield，生产者在途多一帧） | 已修（改断言） |
 | P5 | T5 实现 | ManualClock 只唤醒已注册 sleeper → 任务启动前推时间导致测试挂死（exit=124） | 已修（测试先 settle） |
 | P6 | T5 调试 | 工具坑：pytest 输出重定向后尾部丢失 → 改用 --junitxml 读结果 | 已绕过（写进纪律） |
+| P7 | T6 实现 | TokenBucket.idle 未按时间投影 → 惰性淘汰从未生效（测试抓到） | 已修 |
 
 ---
 
@@ -89,3 +90,12 @@
   （`testsuite` 的 tests/failures + `failure.text`），或用 `-x` 先停在一个失败上。
   验收命令矩阵里同时保留 exit code 与 junit 计数，避免"看起来绿了"。
 - **证据**：`python3 -c "import xml.etree.ElementTree ..." /tmp/junit.xml` → `tests 56 failures 0 time 0.081`。
+## P7 — TokenBucket.idle 只在 take() 里补桶 → 惰性淘汰永远无效
+
+- **症状**：`test_full_registry_evicts_idle_buckets` 红：`tracked_identities == 3`（上限 2），
+  空闲桶没有被清掉。
+- **根因**：`_tokens` 只在 `take()` 时按时间补充，而 `idle` 属性直接比较 `_tokens` 与容量——
+  一个"早就该补满"的桶在没被再次访问前看起来仍然是空的，于是永远不满足淘汰条件。
+  （先写测试的价值就在这：单看实现很难发现"惰性淘汰其实一次都没生效"。）
+- **修法**：`idle` 按当前时钟**投影**补充后的令牌数再比较容量。
+- **证据**：`tests/ai_resilience/test_ratelimit.py` 6 例全绿；HTTP 侧 8 例全绿（合计 14 例）。

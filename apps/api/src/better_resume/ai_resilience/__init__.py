@@ -17,6 +17,7 @@ from .passthrough import DirectAiResilience
 from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
+from .ratelimit import Bucket, RateLimitDecision, RateLimiter, TokenBucket
 from .singleflight import Flight, FlightState, SingleFlight
 from .stream import StreamBroadcast
 from .timeout import with_timeout, wrap_stream_timeout
@@ -31,6 +32,7 @@ __all__ = [
     "BreakerPolicy",
     "BreakerRegistry",
     "BreakerState",
+    "Bucket",
     "Bulkhead",
     "BulkheadRegistry",
     "CircuitBreaker",
@@ -40,6 +42,8 @@ __all__ = [
     "Flight",
     "FlightState",
     "ManualClock",
+    "RateLimitDecision",
+    "RateLimiter",
     "ResilienceMetrics",
     "SingleFlight",
     "Stage",
@@ -47,6 +51,7 @@ __all__ = [
     "StagePolicy",
     "StreamBroadcast",
     "SystemClock",
+    "TokenBucket",
     "with_timeout",
     "wrap_stream_timeout",
     "UnimplementedAiResilience",
