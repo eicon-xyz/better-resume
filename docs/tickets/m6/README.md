@@ -87,12 +87,17 @@ T7 skills 知识库 ────────────────────
 | --- | --- | --- |
 | T1 分布式锁 | ✅ | tests/test_distributed_lock.py（10 例：互斥/不同题并行/有界等待/异常释放/取消/TTL 过期/续租/陈旧 owner 不误删/50 并发串行/memory 回归） |
 | T2 分布式单飞 | ✅ | tests/test_distributed_flight.py（10 例：两实例只调一次/跨实例回放/0 TTL 不缓存/可缓存失败回放/可重试失败不缓存/接管/fencing 拒写/有界等待/scalar 往返/拒绝外部模块） |
-| T3 会话热态与跨实例恢复 | ⬜ 未开始 | — |
-| T4 worker + 任务队列 | ⬜ 未开始 | — |
-| T5 nginx + 双实例 compose | ⬜ 未开始 | — |
-| T6 压测脚本 + 容量报告 | ⬜ 未开始 | — |
-| T7 skills 知识库 | ⬜ 未开始 | — |
-| T8 kill 实例 drill | ⬜ 未开始 | — |
-| T9 验收 + PR | ⬜ 未开始 | 分支 m6/distributed（未推送） |
+| T3 会话热态与跨实例恢复 | ✅ | tests/test_hot_state.py（8 例）+ 写路径失效回归；drill 里 kill 前后 restore 视图逐字段相等 |
+| T4 worker + 任务队列 | ✅ | tests/test_job_queue.py（7 例）+ tests/test_job_worker_api.py（3 例：冻结数字先返回、worker 补总结、重复 finish 不重复入队）+ tests/test_worker_loop.py（4 例：Redis 抖动不杀 worker） |
+| T5 nginx + 双实例 compose | ✅ | docs/tickets/m6/T5-EVIDENCE.md（ALL CHECKS PASSED：REST/SSE 心跳+分片/WS 101/非 root/两实例轮询/worker 心跳）；tests/test_deploy_manifest.py（14 例） |
+| T6 压测脚本 + 容量报告 | ✅ | apps/api/scripts/load_test.py + tests/test_load_test_script.py（6 例）+ docs/perf/M6-capacity.md（三组实测；真模型未跑，已如实标注） |
+| T7 skills 知识库 | ✅ | skills/{repo-map,modules×10,api-index}/ + apps/api/scripts/extract_api_index.py --check（exit 0）+ tests/test_skills_index.py（39 例）+ CI 新增漂移步骤 |
+| T8 kill 实例 drill | ✅ | scripts/kill_instance_drill.sh + apps/api/scripts/kill_instance_drill.py + tests/test_drill_prereqs.py（3 例）；输出见 ACCEPTANCE §1（kill→恢复 237 ms） |
+| T9 验收 + PR | ✅ | docs/tickets/m6/ACCEPTANCE.md + PROBLEMS.md P0–P14 + docs/resume/M6-resume-draft.md + README |
 
-**续做入口**：`git checkout m6/distributed` → `uv run pytest -q`（应为 548 例全绿）→ 从 T3 开始。
+**验收口径**：§12.4 的"kill 实例恢复面试会话不丢状态"由 `bash scripts/kill_instance_drill.sh` 一条命令复跑；
+部署面由 `bash scripts/compose_smoke.sh` 复跑；容量数字由 `docs/perf/README.md` 里的命令复跑。
+后端 645 例 / 前端 158 例全绿；未验证项集中在真机凭据与生产网络（见 ACCEPTANCE §6）。
+
+**续做入口**：`git checkout main && git pull` → 读 `skills/repo-map/SKILL.md` 找模块入口 →
+`uv run pytest -q`（645 例）与 `bash scripts/compose_smoke.sh`（需要 docker）应全绿。
