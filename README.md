@@ -5,7 +5,14 @@ SQLAlchemy 2.0(async) + Postgres/Redis + React 19 + Vite。
 
 ## 当前状态
 
-**M4 已完成（2026-09-14）**：media 语音链路 —— 句池归并（apd / rpl 删区间 / 时间重叠+文本演化 /
+**M5 已完成（2026-09-14）**：星云 WorkflowAdapter 双 adapter 对照 —— 五个业务场景（对话/出题/评分/追问/报告总结）
+各自一行绑定（DB 表 + 进程内缓存 + GET/PUT /api/v1/scenes），切换供应商**不改业务代码**（diff 仅 7 行可选参数）；
+第二个 adapter 按 §4.1.8 实现星云工作流（Bearer apiKey:apiSecret / flow_id·history·parameters / SSE 归一 / Pydantic 强校验，
+**拒绝旧项目的别名回退**）；一套 10 条契约 × 2 实现 + 突变校验；前端 /settings/ai 面板。
+后端 528 / 前端 158 全绿；**星云真机未验证（本机无凭据）**，证据与未验证项见 docs/tickets/m5/ACCEPTANCE.md，
+问题台账见 docs/tickets/m5/PROBLEMS.md（P0–P4）。
+
+**M4 已完成**：media 语音链路 —— 句池归并（apd / rpl 删区间 / 时间重叠+文本演化 /
 尾缀合并 / final，D16 亮点③）、讯飞 AST WebSocket adapter（HmacSHA1 签名、1280B·40ms 推流、cn.st 解析、
 有界重连）、一次性 WS 票据（D11）、edge-tts 播报（内容寻址缓存 + 单例播放器 + 独立 Stage.TTS 接入韧性链）、
 浏览器端 16k PCM 采集与转写消费（一个通道两个消费方，转写不覆盖手写文本）。
@@ -20,14 +27,14 @@ SQLAlchemy 2.0(async) + Postgres/Redis + React 19 + Vite。
 证据 docs/tickets/m2/ACCEPTANCE.md。
 
 历史：M1 docs/tickets/m1/ACCEPTANCE.md，M0 docs/tickets/m0/ACCEPTANCE.md。
-下一步 M5：星云 WorkflowAdapter（双 adapter 对照）。
+下一步 M6：分布式模式（Redis 单飞/锁 + 心跳接管 + fencing）+ 压测 + skills 知识库。
 
 ## 必读
 
 1. docs/DECISIONS.md —— 17 项技术栈/范围决议（开工依据，冲突时以它为准）
 2. docs/ai-meeting-architecture-analysis.md —— 原项目全景分析（§12 为新项目模块蓝图）
-3. docs/tickets/m4/ —— 当前里程碑票据与验收证据（含 PROBLEMS.md 问题台账）；
-   M0–M3 存档在 docs/tickets/m0|m1|m2|m3/
+3. docs/tickets/m5/ —— 当前里程碑票据与验收证据（含 PROBLEMS.md 问题台账）；
+   M0–M4 存档在 docs/tickets/m0|m1|m2|m3|m4/
 
 ## 结构
 
@@ -64,6 +71,12 @@ pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test -- 
 #   WS：POST /api/v1/auth/ws-ticket → WS /api/v1/media/transcribe?ticket=...
 #   TTS：POST /api/v1/media/tts → GET /api/v1/media/tts/{digest}.mp3（同源 audio 带 cookie）
 #   冒烟：uv run --project apps/api python apps/api/scripts/media_smoke.py --scripted
+
+# M5 场景绑定（换供应商不发版）：
+#   GET /api/v1/scenes 查看五个场景的绑定；PUT /api/v1/scenes/{scene} 切换（需登录）
+#   星云凭据只从环境变量读：XINGCHEN_API_KEY / XINGCHEN_API_SECRET；每场景 flow_id 存在绑定行的 target_ref
+#   前端入口：/settings/ai
+#   对照冒烟：uv run --project apps/api python apps/api/scripts/adapter_smoke.py --scene answer_evaluation [--real-xingyun]
 
 # 三服务（改完后端记得 --build）
 docker compose up -d --build --wait

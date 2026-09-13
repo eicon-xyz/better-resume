@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from ..chat import (
@@ -25,11 +25,11 @@ from ..identity import Principal, current_principal
 from ..llm_gateway import (
     ContentDelta,
     Done,
-    LlmConfigError,
-    ModelRegistry,
+    LlmScene,
     ReasoningDelta,
     VendorMeta,
 )
+from .gateway import gateway_for
 
 logger = structlog.get_logger("better_resume.chat.http")
 
@@ -147,18 +147,7 @@ async def stream_reply(
     principal: Principal = Depends(current_principal),  # noqa: B008
 ) -> StreamingResponse:
     state = request.app.state
-    registry: ModelRegistry = state.model_registry
-
-    try:
-        spec = await registry.resolve(payload.model_ref)
-        api_key = registry.api_key(spec)
-    except LlmConfigError as exc:
-        # Honest failure: never call a vendor we cannot authenticate to.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
-
-    gateway = state.llm_gateway_factory(spec, api_key)
+    gateway = await gateway_for(request, LlmScene.CHAT, model_ref=payload.model_ref)
     service = ChatService(state.session_factory, resilience=state.ai_resilience)
     heartbeat = state.settings.sse_heartbeat_seconds
 

@@ -303,6 +303,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scenes */
+        get: operations["list_scenes_api_v1_scenes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scenes/{scene}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Scene */
+        put: operations["update_scene_api_v1_scenes__scene__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -654,6 +688,31 @@ export interface components {
              * @default 0
              */
             total_questions: number;
+        };
+        /** SceneUpdateRequest */
+        SceneUpdateRequest: {
+            /**
+             * Adapter
+             * @enum {string}
+             */
+            adapter: "openai_compat" | "xingyun";
+            /** Target Ref */
+            target_ref: string;
+        };
+        /** SceneViewResponse */
+        SceneViewResponse: {
+            /** Adapter */
+            adapter: string;
+            /** Configured */
+            configured: boolean;
+            /** Is Default */
+            is_default: boolean;
+            /** Label */
+            label: string;
+            /** Scene */
+            scene: string;
+            /** Target Ref */
+            target_ref: string;
         };
         /** SessionUpdateRequest */
         SessionUpdateRequest: {
@@ -1330,6 +1389,61 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_scenes_api_v1_scenes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneViewResponse"][];
+                };
+            };
+        };
+    };
+    update_scene_api_v1_scenes__scene__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneViewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

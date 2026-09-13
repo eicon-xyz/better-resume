@@ -28,6 +28,7 @@ from .http import (
     media_router,
     models_router,
     resilience_router,
+    scenes_router,
 )
 from .identity import auth_router, build_session_store, build_ws_ticket_store
 from .interview_engine import (
@@ -37,7 +38,14 @@ from .interview_engine import (
     QuestionLockRegistry,
     SessionNotFound,
 )
-from .llm_gateway import LlmError, ModelRegistry, build_llm_gateway
+from .llm_gateway import (
+    AdapterKind,
+    LlmError,
+    ModelRegistry,
+    SceneResolver,
+    XingyunGatewayFactory,
+    build_llm_gateway,
+)
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
 from .observability import RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
@@ -58,6 +66,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_voice=settings.media.tts_voice,
     )
     app.state.model_registry = ModelRegistry(app.state.session_factory)
+    # M5: scenes resolve to a gateway through their binding row (cached).
+    app.state.scene_resolver = SceneResolver(
+        app.state.session_factory,
+        gateway_builder=lambda: app.state.llm_gateway_factory,
+    )
+    app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     app.state.ai_resilience = ResilientAiResilience(settings)
     app.state.llm_gateway_factory = build_llm_gateway
@@ -101,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(models_router)
     app.include_router(resilience_router)
     app.include_router(media_router)
+    app.include_router(scenes_router)
     app.include_router(chat_router)
     app.include_router(interview_router)
     return app

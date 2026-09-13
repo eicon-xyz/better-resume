@@ -18,6 +18,8 @@ import type {
   Principal,
   QuestionBatchView,
   RestoreResponseView,
+  SceneUpdateRequest,
+  SceneView,
   WsTicketView,
   TtsRequestView,
   TtsView,
@@ -81,6 +83,8 @@ export interface ApiClient {
   getInterviewReport(sessionId: string, options?: CallOptions): Promise<InterviewReportView>;
 
   listModels(options?: CallOptions): Promise<ModelView[]>;
+  listScenes(options?: CallOptions): Promise<SceneView[]>;
+  updateScene(scene: string, body: SceneUpdateRequest): Promise<SceneView>;
   createWsTicket(): Promise<WsTicketView>;
   synthesizeSpeech(body: TtsRequestView): Promise<TtsView>;
   fetchTtsAudio(url: string, options?: CallOptions): Promise<Blob>;
@@ -201,6 +205,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
     listModels: (options = {}) =>
       request<ModelView[]>("/api/v1/models", { signal: options.signal }),
+
+    listScenes: (options = {}) =>
+      request<SceneView[]>("/api/v1/scenes", { signal: options.signal }),
+
+    updateScene: (scene, body) =>
+      request<SceneView>("/api/v1/scenes/" + encodeURIComponent(scene), {
+        method: "PUT",
+        body,
+      }),
 
     createWsTicket: () => request<WsTicketView>("/api/v1/auth/ws-ticket", { method: "POST" }),
 
