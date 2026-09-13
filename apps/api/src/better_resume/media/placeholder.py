@@ -18,6 +18,9 @@ class UnimplementedTranscriptionChannel:
     async def stop(self) -> None:
         raise NotImplementedError(_TRANSCRIPTION_REASON)
 
+    async def wait(self) -> None:
+        raise NotImplementedError(_TRANSCRIPTION_REASON)
+
 
 class UnimplementedTtsSynthesizer:
     async def synthesize(self, text: str, voice: VoiceSpec) -> AudioRef:

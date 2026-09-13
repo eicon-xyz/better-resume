@@ -51,6 +51,17 @@ class ResilienceSettings(BaseModel):
     stream_buffer_frames: int = 1024
 
 
+class MediaSettings(BaseModel):
+    """M4 media wiring: which transcription adapter, and how TTS behaves."""
+
+    transcription_adapter: Literal["xunfei", "scripted"] = "scripted"
+    xunfei_ws_url: str = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_storage_dir: Path = Path("data/tts")
+    tts_max_chars: int = 500
+    tts_timeout_seconds: float = 20.0
+
+
 class RateLimitSettings(BaseModel):
     """M3 in-process flow limiting (old project's flow-limit matrix)."""
 
@@ -100,6 +111,13 @@ class Settings(BaseSettings):
     # M3: resilience budgets and in-process rate limiting.
     resilience: ResilienceSettings = Field(default_factory=ResilienceSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    media: MediaSettings = Field(default_factory=MediaSettings)
+
+    # M4: D11 one-shot WS ticket lifetime, plus vendor credentials (env only).
+    ws_ticket_ttl_seconds: int = 30
+    xunfei_app_id: str = ""
+    xunfei_access_key_id: str = ""
+    xunfei_access_key_secret: str = ""
 
     @field_validator("log_level")
     @classmethod

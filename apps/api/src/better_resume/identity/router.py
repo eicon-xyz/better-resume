@@ -1,8 +1,4 @@
-"""Auth endpoints (M0 skeleton): dev-issued session, me, logout.
-
-Real login (credential check + users table) is M1 work; M0 only proves the cookie session
-round-trip end to end.
-"""
+"""Auth endpoints: dev-issued session, me, logout, and one-shot WS tickets (D11)."""
 
 from __future__ import annotations
 
@@ -11,9 +7,10 @@ from pydantic import BaseModel, Field
 
 from ..settings import Settings
 from .cookies import clear_session_cookie, set_session_cookie
-from .deps import current_principal, get_app_settings, get_session_store
+from .deps import current_principal, get_app_settings, get_session_store, get_ws_ticket_store
 from .models import Principal
 from .store import SessionStore
+from .tickets import WsTicketStore
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -23,6 +20,13 @@ class AuthSessionRequest(BaseModel):
 
     user_id: str = Field(min_length=1, max_length=128)
     roles: list[str] = Field(default_factory=list)
+
+
+class WsTicketView(BaseModel):
+    """Short-lived, single-use ticket for the WebSocket handshake."""
+
+    ticket: str
+    expires_in: int
 
 
 @router.post("/session")
@@ -43,6 +47,18 @@ async def create_session(
 @router.get("/me")
 async def me(principal: Principal = Depends(current_principal)) -> Principal:  # noqa: B008
     return principal
+
+
+@router.post("/ws-ticket")
+async def create_ws_ticket(
+    principal: Principal = Depends(current_principal),  # noqa: B008
+    settings: Settings = Depends(get_app_settings),  # noqa: B008
+    tickets: WsTicketStore = Depends(get_ws_ticket_store),  # noqa: B008
+) -> WsTicketView:
+    """Browsers cannot set headers on a WebSocket, so the cookie buys a one-shot ticket."""
+    ttl = settings.ws_ticket_ttl_seconds
+    ticket = await tickets.issue(principal, ttl_seconds=ttl)
+    return WsTicketView(ticket=ticket, expires_in=ttl)
 
 
 @router.delete("/session", status_code=status.HTTP_204_NO_CONTENT)

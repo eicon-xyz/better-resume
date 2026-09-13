@@ -25,10 +25,11 @@ from .http import (
     chat_router,
     health_router,
     interview_router,
+    media_router,
     models_router,
     resilience_router,
 )
-from .identity import auth_router, build_session_store
+from .identity import auth_router, build_session_store, build_ws_ticket_store
 from .interview_engine import (
     IllegalFlowTransition,
     IllegalSessionTransition,
@@ -37,6 +38,7 @@ from .interview_engine import (
     SessionNotFound,
 )
 from .llm_gateway import LlmError, ModelRegistry, build_llm_gateway
+from .media import ChannelRegistry
 from .observability import RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db_engine = engine
     app.state.session_factory = build_session_factory(engine)
     app.state.session_store = build_session_store(settings)
+    app.state.ws_ticket_store = build_ws_ticket_store(settings)
+    app.state.transcription_registry = ChannelRegistry()
     app.state.model_registry = ModelRegistry(app.state.session_factory)
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     app.state.ai_resilience = ResilientAiResilience(settings)
@@ -60,6 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await app.state.ai_resilience.aclose()
+        await app.state.ws_ticket_store.aclose()
         await app.state.session_store.aclose()
         await engine.dispose()
 
@@ -91,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(models_router)
     app.include_router(resilience_router)
+    app.include_router(media_router)
     app.include_router(chat_router)
     app.include_router(interview_router)
     return app
