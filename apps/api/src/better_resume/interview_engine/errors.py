@@ -19,6 +19,10 @@ class IllegalSessionTransition(InterviewEngineError):
     """A session lifecycle transition that the state machine forbids."""
 
 
+class GenerationInProgress(IllegalSessionTransition):
+    """Another question generation already holds this session (HTTP 409)."""
+
+
 class IllegalFlowTransition(InterviewEngineError):
     """An answer-flow transition that the state machine forbids."""
 

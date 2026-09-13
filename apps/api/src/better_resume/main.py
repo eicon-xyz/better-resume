@@ -12,10 +12,16 @@ from . import __version__
 from .ai_resilience import DirectAiResilience
 from .conversation import ConversationConflictError, ConversationNotFoundError
 from .db import build_engine, build_session_factory
-from .http import chat_router, health_router, models_router
+from .http import chat_router, health_router, interview_router, models_router
 from .identity import auth_router, build_session_store
-from .llm_gateway import ModelRegistry, build_llm_gateway
+from .interview_engine import (
+    IllegalSessionTransition,
+    InterviewEngineError,
+    SessionNotFound,
+)
+from .llm_gateway import LlmError, ModelRegistry, build_llm_gateway
 from .observability import RequestIdMiddleware, configure_logging
+from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
 
 
@@ -46,10 +52,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware, header_name=resolved.request_id_header)
     app.add_exception_handler(ConversationNotFoundError, _not_found)
     app.add_exception_handler(ConversationConflictError, _conflict)
+    app.add_exception_handler(SessionNotFound, _not_found)
+    app.add_exception_handler(IllegalSessionTransition, _conflict)
+    app.add_exception_handler(InterviewEngineError, _unprocessable)
+    app.add_exception_handler(ResumeParseError, _bad_request)
+    app.add_exception_handler(LlmError, _bad_gateway)
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(models_router)
     app.include_router(chat_router)
+    app.include_router(interview_router)
     return app
 
 
@@ -60,6 +72,21 @@ async def _not_found(request: Request, exc: Exception) -> JSONResponse:
 
 async def _conflict(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+async def _unprocessable(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+async def _bad_request(request: Request, exc: Exception) -> JSONResponse:
+    """Resume parsing problems are the user's input, not a server fault."""
+    code = getattr(exc, "code", None)
+    return JSONResponse(status_code=400, content={"detail": str(exc), "code": code})
+
+
+async def _bad_gateway(request: Request, exc: Exception) -> JSONResponse:
+    kind = getattr(getattr(exc, "kind", None), "value", "unknown")
+    return JSONResponse(status_code=502, content={"detail": str(exc), "kind": kind})
 
 
 app = create_app()

@@ -24,6 +24,38 @@
         "title": "AuthSessionRequest",
         "type": "object"
       },
+      "Body_generate_questions_api_v1_interview_sessions__session_id__questions_post": {
+        "properties": {
+          "count": {
+            "default": 5,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "model_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Ref"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_generate_questions_api_v1_interview_sessions__session_id__questions_post",
+        "type": "object"
+      },
       "ChatMessageView": {
         "properties": {
           "client_message_id": {
@@ -177,6 +209,85 @@
         "title": "ChatSessionView",
         "type": "object"
       },
+      "FlowView": {
+        "properties": {
+          "current_question_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Question No"
+          },
+          "follow_up_count": {
+            "default": 0,
+            "title": "Follow Up Count",
+            "type": "integer"
+          },
+          "max_follow_up": {
+            "default": 2,
+            "title": "Max Follow Up",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_questions": {
+            "default": 0,
+            "title": "Total Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FlowView",
+        "type": "object"
+      },
+      "GeneratedQuestionView": {
+        "properties": {
+          "focus_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Focus Points",
+            "type": "array"
+          },
+          "follow_up_index": {
+            "default": 0,
+            "title": "Follow Up Index",
+            "type": "integer"
+          },
+          "kind": {
+            "default": "main",
+            "title": "Kind",
+            "type": "string"
+          },
+          "question_no": {
+            "title": "Question No",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "topic_no": {
+            "title": "Topic No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_no",
+          "topic_no",
+          "text"
+        ],
+        "title": "GeneratedQuestionView",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -188,6 +299,81 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InterviewSessionCreateRequest": {
+        "properties": {
+          "interview_type": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interview Type"
+          }
+        },
+        "title": "InterviewSessionCreateRequest",
+        "type": "object"
+      },
+      "InterviewSessionView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interview_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interview Type"
+          },
+          "question_count": {
+            "default": 0,
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "resume_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InterviewSessionView",
         "type": "object"
       },
       "ModelView": {
@@ -248,6 +434,48 @@
           "user_id"
         ],
         "title": "Principal",
+        "type": "object"
+      },
+      "QuestionBatchView": {
+        "properties": {
+          "flow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlowView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/GeneratedQuestionView"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "session": {
+            "$ref": "#/components/schemas/InterviewSessionView"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session",
+          "questions"
+        ],
+        "title": "QuestionBatchView",
         "type": "object"
       },
       "SessionUpdateRequest": {
@@ -691,6 +919,146 @@
         "summary": "Stream Reply",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/api/v1/interview/sessions": {
+      "get": {
+        "operationId": "list_sessions_api_v1_interview_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InterviewSessionView"
+                  },
+                  "title": "Response List Sessions Api V1 Interview Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "interview"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_v1_interview_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterviewSessionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterviewSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "interview"
+        ]
+      }
+    },
+    "/api/v1/interview/sessions/{session_id}/questions": {
+      "post": {
+        "operationId": "generate_questions_api_v1_interview_sessions__session_id__questions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_generate_questions_api_v1_interview_sessions__session_id__questions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionBatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Questions",
+        "tags": [
+          "interview"
         ]
       }
     },
