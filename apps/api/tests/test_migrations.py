@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from better_resume.settings import Settings
+from better_resume.settings import Settings, get_settings
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,10 +35,16 @@ async def _can_connect(database_url: str) -> bool:
     return True
 
 
-def test_alembic_upgrade_and_check() -> None:
-    database_url = Settings(_env_file=None).database_url
+def test_alembic_upgrade_and_check(
+    ambient_br_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = ambient_br_env.get("BR_DATABASE_URL") or Settings(_env_file=None).database_url
     if not asyncio.run(_can_connect(database_url)):
         pytest.skip(f"postgres not reachable at {database_url}")
+
+    # Alembic's env.py resolves the URL through Settings, so restore the ambient value.
+    monkeypatch.setenv("BR_DATABASE_URL", database_url)
+    get_settings.cache_clear()
 
     config = alembic_config()
     command.downgrade(config, "base")

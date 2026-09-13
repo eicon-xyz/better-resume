@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (ruff + pytest + alembic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: better_resume
+          POSTGRES_PASSWORD: better_resume
+          POSTGRES_DB: better_resume
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U better_resume -d better_resume"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      BR_ENVIRONMENT: ci
+      BR_DATABASE_URL: postgresql+asyncpg://better_resume:better_resume@localhost:5432/better_resume
+      BR_REDIS_URL: redis://localhost:6379/0
+      BR_SESSION_COOKIE_SECURE: "false"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: Sync dependencies (frozen lockfile)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Check formatting
+        run: uv run ruff format --check .
+      - name: Test
+        run: uv run pytest
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - name: Check migrations are in sync with models
+        run: uv run alembic check
+
+  frontend:
+    name: frontend (eslint + tsc + vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm -C apps/web lint
+      - name: Typecheck
+        run: pnpm -C apps/web typecheck
+      - name: Test
+        run: pnpm -C apps/web test
