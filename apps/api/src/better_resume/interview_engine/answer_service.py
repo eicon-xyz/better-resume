@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -21,6 +22,13 @@ from .errors import QuestionNotCurrent, QuestionNotFound, SessionNotFound
 from .evaluation import ScoreResult, build_scoring_messages
 from .flow_fsm import FlowStatus
 from .flow_store import FlowStateStore
+from .follow_up import (
+    DEFAULT_LOW_SCORE_THRESHOLD,
+    FollowUpContext,
+    FollowUpDecision,
+    decide_follow_up_or_fallback,
+)
+from .follow_up_service import FollowUpService
 from .locks import QuestionLockRegistry
 from .models import AnswerRecord, FlowState, InterviewSession, QuestionRecord
 from .orm import InterviewQuestionRow
@@ -58,12 +66,15 @@ class AnswerService:
         *,
         resilience: AiResilience,
         locks: QuestionLockRegistry | None = None,
-        low_score_threshold: float = 60.0,
+        low_score_threshold: float = DEFAULT_LOW_SCORE_THRESHOLD,
+        decider: Callable[[FollowUpContext], FollowUpDecision] = decide_follow_up_or_fallback,
     ) -> None:
         self._session_factory = session_factory
         self._resilience = resilience
         self._locks = locks or QuestionLockRegistry()
         self._low_score_threshold = low_score_threshold
+        self._decider = decider
+        self._follow_ups = FollowUpService(resilience=resilience)
 
     async def submit(
         self,
@@ -135,14 +146,26 @@ class AnswerService:
             )
             raise
 
-        return await self._persist_result(
-            session_id=session_id,
-            user_id=user_id,
-            question_no=question_no,
-            request_id=request_id,
-            answer=answer,
-            score=score,
-        )
+        try:
+            return await self._persist_result(
+                session_id=session_id,
+                user_id=user_id,
+                question_no=question_no,
+                request_id=request_id,
+                answer=answer,
+                score=score,
+                gateway=gateway,
+            )
+        except Exception as exc:
+            # A failed follow-up (or any write error) must leave the question answerable.
+            await self._rollback_evaluation(
+                session_id=session_id,
+                question_no=question_no,
+                request_id=request_id,
+                answer=answer,
+                error=exc,
+            )
+            raise
 
     async def _load_question(
         self, db: AsyncSession, session_id: str, question_no: str
@@ -212,10 +235,54 @@ class AnswerService:
         request_id: str,
         answer: str,
         score: ScoreResult,
+        gateway: LlmGateway,
     ) -> AnswerResult:
         async with self._session_factory() as db:
             repo = InterviewSessionRepository(db)
             answers = AnswerRepository(db)
+            flow = await FlowStateStore(db).require(session_id)
+            question = await self._load_question(db, session_id, question_no)
+
+            decision = self._decider(
+                FollowUpContext(
+                    interview_completed=flow.status is FlowStatus.COMPLETED,
+                    follow_up_count=flow.follow_up_count,
+                    max_follow_up=flow.max_follow_up,
+                    ai_suggested=bool(score.follow_up_needed),
+                    score=score.score,
+                    missing_points=list(score.missing_points),
+                    low_score_threshold=self._low_score_threshold,
+                )
+            )
+            logger.info(
+                "follow_up_decided",
+                session_id=session_id,
+                question_no=question_no,
+                need=decision.need_follow_up,
+                reason=decision.reason_code.value,
+                fallback=decision.fallback,
+            )
+
+            if decision.need_follow_up:
+                follow_up = await self._follow_ups.generate_and_store(
+                    db,
+                    session_id=session_id,
+                    topic_no=question.topic_no,
+                    question_text=question.text,
+                    answer=answer,
+                    missing_points=list(score.missing_points),
+                    gateway=gateway,
+                )
+                next_question_no: str | None = follow_up.question_no
+                next_action: NextAction = "follow_up"
+                next_status = FlowStatus.FOLLOW_UP
+                follow_up_count = flow.follow_up_count + 1
+            else:
+                next_question_no = await self._next_question_no(db, session_id, question_no)
+                next_action = "next_question" if next_question_no else "finished"
+                next_status = FlowStatus.ASKING if next_question_no else FlowStatus.COMPLETED
+                follow_up_count = 0
+
             record = await answers.add(
                 session_id=session_id,
                 question_no=question_no,
@@ -224,17 +291,18 @@ class AnswerService:
                 score=score.score,
                 feedback=score.feedback,
                 missing_points=list(score.missing_points),
-                follow_up_needed=score.follow_up_needed,
+                follow_up_needed=decision.need_follow_up,
+                follow_up_reason=decision.reason_code.value,
+                rule_version=decision.rule_version,
             )
 
-            next_question_no = await self._next_question_no(db, session_id, question_no)
-            next_action: NextAction = "next_question" if next_question_no else "finished"
             flow = await FlowStateStore(db).mutate(
                 session_id,
                 lambda current: current.model_copy(
                     update={
-                        "status": FlowStatus.ASKING if next_question_no else FlowStatus.COMPLETED,
+                        "status": next_status,
                         "current_question_no": next_question_no,
+                        "follow_up_count": follow_up_count,
                         "current_index": current.current_index + 1,
                     }
                 ),

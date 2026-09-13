@@ -196,6 +196,8 @@ class AnswerView(BaseModel):
     feedback: str | None = None
     missing_points: list[str] = Field(default_factory=list)
     follow_up_needed: bool | None = None
+    follow_up_reason: str | None = None
+    rule_version: str | None = None
     error_message: str | None = None
 
 
@@ -275,6 +277,8 @@ async def submit_answer(
             feedback=result.answer.feedback,
             missing_points=list(result.answer.missing_points),
             follow_up_needed=result.answer.follow_up_needed,
+            follow_up_reason=result.answer.follow_up_reason,
+            rule_version=result.answer.rule_version,
             error_message=result.answer.error_message,
         ),
         flow=FlowView(

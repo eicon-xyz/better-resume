@@ -237,10 +237,14 @@ export interface components {
             feedback?: string | null;
             /** Follow Up Needed */
             follow_up_needed?: boolean | null;
+            /** Follow Up Reason */
+            follow_up_reason?: string | null;
             /** Missing Points */
             missing_points?: string[];
             /** Question No */
             question_no: string;
+            /** Rule Version */
+            rule_version?: string | null;
             /** Score */
             score?: number | null;
         };

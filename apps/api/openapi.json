@@ -129,6 +129,17 @@
             ],
             "title": "Follow Up Needed"
           },
+          "follow_up_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up Reason"
+          },
           "missing_points": {
             "items": {
               "type": "string"
@@ -139,6 +150,17 @@
           "question_no": {
             "title": "Question No",
             "type": "string"
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
           },
           "score": {
             "anyOf": [
