@@ -29,6 +29,7 @@ class StagePolicies:
     extraction: StagePolicy
     evaluation: StagePolicy
     followup: StagePolicy
+    tts: StagePolicy
 
     def for_stage(self, stage: Stage) -> StagePolicy:
         return {
@@ -36,6 +37,7 @@ class StagePolicies:
             Stage.EXTRACTION: self.extraction,
             Stage.EVALUATION: self.evaluation,
             Stage.FOLLOWUP: self.followup,
+            Stage.TTS: self.tts,
         }[stage]
 
     @classmethod
@@ -62,6 +64,13 @@ class StagePolicies:
             )
 
         return cls(
+            tts=build(
+                Stage.TTS,
+                timeout=resilience.tts_timeout_seconds,
+                max_concurrency=resilience.tts_max_concurrency,
+                replay_ttl=resilience.tts_replay_seconds,
+                negative_ttl=0.0,
+            ),
             chat=build(
                 Stage.CHAT,
                 timeout=resilience.chat_timeout_seconds,

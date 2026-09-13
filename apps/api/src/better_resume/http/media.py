@@ -1,17 +1,37 @@
-"""Media endpoints: the ticket-guarded transcription WebSocket (TTS lands with T4)."""
+"""Media endpoints: ticket-guarded transcription WebSocket and cached TTS."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import json
+import re
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
+from ..ai_resilience import ResilientAiResilience, Stage
+from ..identity import Principal, current_principal
 from ..identity.tickets import WsTicketStore
-from ..media import ChannelCtx, TranscriptEvent, build_transcription_channel
+from ..media import (
+    ChannelCtx,
+    EdgeTtsSynthesizer,
+    TranscriptEvent,
+    TtsCache,
+    VoiceSpec,
+    build_transcription_channel,
+)
 from ..settings import Settings
 
 logger = structlog.get_logger("better_resume.http.media")
@@ -24,6 +44,76 @@ CLOSE_CHANNEL_FAILED = 4411
 
 #: How long the server keeps trying to deliver the tail (archive/final) after stop.
 FLUSH_BUDGET_SECONDS = 1.0
+
+#: Cache digests are hex only: anything else cannot be a file we wrote (no path traversal).
+_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+
+
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1)
+    voice: str | None = Field(default=None, max_length=64)
+    rate: str | None = Field(default=None, max_length=16)
+
+
+class TtsView(BaseModel):
+    url: str
+    mime_type: str
+    cached: bool
+    digest: str
+
+
+def _synthesizer(request: Request) -> EdgeTtsSynthesizer:
+    """Built once in lifespan so tests can swap the vendor engine."""
+    return request.app.state.tts_synthesizer
+
+
+@router.post("/tts", response_model=TtsView)
+async def synthesize_speech(
+    request: Request,
+    payload: TtsRequest,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+) -> TtsView:
+    settings: Settings = request.app.state.settings
+    if len(payload.text) > settings.media.tts_max_chars:
+        raise HTTPException(
+            status_code=422,
+            detail=f"text is longer than {settings.media.tts_max_chars} characters",
+        )
+
+    synthesizer = _synthesizer(request)
+    voice = VoiceSpec(voice=payload.voice or settings.media.tts_voice, rate=payload.rate)
+    digest = synthesizer.cache_key(payload.text, voice)
+    was_cached = synthesizer.cached(payload.text, voice) is not None
+
+    # TTS is a vendor call like any other: the M3 chain gives it single flight, a breaker,
+    # a deadline and a replay window keyed on the text digest.
+    resilience: ResilientAiResilience = request.app.state.ai_resilience
+    reference = await resilience.run(
+        Stage.TTS,
+        f"tts|{digest}",
+        lambda: synthesizer.synthesize(payload.text, voice),
+    )
+    return TtsView(
+        url=reference.url or f"/api/v1/media/tts/{digest}.mp3",
+        mime_type=reference.mime_type,
+        cached=was_cached,
+        digest=digest,
+    )
+
+
+@router.get("/tts/{digest}.mp3")
+async def get_speech(request: Request, digest: str) -> Response:
+    settings: Settings = request.app.state.settings
+    if not _DIGEST.match(digest):
+        raise HTTPException(status_code=404, detail="tts audio not found")
+    audio = TtsCache(settings.media.tts_storage_dir).read(digest)
+    if audio is None:
+        raise HTTPException(status_code=404, detail="tts audio not found")
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.websocket("/transcribe")
@@ -63,8 +153,8 @@ async def transcribe(websocket: WebSocket, ticket: str | None = Query(default=No
         if watcher.done() and not watcher.cancelled():
             failure = watcher.exception()
 
-        # The client stopped talking (button released) or vanished: freeze the channel,
-        # deliver whatever it still owes the client (archive/final), then close.
+        # The client released the button (or vanished): freeze the channel first so the
+        # tail (archive/final) exists, deliver it, and only then close the socket.
         with contextlib.suppress(BaseException):
             await channel.stop()
         await _flush(websocket, events)

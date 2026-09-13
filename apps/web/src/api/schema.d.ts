@@ -232,6 +232,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/media/tts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Synthesize Speech */
+        post: operations["synthesize_speech_api_v1_media_tts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media/tts/{digest}.mp3": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Speech */
+        get: operations["get_speech_api_v1_media_tts__digest__mp3_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models": {
         parameters: {
             query?: never;
@@ -634,6 +668,26 @@ export interface components {
             content: string;
             /** Model Ref */
             model_ref?: string | null;
+        };
+        /** TtsRequest */
+        TtsRequest: {
+            /** Rate */
+            rate?: string | null;
+            /** Text */
+            text: string;
+            /** Voice */
+            voice?: string | null;
+        };
+        /** TtsView */
+        TtsView: {
+            /** Cached */
+            cached: boolean;
+            /** Digest */
+            digest: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Url */
+            url: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1158,6 +1212,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RestoreResponseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    synthesize_speech_api_v1_media_tts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TtsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TtsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_speech_api_v1_media_tts__digest__mp3_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

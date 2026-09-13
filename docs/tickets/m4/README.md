@@ -4,7 +4,7 @@
 > D11 WS 一次性 ticket / D15 一个通道两个消费方 + 一个播放器 / D16 亮点③ 句池归并 / D17 只 mock 系统边界）
 > + 分析文档 §4.4（XunfeiAudioService 921 行：AST 协议与三级文本）、§7.4（实时转写时序）、
 > §7.5（TTS 播放流）、§12.2（media 接口草图）、§12.3（AstAssembler 移植反射单测）、§12.4（M4 里程碑）。
-> 状态：**提案，等你确认后动工**。
+> 状态：**用户已确认（全选推荐项），执行中；2026-09-14 暂停一次，断点见文末「进度」**。
 
 ## 1. M4 验收（§12.4 原文）
 
@@ -78,3 +78,23 @@ T2/T10 真机验证（需凭据）───────────────�
 
 见 `OPEN-QUESTIONS.md`（5 项：讯飞凭据策略、TTS 供应商、前端采集形态、句池移植深度、消费方范围）。
 
+
+## 进度（暂停断点，2026-09-14）
+
+| 票 | 状态 | 证据 |
+| --- | --- | --- |
+| T1 句池归并 | ✅ 完成 | tests/media/test_assembler.py 22 例；含 MIN_OVERLAP 修复（PROBLEMS P2） |
+| T2 讯飞 AST adapter + 假 adapter | ✅ 完成 | tests/media/test_xunfei_ast.py 10 例（本地假 WS 服务端）；PROBLEMS P3/P4 |
+| T3 WS ticket + 转写端点 | ✅ 完成 | tests/test_ws_ticket.py 5 例 + tests/test_media_ws.py 6 例；PROBLEMS P5/P6 |
+| T4 TTS(edge-tts) + 缓存 + 端点 | 🔶 代码就位、单测绿（tests/media/test_tts.py 6 例）；**还差** HTTP 端点用例 tests/test_media_tts_api.py（401/422/404 路径穿越/503/504/缓存命中） |
+| T5 前端采集 + WS 客户端 | ⬜ 未开始 | — |
+| T6 三级文本消费 | ⬜ 未开始 | — |
+| T7 单例播放器 | ⬜ 未开始 | — |
+| T8 页面接线 | ⬜ 未开始 | — |
+| T9 假 adapter 端到端 | 🔶 后端一半已具备（WS 全流程用例即端到端：ticket→PCM→replace/archive/final）；前端一半未开始 |
+| T10 真机验证 | ⏸ 阻塞：等讯飞凭据（BR_XUNFEI_APP_ID / ACCESS_KEY_ID / ACCESS_KEY_SECRET） |
+| T11 验收 + PROBLEMS + 简历 + PR | ⬜ 未开始（M4 分支 m4/media 尚未开 PR） |
+
+**续做入口**：`git checkout m4/media` → 先跑 `cd apps/api && uv run pytest -q`（当前应为 465 例全绿，
+本地需 `BR_DATABASE_URL=...5433` + `BR_REDIS_URL=...6379`）→ 从 T4 的 HTTP 用例开始，再进 T5。
+**注意**：`uv add edge-tts` 已改 pyproject/uv.lock；`Stage.TTS` 与 `MediaSettings` 已加，OpenAPI 尚未重新导出（T4 收尾时记得跑 export_openapi.py + pnpm gen:api）。

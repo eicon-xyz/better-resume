@@ -38,7 +38,7 @@ from .interview_engine import (
     SessionNotFound,
 )
 from .llm_gateway import LlmError, ModelRegistry, build_llm_gateway
-from .media import ChannelRegistry
+from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
 from .observability import RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
@@ -53,6 +53,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_store = build_session_store(settings)
     app.state.ws_ticket_store = build_ws_ticket_store(settings)
     app.state.transcription_registry = ChannelRegistry()
+    app.state.tts_synthesizer = EdgeTtsSynthesizer(
+        cache=TtsCache(settings.media.tts_storage_dir),
+        default_voice=settings.media.tts_voice,
+    )
     app.state.model_registry = ModelRegistry(app.state.session_factory)
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     app.state.ai_resilience = ResilientAiResilience(settings)
