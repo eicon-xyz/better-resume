@@ -27,6 +27,10 @@ class IllegalFlowTransition(InterviewEngineError):
     """An answer-flow transition that the state machine forbids."""
 
 
+class QuestionNotCurrent(IllegalFlowTransition):
+    """The client answered a question that is not the one being asked (HTTP 409)."""
+
+
 class FlowStateMissing(InterviewEngineError):
     """Flow row is absent where the caller requires initialised state."""
 

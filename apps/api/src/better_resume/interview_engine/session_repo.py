@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .errors import SessionNotFound
+from .errors import IllegalSessionTransition, SessionNotFound
 from .models import InterviewSession
 from .orm import InterviewSessionRow
 from .session_fsm import ACTIVE_STATUSES, SessionStatus, ensure_transition
@@ -104,6 +104,15 @@ class InterviewSessionRepository:
         )
         await self._session.flush()
         return int(result.rowcount or 0)
+
+    async def require_status(
+        self, session_id: str, allowed: set[SessionStatus], *, message: str
+    ) -> InterviewSession:
+        """Refuse work on a session in the wrong lifecycle state (also covers terminal states)."""
+        session = await self.get(session_id)
+        if session.status not in allowed:
+            raise IllegalSessionTransition(f"{message}: session is {session.status}")
+        return session
 
     async def _fetch(self, session_id: str, *, for_update: bool = False) -> InterviewSessionRow:
         stmt = select(InterviewSessionRow).where(InterviewSessionRow.id == session_id)

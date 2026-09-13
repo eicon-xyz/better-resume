@@ -15,8 +15,10 @@ from .db import build_engine, build_session_factory
 from .http import chat_router, health_router, interview_router, models_router
 from .identity import auth_router, build_session_store
 from .interview_engine import (
+    IllegalFlowTransition,
     IllegalSessionTransition,
     InterviewEngineError,
+    QuestionLockRegistry,
     SessionNotFound,
 )
 from .llm_gateway import LlmError, ModelRegistry, build_llm_gateway
@@ -36,6 +38,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # M3 swaps this for the real single-flight/breaker implementation.
     app.state.ai_resilience = DirectAiResilience()
     app.state.llm_gateway_factory = build_llm_gateway
+    # Process-local question locks; M6 swaps them for Redis behind the same seam.
+    app.state.question_locks = QuestionLockRegistry()
     try:
         yield
     finally:
@@ -54,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(ConversationConflictError, _conflict)
     app.add_exception_handler(SessionNotFound, _not_found)
     app.add_exception_handler(IllegalSessionTransition, _conflict)
+    app.add_exception_handler(IllegalFlowTransition, _conflict)
     app.add_exception_handler(InterviewEngineError, _unprocessable)
     app.add_exception_handler(ResumeParseError, _bad_request)
     app.add_exception_handler(LlmError, _bad_gateway)

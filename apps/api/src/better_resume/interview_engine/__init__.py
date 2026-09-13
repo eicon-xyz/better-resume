@@ -1,15 +1,19 @@
 from .answer_repo import AnswerRepository
+from .answer_service import AnswerResult, AnswerService
 from .errors import (
     FlowConflict,
     FlowStateMissing,
     IllegalFlowTransition,
     IllegalSessionTransition,
     InterviewEngineError,
+    QuestionNotCurrent,
     QuestionNotFound,
     SessionNotFound,
 )
+from .evaluation import LOW_SCORE_THRESHOLD, ScoreResult
 from .flow_fsm import FLOW_TRANSITIONS, FlowStatus, ensure_flow_transition
 from .flow_store import FlowStateStore
+from .locks import QuestionLockRegistry
 from .models import (
     AnswerRecord,
     AnswerTurn,
@@ -46,6 +50,12 @@ from .storage import ResumeStorage, StoredResume
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "LOW_SCORE_THRESHOLD",
+    "AnswerResult",
+    "AnswerService",
+    "QuestionLockRegistry",
+    "QuestionNotCurrent",
+    "ScoreResult",
     "MAX_QUESTIONS",
     "FLOW_TRANSITIONS",
     "SESSION_TRANSITIONS",

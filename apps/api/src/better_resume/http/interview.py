@@ -17,14 +17,17 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from ..identity import Principal, current_principal
 from ..interview_engine import (
+    AnswerService,
     InterviewSession,
     InterviewSessionRepository,
     QuestionService,
     ResumeStorage,
 )
+from ..interview_engine.orm import InterviewQuestionRow
 from ..llm_gateway import LlmConfigError, ModelRegistry
 
 logger = structlog.get_logger("better_resume.interview_engine.http")
@@ -178,4 +181,120 @@ async def generate_questions(
     )
 
 
-__all__ = ["MAX_RESUME_BYTES", "QuestionBatchView", "InterviewSessionView", "router"]
+class AnswerSubmitRequest(BaseModel):
+    """One answer turn; `request_id` is the idempotency key (resend it when retrying)."""
+
+    question_no: str = Field(min_length=1, max_length=16)
+    answer: str = Field(min_length=1, max_length=8000)
+    request_id: str = Field(min_length=1, max_length=64)
+    model_ref: str | None = Field(default=None, max_length=64)
+
+
+class AnswerView(BaseModel):
+    question_no: str
+    score: float | None = None
+    feedback: str | None = None
+    missing_points: list[str] = Field(default_factory=list)
+    follow_up_needed: bool | None = None
+    error_message: str | None = None
+
+
+class AnswerSubmitView(BaseModel):
+    session: InterviewSessionView
+    answer: AnswerView
+    flow: FlowView
+    next_action: str
+    next_question_no: str | None = None
+    next_question: GeneratedQuestionView | None = None
+    replayed: bool = False
+
+
+async def _load_question_view(
+    request: Request, session_id: str, question_no: str | None
+) -> GeneratedQuestionView | None:
+    if question_no is None:
+        return None
+    async with request.app.state.session_factory() as db:
+        row = (
+            await db.execute(
+                select(InterviewQuestionRow).where(
+                    InterviewQuestionRow.session_id == session_id,
+                    InterviewQuestionRow.question_no == question_no,
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None:
+        return None
+    return GeneratedQuestionView(
+        question_no=row.question_no,
+        topic_no=row.topic_no,
+        follow_up_index=row.follow_up_index,
+        kind="follow_up" if row.follow_up_index else "main",
+        text=row.text,
+        focus_points=list(row.focus_points or []),
+    )
+
+
+@router.post("/sessions/{session_id}/answers", status_code=status.HTTP_201_CREATED)
+async def submit_answer(
+    session_id: str,
+    payload: AnswerSubmitRequest,
+    request: Request,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+) -> AnswerSubmitView:
+    state = request.app.state
+    registry: ModelRegistry = state.model_registry
+
+    try:
+        spec = await registry.resolve(payload.model_ref)
+        api_key = registry.api_key(spec)
+    except LlmConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    service = AnswerService(
+        state.session_factory,
+        resilience=state.ai_resilience,
+        locks=state.question_locks,
+    )
+    result = await service.submit(
+        session_id=session_id,
+        user_id=principal.user_id,
+        question_no=payload.question_no,
+        answer=payload.answer,
+        request_id=payload.request_id,
+        gateway=state.llm_gateway_factory(spec, api_key),
+    )
+
+    return AnswerSubmitView(
+        session=_session_view(result.session),
+        answer=AnswerView(
+            question_no=result.answer.question_no,
+            score=result.answer.score,
+            feedback=result.answer.feedback,
+            missing_points=list(result.answer.missing_points),
+            follow_up_needed=result.answer.follow_up_needed,
+            error_message=result.answer.error_message,
+        ),
+        flow=FlowView(
+            status=result.flow.status.value,
+            current_question_no=result.flow.current_question_no,
+            total_questions=result.flow.total_questions,
+            follow_up_count=result.flow.follow_up_count,
+            max_follow_up=result.flow.max_follow_up,
+        ),
+        next_action=result.next_action,
+        next_question_no=result.next_question_no,
+        next_question=await _load_question_view(request, session_id, result.next_question_no),
+        replayed=result.replayed,
+    )
+
+
+__all__ = [
+    "MAX_RESUME_BYTES",
+    "AnswerSubmitView",
+    "InterviewSessionView",
+    "QuestionBatchView",
+    "router",
+]

@@ -127,6 +127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interview/sessions/{session_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Answer */
+        post: operations["submit_answer_api_v1_interview_sessions__session_id__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interview/sessions/{session_id}/questions": {
         parameters: {
             query?: never;
@@ -182,6 +199,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AnswerSubmitRequest
+         * @description One answer turn; `request_id` is the idempotency key (resend it when retrying).
+         */
+        AnswerSubmitRequest: {
+            /** Answer */
+            answer: string;
+            /** Model Ref */
+            model_ref?: string | null;
+            /** Question No */
+            question_no: string;
+            /** Request Id */
+            request_id: string;
+        };
+        /** AnswerSubmitView */
+        AnswerSubmitView: {
+            answer: components["schemas"]["AnswerView"];
+            flow: components["schemas"]["FlowView"];
+            /** Next Action */
+            next_action: string;
+            next_question?: components["schemas"]["GeneratedQuestionView"] | null;
+            /** Next Question No */
+            next_question_no?: string | null;
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+            session: components["schemas"]["InterviewSessionView"];
+        };
+        /** AnswerView */
+        AnswerView: {
+            /** Error Message */
+            error_message?: string | null;
+            /** Feedback */
+            feedback?: string | null;
+            /** Follow Up Needed */
+            follow_up_needed?: boolean | null;
+            /** Missing Points */
+            missing_points?: string[];
+            /** Question No */
+            question_no: string;
+            /** Score */
+            score?: number | null;
+        };
         /**
          * AuthSessionRequest
          * @description Dev-issued session body (real credential login arrives in M2).
@@ -730,6 +792,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InterviewSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_answer_api_v1_interview_sessions__session_id__answers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerSubmitView"];
                 };
             };
             /** @description Validation Error */
