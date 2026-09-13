@@ -138,6 +138,66 @@ class ReportService:
 
     # ---- internals --------------------------------------------------------------
 
+    async def freeze(self, *, session_id: str, user_id: str) -> ReportResult:
+        """Persist the deterministic report (no narrative); the worker adds it later."""
+        async with self._session_factory() as db:
+            repo = InterviewSessionRepository(db)
+            await repo.get_for_user(session_id, user_id)
+            existing = await self._load_row(db, session_id)
+            if existing is not None:
+                session = await repo.get(session_id)
+                return ReportResult(
+                    session=session,
+                    report=_to_record(existing),
+                    llm_summary_used=bool(existing.summary),
+                )
+            payload = await self._aggregate(db, session_id)
+
+        async with self._session_factory() as db:
+            repo = InterviewSessionRepository(db)
+            session = await repo.get(session_id)
+            if session.status is not SessionStatus.FINISHED:
+                session = await repo.transition(session_id, SessionStatus.FINISHED)
+            row = InterviewReportRow(
+                session_id=session_id,
+                overall_score=payload["overall_score"],
+                dimensions={"items": payload["dimensions"]},
+                summary=None,
+                payload={**payload, "summary": None, "llm_summary_used": False},
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            db.add(row)
+            await db.commit()
+            record = _to_record(row)
+            session = await repo.get(session_id)
+        logger.info("interview_frozen", session_id=session_id, overall=record.overall_score)
+        return ReportResult(session=session, report=record, llm_summary_used=False)
+
+    async def generate_summary(
+        self, *, session_id: str, user_id: str, gateway: LlmGateway
+    ) -> tuple[str | None, bool]:
+        """Fill in the narrative of a report that is already frozen.
+
+        Idempotent: a report that already has a summary returns it untouched, so the
+        worker can retry a task without changing numbers or text.
+        """
+        async with self._session_factory() as db:
+            repo = InterviewSessionRepository(db)
+            await repo.get_for_user(session_id, user_id)
+            row = await self._load_row(db, session_id)
+            if row is None:
+                raise SessionNotFound(f"report for {session_id} is not frozen yet")
+            if row.summary:
+                return row.summary, True
+            payload = dict(row.payload or {})
+            summary, used = await self._summarise(payload, gateway)
+            if summary:
+                row.summary = summary
+                row.payload = {**payload, "summary": summary, "llm_summary_used": True}
+                await db.commit()
+            return summary, used
+
     async def _load_row(self, db: AsyncSession, session_id: str) -> InterviewReportRow | None:
         return (
             await db.execute(
