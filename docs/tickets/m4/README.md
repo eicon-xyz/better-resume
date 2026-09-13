@@ -91,9 +91,9 @@ T2/T10 真机验证（需凭据）───────────────�
 | T6 三级文本消费 | ✅ 完成 | src/audio/transcriptStore.ts（replace/archive/final + mergeTranscript 不覆盖手写文本）；面试答案框与对话输入框共用一份 store |
 | T7 单例播放器 | ✅ 完成 | src/audio/player.ts（单例/缓存/手势解锁/3s 超时/revoke）+ useTtsPlayback；5 例单测 |
 | T8 页面接线 | ✅ 完成 | 面试房间（语音输入/停止/朗读题目）、对话页语音输入、vite ws 代理；src/pages/VoiceWiring.test.tsx 8 例 |
-| T9 假 adapter 端到端 | 🔶 后端一半已具备（WS 全流程用例即端到端：ticket→PCM→replace/archive/final）；前端一半未开始 |
+| T9 假 adapter 端到端 | ✅ 完成 | 后端 tests/test_media_ws.py（ticket→PCM→replace/archive/final）+ 前端 VoiceWiring/transcriptStore；证据脚本 scripts/media_smoke.py |
 | T10 真机验证 | ⏸ 阻塞：等讯飞凭据（BR_XUNFEI_APP_ID / ACCESS_KEY_ID / ACCESS_KEY_SECRET） |
-| T11 验收 + PROBLEMS + 简历 + PR | ⬜ 未开始（M4 分支 m4/media 尚未开 PR） |
+| T11 验收 + PROBLEMS + 简历 + PR | 🔶 文档 + 本地 CI 矩阵完成；PR 见分支收尾 |
 
 **续做入口**：`git checkout m4/media` → 先跑 `cd apps/api && uv run pytest -q`（当前应为 465 例全绿，
 本地需 `BR_DATABASE_URL=...5433` + `BR_REDIS_URL=...6379`）→ 从 T4 的 HTTP 用例开始，再进 T5。
