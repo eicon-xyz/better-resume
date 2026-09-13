@@ -1,14 +1,43 @@
 name: better-resume
 
+# D07 shape: nginx is the only published entry (SPA + API edge), api can be scaled to N
+# replicas, and the worker consumes the Redis job stream. Vendor keys are never baked in;
+# they arrive from the environment or a gitignored .env.
+#
+# BR_LIBRARY_PREFIX/BR_UV_IMAGE let a restricted network pull base images from a mirror
+# (see .env.example). The defaults are the plain upstream tags.
+
+x-api-environment: &api-environment
+  BR_ENVIRONMENT: ${BR_ENVIRONMENT:-local}
+  BR_LOG_LEVEL: ${BR_LOG_LEVEL:-INFO}
+  BR_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-better_resume}:${POSTGRES_PASSWORD:-better_resume}@postgres:5432/${POSTGRES_DB:-better_resume}
+  BR_REDIS_URL: redis://redis:6379/0
+  BR_SESSION_COOKIE_SECURE: ${BR_SESSION_COOKIE_SECURE:-false}
+  BR_SSE_HEARTBEAT_SECONDS: ${BR_SSE_HEARTBEAT_SECONDS:-15}
+  # M6: several api containers share locks, hot state and the job stream through Redis.
+  BR_LOCK_BACKEND: redis
+  BR_HOT_STATE_BACKEND: redis
+  BR_JOBS_ENABLED: "1"
+  # Vendor keys come from the environment / gitignored .env — never from the repo.
+  BR_DEEPSEEK_API_KEY: ${BR_DEEPSEEK_API_KEY:-}
+  # Only the smoke profile needs this: it switches on the fake vendor model row.
+  BR_SMOKE_KEY: ${BR_SMOKE_KEY:-}
+
+x-api-build: &api-build
+  context: ./apps/api
+  # host networking keeps the local proxy reachable during \`uv sync\` (WSL2 + Docker Desktop).
+  network: host
+  args:
+    PYTHON_IMAGE: ${BR_LIBRARY_PREFIX:-}python:3.12-slim
+    UV_IMAGE: ${BR_UV_IMAGE:-ghcr.io/astral-sh/uv:latest}
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: ${BR_LIBRARY_PREFIX:-}postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-better_resume}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-better_resume}
       POSTGRES_DB: ${POSTGRES_DB:-better_resume}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,7 +48,7 @@ services:
       start_period: 5s
 
   redis:
-    image: redis:7-alpine
+    image: ${BR_LIBRARY_PREFIX:-}redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -28,24 +57,33 @@ services:
       retries: 12
       start_period: 3s
 
-  api:
-    build:
-      context: ./apps/api
-    environment:
-      BR_ENVIRONMENT: ${BR_ENVIRONMENT:-local}
-      BR_LOG_LEVEL: ${BR_LOG_LEVEL:-INFO}
-      BR_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-better_resume}:${POSTGRES_PASSWORD:-better_resume}@postgres:5432/${POSTGRES_DB:-better_resume}
-      BR_REDIS_URL: redis://redis:6379/0
-      BR_SESSION_COOKIE_SECURE: ${BR_SESSION_COOKIE_SECURE:-false}
-      # Vendor key comes from the environment / gitignored .env — never from the repo.
-      BR_DEEPSEEK_API_KEY: ${BR_DEEPSEEK_API_KEY:-}
-    ports:
-      - "${API_PORT:-8000}:8000"
+  # One-shot migration job: api/worker only start once the schema is at head. Without it a
+  # fresh volume starts against an empty database (found the hard way in the T5 smoke).
+  migrate:
+    image: better-resume-api
+    build: *api-build
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
     depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: better-resume-api
+    build: *api-build
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # No host port: nginx is the entry point, and a published port would block --scale api=2.
+    volumes:
+      # Uploaded resumes are content-addressed files: every replica must see the same ones.
+      - uploads:/app/data
     healthcheck:
       test:
         [
@@ -58,6 +96,73 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    stop_grace_period: 20s
+
+  worker:
+    image: better-resume-api
+    build: *api-build
+    command: ["python", "-m", "better_resume.worker"]
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # No port to poll: the worker refreshes a Redis heartbeat key instead.
+      test: ["CMD", "python", "-m", "better_resume.worker", "--health"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    stop_grace_period: 30s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      network: host
+      args:
+        NODE_IMAGE: ${BR_LIBRARY_PREFIX:-}node:22-alpine
+        NGINX_IMAGE: ${BR_LIBRARY_PREFIX:-}nginx:1.27-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Deterministic streaming upstream for the deploy smoke (never started by a plain
+  # `docker compose up`). The smoke inserts the matching smoke-fake model row.
+  fake-llm:
+    profiles: ["smoke"]
+    image: better-resume-api
+    build: *api-build
+    command: ["python", "scripts/fake_openai.py", "--port", "8081", "--first-delay", "2"]
+    environment:
+      BR_LOG_LEVEL: WARNING
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/v1/models', timeout=2).status == 200 else 1)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 3s
 
 volumes:
   pgdata:
+  uploads:
