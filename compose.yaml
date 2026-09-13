@@ -1,0 +1,61 @@
+name: better-resume
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-better_resume}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-better_resume}
+      POSTGRES_DB: ${POSTGRES_DB:-better_resume}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-better_resume} -d ${POSTGRES_DB:-better_resume}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 3s
+
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      BR_ENVIRONMENT: ${BR_ENVIRONMENT:-local}
+      BR_LOG_LEVEL: ${BR_LOG_LEVEL:-INFO}
+      BR_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-better_resume}:${POSTGRES_PASSWORD:-better_resume}@postgres:5432/${POSTGRES_DB:-better_resume}
+      BR_REDIS_URL: redis://redis:6379/0
+      BR_SESSION_COOKIE_SECURE: ${BR_SESSION_COOKIE_SECURE:-false}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  pgdata:

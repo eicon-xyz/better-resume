@@ -10,8 +10,9 @@ venv/
 .coverage
 htmlcov/
 
-# uv / local caches (workspace-local cache dir used on WSL sandboxed dev boxes)
+# uv / docker local caches (workspace-local dirs used on WSL sandboxed dev boxes)
 .cache/
+.docker/
 
 # Node / pnpm
 node_modules/
