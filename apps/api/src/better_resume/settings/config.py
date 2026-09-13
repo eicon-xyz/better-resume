@@ -117,6 +117,11 @@ class Settings(BaseSettings):
 
     # M4: D11 one-shot WS ticket lifetime, plus vendor credentials (env only).
     ws_ticket_ttl_seconds: int = 30
+
+    # M6: question locks and other cross-instance coordination.
+    lock_backend: Literal["memory", "redis"] = "memory"
+    lock_ttl_seconds: float = 30.0
+    lock_wait_seconds: float = 10.0
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

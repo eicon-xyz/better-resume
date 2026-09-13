@@ -36,6 +36,7 @@ from .interview_engine import (
     IllegalSessionTransition,
     InterviewEngineError,
     QuestionLockRegistry,
+    RedisQuestionLockRegistry,
     SessionNotFound,
 )
 from .llm_gateway import (
@@ -77,11 +78,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.llm_gateway_factory = build_llm_gateway
     app.state.rate_limiter = RateLimiter(settings.rate_limit)
     # Process-local question locks; M6 swaps them for Redis behind the same seam.
-    app.state.question_locks = QuestionLockRegistry()
+    app.state.question_locks = _build_question_locks(settings)
     try:
         yield
     finally:
         await app.state.ai_resilience.aclose()
+        await app.state.question_locks.aclose()
         await app.state.ws_ticket_store.aclose()
         await app.state.session_store.aclose()
         await engine.dispose()
@@ -119,6 +121,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(interview_router)
     return app
+
+
+def _build_question_locks(settings: Settings) -> object:
+    """Process-local locks by default; Redis when running multiple instances."""
+    if settings.lock_backend == "redis":
+        return RedisQuestionLockRegistry(
+            settings.redis_url,
+            ttl_seconds=settings.lock_ttl_seconds,
+            wait_seconds=settings.lock_wait_seconds,
+        )
+    return QuestionLockRegistry()
 
 
 async def _not_found(request: Request, exc: Exception) -> JSONResponse:
