@@ -109,6 +109,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interview/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_api_v1_interview_sessions_get"];
+        put?: never;
+        /** Create Session */
+        post: operations["create_session_api_v1_interview_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interview/sessions/{session_id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Questions */
+        post: operations["generate_questions_api_v1_interview_sessions__session_id__questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models": {
         parameters: {
             query?: never;
@@ -156,6 +191,18 @@ export interface components {
             roles?: string[];
             /** User Id */
             user_id: string;
+        };
+        /** Body_generate_questions_api_v1_interview_sessions__session_id__questions_post */
+        Body_generate_questions_api_v1_interview_sessions__session_id__questions_post: {
+            /**
+             * Count
+             * @default 5
+             */
+            count: number;
+            /** File */
+            file: string;
+            /** Model Ref */
+            model_ref?: string | null;
         };
         /** ChatMessageView */
         ChatMessageView: {
@@ -214,10 +261,84 @@ export interface components {
              */
             updated_at: string;
         };
+        /** FlowView */
+        FlowView: {
+            /** Current Question No */
+            current_question_no?: string | null;
+            /**
+             * Follow Up Count
+             * @default 0
+             */
+            follow_up_count: number;
+            /**
+             * Max Follow Up
+             * @default 2
+             */
+            max_follow_up: number;
+            /** Status */
+            status: string;
+            /**
+             * Total Questions
+             * @default 0
+             */
+            total_questions: number;
+        };
+        /** GeneratedQuestionView */
+        GeneratedQuestionView: {
+            /** Focus Points */
+            focus_points?: string[];
+            /**
+             * Follow Up Index
+             * @default 0
+             */
+            follow_up_index: number;
+            /**
+             * Kind
+             * @default main
+             */
+            kind: string;
+            /** Question No */
+            question_no: string;
+            /** Text */
+            text: string;
+            /** Topic No */
+            topic_no: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InterviewSessionCreateRequest */
+        InterviewSessionCreateRequest: {
+            /** Interview Type */
+            interview_type?: string | null;
+        };
+        /** InterviewSessionView */
+        InterviewSessionView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Interview Type */
+            interview_type?: string | null;
+            /**
+             * Question Count
+             * @default 0
+             */
+            question_count: number;
+            /** Resume Score */
+            resume_score?: number | null;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * ModelView
@@ -249,6 +370,20 @@ export interface components {
             roles?: string[];
             /** User Id */
             user_id: string;
+        };
+        /** QuestionBatchView */
+        QuestionBatchView: {
+            flow?: components["schemas"]["FlowView"] | null;
+            /** Questions */
+            questions: components["schemas"]["GeneratedQuestionView"][];
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+            session: components["schemas"]["InterviewSessionView"];
+            /** Suggestions */
+            suggestions?: string[];
         };
         /** SessionUpdateRequest */
         SessionUpdateRequest: {
@@ -531,6 +666,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_v1_interview_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewSessionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_v1_interview_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterviewSessionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_questions_api_v1_interview_sessions__session_id__questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_generate_questions_api_v1_interview_sessions__session_id__questions_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionBatchView"];
                 };
             };
             /** @description Validation Error */

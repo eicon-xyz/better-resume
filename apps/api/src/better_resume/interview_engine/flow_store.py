@@ -30,14 +30,20 @@ class FlowStateStore:
         self._max_retries = max(1, max_retries)
 
     async def initialize(
-        self, session_id: str, *, total_questions: int, max_follow_up: int = 2
+        self,
+        session_id: str,
+        *,
+        total_questions: int,
+        max_follow_up: int = 2,
+        status: FlowStatus = FlowStatus.INIT,
+        current_question_no: str | None = None,
     ) -> FlowState:
         now = _utcnow()
         row = InterviewFlowStateRow(
             session_id=session_id,
-            status=FlowStatus.INIT.value,
+            status=status.value,
             current_index=0,
-            current_question_no=None,
+            current_question_no=current_question_no,
             total_questions=total_questions,
             follow_up_count=0,
             max_follow_up=max(1, max_follow_up),

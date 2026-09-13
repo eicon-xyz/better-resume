@@ -7,6 +7,7 @@ single file serves both docker compose (repo root) and local `uv run` (apps/api)
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -45,6 +46,9 @@ class Settings(BaseSettings):
 
     # SSE keep-alive: comment frames every N seconds (old project used 15s).
     sse_heartbeat_seconds: float = 15.0
+
+    # Uploaded resumes live on a local volume, content-addressed by sha256 (Q2 decision).
+    resume_storage_dir: Path = Path("data/resumes")
 
     @field_validator("log_level")
     @classmethod

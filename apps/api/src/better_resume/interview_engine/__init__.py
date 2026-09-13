@@ -31,7 +31,9 @@ from .models import (
     UserId,
 )
 from .placeholder import UnimplementedInterviewEngine
+from .prompts import MAX_QUESTIONS, GeneratedQuestion, QuestionBatch
 from .protocols import InterviewEngine
+from .question_service import QuestionGenerationResult, QuestionService
 from .session_fsm import (
     ACTIVE_STATUSES,
     SESSION_TRANSITIONS,
@@ -40,9 +42,11 @@ from .session_fsm import (
     ensure_transition,
 )
 from .session_repo import InterviewSessionRepository
+from .storage import ResumeStorage, StoredResume
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "MAX_QUESTIONS",
     "FLOW_TRANSITIONS",
     "SESSION_TRANSITIONS",
     "AnswerRecord",
@@ -55,6 +59,12 @@ __all__ = [
     "FlowStateStore",
     "FlowStatus",
     "FollowUp",
+    "GeneratedQuestion",
+    "QuestionBatch",
+    "QuestionGenerationResult",
+    "QuestionService",
+    "ResumeStorage",
+    "StoredResume",
     "IllegalFlowTransition",
     "IllegalSessionTransition",
     "InterviewEngine",

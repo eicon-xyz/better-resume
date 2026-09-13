@@ -81,6 +81,16 @@ class InterviewSessionRepository:
         await self._session.flush()
         return _to_model(row)
 
+    async def update(self, session_id: str, **fields: object) -> InterviewSession:
+        row = await self._fetch(session_id)
+        for name, value in fields.items():
+            if not hasattr(row, name):
+                raise AttributeError(f"interview_sessions has no column {name!r}")
+            setattr(row, name, value)
+        row.updated_at = _utcnow()
+        await self._session.flush()
+        return _to_model(row)
+
     async def supersede_active(self, user_id: str) -> int:
         """Every other active session of this user becomes abandoned (one live interview)."""
         now = _utcnow()
