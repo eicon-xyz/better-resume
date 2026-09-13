@@ -1,16 +1,23 @@
 /** The single network seam: typed endpoints, cookie credentials, normalized errors. */
 
-import { ApiError, fromResponse, toApiError } from "./errors";
+import { ApiError, fromResponse, kindForStatus, toApiError } from "./errors";
 import { streamChat as streamChatRequest } from "./sse";
 import type { ChatStreamHandlers } from "./sse";
 import type {
+  AnswerSubmitRequest,
+  AnswerSubmitView,
   AuthSessionRequest,
   ChatMessageView,
   ChatSessionCreateRequest,
   ChatSessionView,
   ChatStreamRequest,
+  InterviewReportView,
+  InterviewSessionCreateRequest,
+  InterviewSessionView,
   ModelView,
   Principal,
+  QuestionBatchView,
+  RestoreResponseView,
 } from "./types";
 
 export interface ApiClientOptions {
@@ -52,6 +59,24 @@ export interface ApiClient {
     options?: { signal?: AbortSignal },
   ): Promise<void>;
 
+  createInterviewSession(
+    body?: InterviewSessionCreateRequest,
+  ): Promise<InterviewSessionView>;
+  listInterviewSessions(options?: CallOptions): Promise<InterviewSessionView[]>;
+  uploadResumeAndGenerateQuestions(
+    sessionId: string,
+    file: File,
+    options?: UploadOptions,
+  ): Promise<QuestionBatchView>;
+  submitInterviewAnswer(
+    sessionId: string,
+    body: AnswerSubmitRequest,
+    options?: CallOptions,
+  ): Promise<AnswerSubmitView>;
+  restoreInterview(sessionId: string, options?: CallOptions): Promise<RestoreResponseView>;
+  finishInterview(sessionId: string, options?: CallOptions): Promise<InterviewReportView>;
+  getInterviewReport(sessionId: string, options?: CallOptions): Promise<InterviewReportView>;
+
   listModels(options?: CallOptions): Promise<ModelView[]>;
   devLogin(body: AuthSessionRequest): Promise<Principal>;
   currentPrincipal(options?: CallOptions): Promise<Principal>;
@@ -59,6 +84,7 @@ export interface ApiClient {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 function buildUrl(baseUrl: string, path: string, query?: RequestOptions["query"]): string {
   const url = `${baseUrl}${path}`;
@@ -130,6 +156,43 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         signal: streamOptions.signal,
       }),
 
+    createInterviewSession: (body: InterviewSessionCreateRequest = {}) =>
+      request<InterviewSessionView>("/api/v1/interview/sessions", { method: "POST", body }),
+
+    listInterviewSessions: (options = {}) =>
+      request<InterviewSessionView[]>("/api/v1/interview/sessions", { signal: options.signal }),
+
+    uploadResumeAndGenerateQuestions: (sessionId, file, uploadOptions = {}) =>
+      uploadResume(
+        `${baseUrl}/api/v1/interview/sessions/${sessionId}/questions`,
+        file,
+        uploadOptions,
+        uploadOptions.xhrFactory,
+      ),
+
+    submitInterviewAnswer: (sessionId, body, options = {}) =>
+      request<AnswerSubmitView>(`/api/v1/interview/sessions/${sessionId}/answers`, {
+        method: "POST",
+        body,
+        signal: options.signal,
+      }),
+
+    restoreInterview: (sessionId, options = {}) =>
+      request<RestoreResponseView>(`/api/v1/interview/sessions/${sessionId}/restore`, {
+        signal: options.signal,
+      }),
+
+    finishInterview: (sessionId, options = {}) =>
+      request<InterviewReportView>(`/api/v1/interview/sessions/${sessionId}/finish`, {
+        method: "POST",
+        signal: options.signal,
+      }),
+
+    getInterviewReport: (sessionId, options = {}) =>
+      request<InterviewReportView>(`/api/v1/interview/sessions/${sessionId}/report`, {
+        signal: options.signal,
+      }),
+
     listModels: (options = {}) =>
       request<ModelView[]>("/api/v1/models", { signal: options.signal }),
 
@@ -146,4 +209,76 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 function combineSignals(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+export interface UploadOptions {
+  signal?: AbortSignal;
+  /** 0..1, only fires while the browser reports a computable length. */
+  onProgress?: (ratio: number) => void;
+  /** Injectable for tests; defaults to XMLHttpRequest (fetch cannot report upload progress). */
+  xhrFactory?: () => XMLHttpRequest;
+}
+
+/** Multipart upload with real progress; errors go through the same ApiError mapping. */
+export function uploadResume(
+  url: string,
+  file: File,
+  options: UploadOptions = {},
+  xhrFactory: (() => XMLHttpRequest) | undefined = undefined,
+): Promise<QuestionBatchView> {
+  return new Promise((resolve, reject) => {
+    const xhr = (xhrFactory ?? (() => new XMLHttpRequest()))();
+    const form = new FormData();
+    form.append("file", file);
+
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.responseType = "text";
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        options.onProgress?.(event.loaded / event.total);
+      }
+    };
+    xhr.onload = () => {
+      const body = xhr.responseText || "";
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(body) as QuestionBatchView);
+        } catch {
+          reject(new ApiError("响应不是合法 JSON", { kind: "unknown", status: xhr.status }));
+        }
+        return;
+      }
+      let detail: unknown = body;
+      try {
+        detail = JSON.parse(body) as unknown;
+      } catch {
+        /* keep the raw text */
+      }
+      reject(
+        new ApiError(
+          typeof detail === "object" && detail !== null && "detail" in detail
+            ? String(detail.detail)
+            : `${xhr.status} 上传失败`,
+          { kind: kindForStatus(xhr.status), status: xhr.status, detail },
+        ),
+      );
+    };
+    xhr.onerror = () => {
+      reject(new ApiError("上传失败：网络错误", { kind: "network" }));
+    };
+    xhr.ontimeout = () => {
+      reject(new ApiError("上传超时", { kind: "timeout" }));
+    };
+    xhr.onabort = () => {
+      reject(new ApiError("上传已取消", { kind: "aborted" }));
+    };
+    options.signal?.addEventListener("abort", () => {
+      xhr.abort();
+    });
+
+    xhr.send(form);
+  });
 }
