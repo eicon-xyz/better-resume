@@ -5,6 +5,7 @@ from .media import router as media_router
 from .models import router as models_router
 from .ratelimit import RateLimitMiddleware
 from .resilience import router as resilience_router
+from .scenes import router as scenes_router
 
 __all__ = [
     "RateLimitMiddleware",
@@ -14,4 +15,5 @@ __all__ = [
     "media_router",
     "models_router",
     "resilience_router",
+    "scenes_router",
 ]

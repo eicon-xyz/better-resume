@@ -875,6 +875,68 @@
         "title": "RestoreResponseView",
         "type": "object"
       },
+      "SceneUpdateRequest": {
+        "properties": {
+          "adapter": {
+            "enum": [
+              "openai_compat",
+              "xingyun"
+            ],
+            "title": "Adapter",
+            "type": "string"
+          },
+          "target_ref": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adapter",
+          "target_ref"
+        ],
+        "title": "SceneUpdateRequest",
+        "type": "object"
+      },
+      "SceneViewResponse": {
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scene": {
+            "title": "Scene",
+            "type": "string"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scene",
+          "label",
+          "adapter",
+          "target_ref",
+          "configured",
+          "is_default"
+        ],
+        "title": "SceneViewResponse",
+        "type": "object"
+      },
       "SessionUpdateRequest": {
         "properties": {
           "title": {
@@ -1887,6 +1949,83 @@
         "summary": "Resilience Stats",
         "tags": [
           "resilience"
+        ]
+      }
+    },
+    "/api/v1/scenes": {
+      "get": {
+        "operationId": "list_scenes_api_v1_scenes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SceneViewResponse"
+                  },
+                  "title": "Response List Scenes Api V1 Scenes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Scenes",
+        "tags": [
+          "scenes"
+        ]
+      }
+    },
+    "/api/v1/scenes/{scene}": {
+      "put": {
+        "operationId": "update_scene_api_v1_scenes__scene__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scene",
+            "required": true,
+            "schema": {
+              "title": "Scene",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SceneViewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Scene",
+        "tags": [
+          "scenes"
         ]
       }
     },
