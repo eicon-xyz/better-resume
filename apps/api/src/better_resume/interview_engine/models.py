@@ -165,8 +165,10 @@ class AnswerRecord(BaseModel):
 class ReportRecord(BaseModel):
     session_id: str
     overall_score: float | None = None
-    dimensions: dict[str, Any] = Field(default_factory=dict)
+    dimensions: list[dict[str, Any]] = Field(default_factory=list)
     summary: str | None = None
+    turns: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime

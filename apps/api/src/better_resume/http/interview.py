@@ -25,6 +25,9 @@ from ..interview_engine import (
     InterviewSession,
     InterviewSessionRepository,
     QuestionService,
+    ReportRecord,
+    ReportService,
+    RestoreService,
     ResumeStorage,
 )
 from ..interview_engine.orm import InterviewQuestionRow
@@ -300,5 +303,162 @@ __all__ = [
     "AnswerSubmitView",
     "InterviewSessionView",
     "QuestionBatchView",
+    "router",
+]
+
+
+class DimensionView(BaseModel):
+    key: str
+    label: str
+    score: float
+
+
+class ReportTurnView(BaseModel):
+    question_no: str
+    topic_no: int
+    follow_up_index: int = 0
+    kind: str = "main"
+    question: str
+    answer: str | None = None
+    score: float | None = None
+    feedback: str | None = None
+    missing_points: list[str] = Field(default_factory=list)
+    follow_up_reason: str | None = None
+
+
+class InterviewReportView(BaseModel):
+    session: InterviewSessionView
+    overall_score: float | None = None
+    dimensions: list[DimensionView] = Field(default_factory=list)
+    turns: list[ReportTurnView] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    summary: str | None = None
+    llm_summary_used: bool = False
+
+
+class RestoreResponseView(BaseModel):
+    session: InterviewSessionView
+    flow: FlowView
+    current_question: GeneratedQuestionView | None = None
+    answered: int = 0
+    total_questions: int = 0
+    last_answer: AnswerView | None = None
+    derived: bool = False
+
+
+def _report_view(
+    session: InterviewSession, report: ReportRecord, *, llm_summary_used: bool
+) -> InterviewReportView:
+    return InterviewReportView(
+        session=_session_view(session),
+        overall_score=report.overall_score,
+        dimensions=[DimensionView(**item) for item in report.dimensions],
+        turns=[ReportTurnView(**turn) for turn in report.turns],
+        suggestions=list(report.suggestions),
+        summary=report.summary,
+        llm_summary_used=llm_summary_used,
+    )
+
+
+@router.get("/sessions/{session_id}/restore")
+async def restore_session(
+    session_id: str,
+    request: Request,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+) -> RestoreResponseView:
+    state = request.app.state
+    view = await RestoreService(state.session_factory).restore(
+        session_id=session_id, user_id=principal.user_id
+    )
+    current = (
+        GeneratedQuestionView(
+            question_no=view.current_question.question_no,
+            topic_no=view.current_question.topic_no,
+            follow_up_index=view.current_question.follow_up_index,
+            kind=view.current_question.kind,
+            text=view.current_question.text,
+            focus_points=list(view.current_question.focus_points),
+        )
+        if view.current_question is not None
+        else None
+    )
+    last = view.last_result
+    return RestoreResponseView(
+        session=_session_view(view.session),
+        flow=FlowView(
+            status=view.flow_status.value,
+            current_question_no=view.current_question_no,
+            total_questions=view.total_questions,
+        ),
+        current_question=current,
+        answered=view.answered,
+        total_questions=view.total_questions,
+        last_answer=(
+            AnswerView(
+                question_no=last.question_no,
+                score=last.score,
+                feedback=last.feedback,
+                missing_points=list(last.missing_points),
+                follow_up_needed=last.follow_up_needed,
+                follow_up_reason=last.follow_up_reason,
+                rule_version=last.rule_version,
+                error_message=last.error_message,
+            )
+            if last is not None
+            else None
+        ),
+        derived=view.derived,
+    )
+
+
+async def _resolve_gateway(request: Request, model_ref: str | None):
+    state = request.app.state
+    registry: ModelRegistry = state.model_registry
+    try:
+        spec = await registry.resolve(model_ref)
+        api_key = registry.api_key(spec)
+    except LlmConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    return state.llm_gateway_factory(spec, api_key)
+
+
+@router.post("/sessions/{session_id}/finish", status_code=status.HTTP_201_CREATED)
+async def finish_interview(
+    session_id: str,
+    request: Request,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+    model_ref: str | None = Query(default=None),
+) -> InterviewReportView:
+    state = request.app.state
+    gateway = await _resolve_gateway(request, model_ref)
+    result = await ReportService(state.session_factory, resilience=state.ai_resilience).finish(
+        session_id=session_id, user_id=principal.user_id, gateway=gateway
+    )
+    return _report_view(result.session, result.report, llm_summary_used=result.llm_summary_used)
+
+
+@router.get("/sessions/{session_id}/report")
+async def get_report(
+    session_id: str,
+    request: Request,
+    principal: Principal = Depends(current_principal),  # noqa: B008
+) -> InterviewReportView:
+    state = request.app.state
+    service = ReportService(state.session_factory, resilience=state.ai_resilience)
+    report = await service.get_report(session_id=session_id, user_id=principal.user_id)
+    async with state.session_factory() as db:
+        session = await InterviewSessionRepository(db).get_for_user(session_id, principal.user_id)
+    return _report_view(session, report, llm_summary_used=bool(report.summary))
+
+
+__all__ = [
+    "MAX_RESUME_BYTES",
+    "AnswerSubmitView",
+    "InterviewReportView",
+    "InterviewSessionView",
+    "QuestionBatchView",
+    "RestoreResponseView",
     "router",
 ]

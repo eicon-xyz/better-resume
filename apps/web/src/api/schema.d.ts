@@ -144,6 +144,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interview/sessions/{session_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish Interview */
+        post: operations["finish_interview_api_v1_interview_sessions__session_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interview/sessions/{session_id}/questions": {
         parameters: {
             query?: never;
@@ -155,6 +172,40 @@ export interface paths {
         put?: never;
         /** Generate Questions */
         post: operations["generate_questions_api_v1_interview_sessions__session_id__questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interview/sessions/{session_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_api_v1_interview_sessions__session_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interview/sessions/{session_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Restore Session */
+        get: operations["restore_session_api_v1_interview_sessions__session_id__restore_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -327,6 +378,15 @@ export interface components {
              */
             updated_at: string;
         };
+        /** DimensionView */
+        DimensionView: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Score */
+            score: number;
+        };
         /** FlowView */
         FlowView: {
             /** Current Question No */
@@ -374,6 +434,25 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InterviewReportView */
+        InterviewReportView: {
+            /** Dimensions */
+            dimensions?: components["schemas"]["DimensionView"][];
+            /**
+             * Llm Summary Used
+             * @default false
+             */
+            llm_summary_used: boolean;
+            /** Overall Score */
+            overall_score?: number | null;
+            session: components["schemas"]["InterviewSessionView"];
+            /** Suggestions */
+            suggestions?: string[];
+            /** Summary */
+            summary?: string | null;
+            /** Turns */
+            turns?: components["schemas"]["ReportTurnView"][];
         };
         /** InterviewSessionCreateRequest */
         InterviewSessionCreateRequest: {
@@ -450,6 +529,57 @@ export interface components {
             session: components["schemas"]["InterviewSessionView"];
             /** Suggestions */
             suggestions?: string[];
+        };
+        /** ReportTurnView */
+        ReportTurnView: {
+            /** Answer */
+            answer?: string | null;
+            /** Feedback */
+            feedback?: string | null;
+            /**
+             * Follow Up Index
+             * @default 0
+             */
+            follow_up_index: number;
+            /** Follow Up Reason */
+            follow_up_reason?: string | null;
+            /**
+             * Kind
+             * @default main
+             */
+            kind: string;
+            /** Missing Points */
+            missing_points?: string[];
+            /** Question */
+            question: string;
+            /** Question No */
+            question_no: string;
+            /** Score */
+            score?: number | null;
+            /** Topic No */
+            topic_no: number;
+        };
+        /** RestoreResponseView */
+        RestoreResponseView: {
+            /**
+             * Answered
+             * @default 0
+             */
+            answered: number;
+            current_question?: components["schemas"]["GeneratedQuestionView"] | null;
+            /**
+             * Derived
+             * @default false
+             */
+            derived: boolean;
+            flow: components["schemas"]["FlowView"];
+            last_answer?: components["schemas"]["AnswerView"] | null;
+            session: components["schemas"]["InterviewSessionView"];
+            /**
+             * Total Questions
+             * @default 0
+             */
+            total_questions: number;
         };
         /** SessionUpdateRequest */
         SessionUpdateRequest: {
@@ -844,6 +974,39 @@ export interface operations {
             };
         };
     };
+    finish_interview_api_v1_interview_sessions__session_id__finish_post: {
+        parameters: {
+            query?: {
+                model_ref?: string | null;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_questions_api_v1_interview_sessions__session_id__questions_post: {
         parameters: {
             query?: never;
@@ -866,6 +1029,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuestionBatchView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_v1_interview_sessions__session_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_session_api_v1_interview_sessions__session_id__restore_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreResponseView"];
                 };
             };
             /** @description Validation Error */
