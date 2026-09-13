@@ -1,0 +1,35 @@
+.figure {
+  margin: 0;
+}
+
+.svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.ring {
+  fill: none;
+  stroke: var(--br-color-border);
+  stroke-width: 0.5;
+}
+
+.axis {
+  stroke: var(--br-color-border);
+  stroke-width: 0.5;
+}
+
+.area {
+  fill: color-mix(in srgb, var(--br-color-accent) 22%, transparent);
+  stroke: var(--br-color-accent);
+  stroke-width: 1.5;
+}
+
+.dot {
+  fill: var(--br-color-accent);
+}
+
+.label {
+  fill: var(--br-color-text-muted);
+  font-size: 9px;
+}
