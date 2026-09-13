@@ -9,8 +9,9 @@ from fastapi import FastAPI
 
 from . import __version__
 from .db import build_engine, build_session_factory
-from .http import health_router
+from .http import health_router, models_router
 from .identity import auth_router, build_session_store
+from .llm_gateway import ModelRegistry
 from .observability import RequestIdMiddleware, configure_logging
 from .settings import Settings, get_settings
 
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db_engine = engine
     app.state.session_factory = build_session_factory(engine)
     app.state.session_store = build_session_store(settings)
+    app.state.model_registry = ModelRegistry(app.state.session_factory)
     try:
         yield
     finally:
@@ -38,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware, header_name=resolved.request_id_header)
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(models_router)
     return app
 
 

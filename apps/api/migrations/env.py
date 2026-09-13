@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from better_resume.conversation import orm as conversation_orm  # noqa: F401  (register tables)
 from better_resume.db import Base
+from better_resume.llm_gateway import orm as llm_gateway_orm  # noqa: F401  (register tables)
 from better_resume.settings import get_settings
 
 config = context.config

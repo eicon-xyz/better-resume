@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import inspect
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
@@ -25,9 +26,18 @@ from better_resume.llm_gateway import (
     ContentDelta,
     Done,
     LlmGateway,
+    ModelSpec,
+    OpenAICompatAdapter,
     ReasoningDelta,
-    UnimplementedLlmGateway,
     VendorMeta,
+)
+
+GATEWAY_SPEC = ModelSpec(
+    name="deepseek-flash",
+    provider="deepseek",
+    base_url="https://api.deepseek.com",
+    model_id="deepseek-flash",
+    api_key_env="BR_DEEPSEEK_API_KEY",
 )
 
 MODULES = ("conversation", "llm_gateway", "ai_resilience")
@@ -56,7 +66,15 @@ def test_conversation_store_shape() -> None:
 
 
 def test_llm_gateway_shape() -> None:
-    assert isinstance(UnimplementedLlmGateway(), LlmGateway)
+    # T2 replaced the placeholder with the OpenAI-compatible adapter.
+    adapter = OpenAICompatAdapter(
+        GATEWAY_SPEC,
+        api_key="test",
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200))
+        ),
+    )
+    assert isinstance(adapter, LlmGateway)
     assert params_of(LlmGateway.complete) == ["self", "req"]
     assert params_of(LlmGateway.stream) == ["self", "req"]
     assert inspect.iscoroutinefunction(LlmGateway.complete)
@@ -83,14 +101,6 @@ def test_stream_event_union_members() -> None:
         "VendorMeta",
     ]
     assert ChatResult(content="x", model="m").usage is None
-
-
-async def test_llm_gateway_placeholder_fails_loudly() -> None:
-    gateway = UnimplementedLlmGateway()
-    with pytest.raises(NotImplementedError):
-        await gateway.complete(ChatRequest(messages=[]))
-    with pytest.raises(NotImplementedError):
-        gateway.stream(ChatRequest(messages=[]))
 
 
 def test_ai_resilience_shape() -> None:
