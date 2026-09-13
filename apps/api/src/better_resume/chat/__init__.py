@@ -1,9 +1,9 @@
 from .models import (
     ChatErrorEvent,
     ChatMessageView,
+    ChatSessionCreateRequest,
     ChatSessionView,
     ChatStreamEvent,
-    SessionCreateRequest,
     SessionUpdateRequest,
     StreamRequest,
 )
@@ -13,9 +13,9 @@ __all__ = [
     "ChatErrorEvent",
     "ChatMessageView",
     "ChatService",
+    "ChatSessionCreateRequest",
     "ChatSessionView",
     "ChatStreamEvent",
-    "SessionCreateRequest",
     "SessionUpdateRequest",
     "StreamRequest",
     "build_resilience_key",

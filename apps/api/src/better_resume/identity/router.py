@@ -18,14 +18,16 @@ from .store import SessionStore
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-class SessionCreateRequest(BaseModel):
+class AuthSessionRequest(BaseModel):
+    """Dev-issued session body (real credential login arrives in M2)."""
+
     user_id: str = Field(min_length=1, max_length=128)
     roles: list[str] = Field(default_factory=list)
 
 
 @router.post("/session")
 async def create_session(
-    payload: SessionCreateRequest,
+    payload: AuthSessionRequest,
     response: Response,
     settings: Settings = Depends(get_app_settings),  # noqa: B008
     store: SessionStore = Depends(get_session_store),  # noqa: B008

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from ..llm_gateway import ContentDelta, Done, ReasoningDelta, VendorMeta
 
 
-class SessionCreateRequest(BaseModel):
+class ChatSessionCreateRequest(BaseModel):
     title: str = Field(default="", max_length=200)
     model_ref: str | None = Field(default=None, max_length=64)
 

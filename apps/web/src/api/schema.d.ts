@@ -147,6 +147,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AuthSessionRequest
+         * @description Dev-issued session body (real credential login arrives in M2).
+         */
+        AuthSessionRequest: {
+            /** Roles */
+            roles?: string[];
+            /** User Id */
+            user_id: string;
+        };
         /** ChatMessageView */
         ChatMessageView: {
             /** Content */
@@ -168,6 +178,16 @@ export interface components {
             seq: number;
             /** Token Count */
             token_count?: number | null;
+        };
+        /** ChatSessionCreateRequest */
+        ChatSessionCreateRequest: {
+            /** Model Ref */
+            model_ref?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
         };
         /** ChatSessionView */
         ChatSessionView: {
@@ -258,23 +278,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** SessionCreateRequest */
-        better_resume__chat__models__SessionCreateRequest: {
-            /** Model Ref */
-            model_ref?: string | null;
-            /**
-             * Title
-             * @default
-             */
-            title: string;
-        };
-        /** SessionCreateRequest */
-        better_resume__identity__router__SessionCreateRequest: {
-            /** Roles */
-            roles?: string[];
-            /** User Id */
-            user_id: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -313,7 +316,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["better_resume__identity__router__SessionCreateRequest"];
+                "application/json": components["schemas"]["AuthSessionRequest"];
             };
         };
         responses: {
@@ -384,7 +387,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["better_resume__chat__models__SessionCreateRequest"];
+                "application/json": components["schemas"]["ChatSessionCreateRequest"];
             };
         };
         responses: {

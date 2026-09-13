@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AuthSessionRequest": {
+        "description": "Dev-issued session body (real credential login arrives in M2).",
+        "properties": {
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "AuthSessionRequest",
+        "type": "object"
+      },
       "ChatMessageView": {
         "properties": {
           "content": {
@@ -66,6 +89,30 @@
           "created_at"
         ],
         "title": "ChatMessageView",
+        "type": "object"
+      },
+      "ChatSessionCreateRequest": {
+        "properties": {
+          "model_ref": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Ref"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "ChatSessionCreateRequest",
         "type": "object"
       },
       "ChatSessionView": {
@@ -286,52 +333,6 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "better_resume__chat__models__SessionCreateRequest": {
-        "properties": {
-          "model_ref": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Ref"
-          },
-          "title": {
-            "default": "",
-            "maxLength": 200,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "title": "SessionCreateRequest",
-        "type": "object"
-      },
-      "better_resume__identity__router__SessionCreateRequest": {
-        "properties": {
-          "roles": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Roles",
-            "type": "array"
-          },
-          "user_id": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "user_id"
-        ],
-        "title": "SessionCreateRequest",
-        "type": "object"
       }
     }
   },
@@ -381,7 +382,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/better_resume__identity__router__SessionCreateRequest"
+                "$ref": "#/components/schemas/AuthSessionRequest"
               }
             }
           },
@@ -445,7 +446,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/better_resume__chat__models__SessionCreateRequest"
+                "$ref": "#/components/schemas/ChatSessionCreateRequest"
               }
             }
           },

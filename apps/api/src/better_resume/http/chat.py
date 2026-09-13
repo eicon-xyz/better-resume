@@ -15,8 +15,8 @@ from ..chat import (
     ChatErrorEvent,
     ChatMessageView,
     ChatService,
+    ChatSessionCreateRequest,
     ChatSessionView,
-    SessionCreateRequest,
     SessionUpdateRequest,
     StreamRequest,
 )
@@ -73,7 +73,7 @@ def _message_view(message: StoredMessage) -> ChatMessageView:
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def create_session(
-    payload: SessionCreateRequest,
+    payload: ChatSessionCreateRequest,
     request: Request,
     principal: Principal = Depends(current_principal),  # noqa: B008
 ) -> ChatSessionView:
