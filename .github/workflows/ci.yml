@@ -46,7 +46,8 @@ jobs:
       BR_SESSION_COOKIE_SECURE: "false"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv 不发布移动 major 标签，需钉精确版本
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - name: Sync dependencies (frozen lockfile)
