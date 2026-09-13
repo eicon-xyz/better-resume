@@ -1,3 +1,4 @@
+from .breaker import BreakerPolicy, BreakerRegistry, BreakerState, CircuitBreaker
 from .clock import Clock, ManualClock, SystemClock
 from .errors import (
     AiInvalid,
@@ -25,6 +26,10 @@ __all__ = [
     "AiResilienceError",
     "AiTimeout",
     "AiUnavailable",
+    "BreakerPolicy",
+    "BreakerRegistry",
+    "BreakerState",
+    "CircuitBreaker",
     "Clock",
     "DirectAiResilience",
     "FailureKind",
