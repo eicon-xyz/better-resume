@@ -25,7 +25,9 @@ def test_defaults_follow_the_architecture_table() -> None:
     assert chat.timeout == 180.0
     assert chat.max_concurrency == 16
     assert chat.replay_ttl == 0.0
+    assert chat.is_stream is True
     assert chat.allow_stream_replay is False
+    assert extraction.is_stream is False
 
 
 def test_replay_ttls_are_per_stage() -> None:

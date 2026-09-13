@@ -19,6 +19,7 @@ class StagePolicy:
     queue_wait: float
     replay_ttl: float
     negative_ttl: float
+    is_stream: bool = False
     allow_stream_replay: bool = False
 
 
@@ -48,6 +49,7 @@ class StagePolicies:
             max_concurrency: int,
             replay_ttl: float,
             negative_ttl: float,
+            is_stream: bool = False,
         ) -> StagePolicy:
             return StagePolicy(
                 stage=stage,
@@ -56,6 +58,7 @@ class StagePolicies:
                 queue_wait=resilience.queue_wait_seconds,
                 replay_ttl=replay_ttl,
                 negative_ttl=negative_ttl,
+                is_stream=is_stream,
             )
 
         return cls(
@@ -67,6 +70,7 @@ class StagePolicies:
                 # Chat is a conversation: a retry must reach the vendor again, so no
                 # negative cache either (M1 semantics: the user sees the failure and retries).
                 negative_ttl=0.0,
+                is_stream=True,
             ),
             extraction=build(
                 Stage.EXTRACTION,

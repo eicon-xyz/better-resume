@@ -12,6 +12,7 @@
 | P1 | T2 实现 | 单飞失败分支漏 settle → follower 永久挂死（测试被 timeout 杀掉） | 已修 |
 | P2 | T2 实现 | 负缓存只对"有等待者的失败"生效，与提案语义不符；future 异常无人取会告警 | 已修 |
 | P3 | T1 运行 | M2 遗留：storage.py docstring 的 \` 触发 SyntaxWarning（干净环境才复现） | 待修（T8） |
+| P4 | T3 实现 | 背压断言差一帧（生成器先 append 后 yield，生产者在途多一帧） | 已修（改断言） |
 
 ---
 
@@ -54,3 +55,11 @@
 - **根因**：非 raw 字符串里的 `\`` 不是合法转义。
 - **修法**：改 raw docstring（`r"""...`）或去掉反斜杠（T8 顺手修，改动一行）。
 - **证据**：`uv run python -W error::SyntaxWarning -c "import better_resume.interview_engine.storage"`（T8 复验）。
+## P4 — 背压测试断言差一帧（测试假设 vs 实现语义）
+
+- **症状**：`test_backpressure_stops_the_producer_at_the_buffer_limit` 断言 `len(produced) <= 3` 失败（实为 4）。
+- **根因**：异步生成器"先执行循环体（`produced.append`）再在 `yield` 处挂起"，
+  所以生产者在缓冲已满时会**手里多拿一帧**才阻塞；缓冲帧数仍然是 3（不变式正确）。
+- **修法**：断言拆成两条——`broadcast.frame_count <= limit`（真不变式）与
+  `len(produced) <= limit + 1`（在途一帧）；不修改实现。
+- **证据**：`tests/ai_resilience/test_stream_fanout.py` 34 例全绿。

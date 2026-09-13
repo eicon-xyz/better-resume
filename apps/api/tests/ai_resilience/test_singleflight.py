@@ -55,12 +55,17 @@ async def test_different_keys_do_not_share_a_flight(flight: SingleFlight) -> Non
         calls.append(key)
         return key
 
-    first, second = await asyncio.gather(flight.execute("a", lambda: fn("a")), flight.execute("b", lambda: fn("b")))
+    first, second = await asyncio.gather(
+        flight.execute("a", lambda: fn("a")),
+        flight.execute("b", lambda: fn("b")),
+    )
     assert (first, second) == ("a", "b")
     assert sorted(calls) == ["a", "b"]
 
 
-async def test_completed_result_replays_within_ttl(clock: ManualClock, flight: SingleFlight) -> None:
+async def test_completed_result_replays_within_ttl(
+    clock: ManualClock, flight: SingleFlight
+) -> None:
     calls = 0
 
     async def fn() -> int:
@@ -101,7 +106,9 @@ async def test_zero_ttl_never_replays(flight: SingleFlight) -> None:
     assert calls == 2
 
 
-async def test_cacheable_failure_is_replayed_then_retried(clock: ManualClock, flight: SingleFlight) -> None:
+async def test_cacheable_failure_is_replayed_then_retried(
+    clock: ManualClock, flight: SingleFlight
+) -> None:
     calls = 0
     error = AiInvalid("schema mismatch", stage=Stage.EXTRACTION)
 
