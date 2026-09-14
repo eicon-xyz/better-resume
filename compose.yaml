@@ -27,6 +27,9 @@ x-api-environment: &api-environment
   BR_MEDIA__TRANSCRIPTION_ADAPTER: ${BR_MEDIA__TRANSCRIPTION_ADAPTER:-scripted}
   BR_MEDIA__ASR_URL: ${BR_MEDIA__ASR_URL:-}
   BR_MEDIA__ASR_MODEL: ${BR_MEDIA__ASR_MODEL:-qwen-audio-3.0-asr-flash}
+  # P1-A realtime recognition: same workspace host as ASR_URL (empty = derive wss:// from it).
+  BR_MEDIA__ASR_WS_URL: ${BR_MEDIA__ASR_WS_URL:-}
+  BR_MEDIA__ASR_REALTIME_MODEL: ${BR_MEDIA__ASR_REALTIME_MODEL:-paraformer-realtime-v2}
   # Only the smoke profile needs this: it switches on the fake vendor model row.
   BR_SMOKE_KEY: ${BR_SMOKE_KEY:-}
 
