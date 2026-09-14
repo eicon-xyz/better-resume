@@ -23,6 +23,10 @@ x-api-environment: &api-environment
   # Second real platform (Aliyun Bailian / DashScope): qwen and deepseek models behind an
   # OpenAI-compatible endpoint. Empty by default; set it in .env to bind scenes to it.
   BR_DASHSCOPE_API_KEY: ${BR_DASHSCOPE_API_KEY:-}
+  # V3 speech: which adapter, and the account-specific MaaS endpoint for it.
+  BR_MEDIA__TRANSCRIPTION_ADAPTER: ${BR_MEDIA__TRANSCRIPTION_ADAPTER:-scripted}
+  BR_MEDIA__ASR_URL: ${BR_MEDIA__ASR_URL:-}
+  BR_MEDIA__ASR_MODEL: ${BR_MEDIA__ASR_MODEL:-qwen-audio-3.0-asr-flash}
   # Only the smoke profile needs this: it switches on the fake vendor model row.
   BR_SMOKE_KEY: ${BR_SMOKE_KEY:-}
 

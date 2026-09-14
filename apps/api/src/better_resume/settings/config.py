@@ -65,7 +65,12 @@ class ResilienceSettings(BaseModel):
 class MediaSettings(BaseModel):
     """M4 media wiring: which transcription adapter, and how TTS behaves."""
 
-    transcription_adapter: Literal["xunfei", "scripted"] = "scripted"
+    #: scripted (CI/local) | xunfei (AST websocket) | qwen-asr (Aliyun Bailian batch ASR)
+    transcription_adapter: Literal["xunfei", "scripted", "qwen-asr"] = "scripted"
+    #: MaaS workspace endpoint for qwen-audio-3.0-asr-flash; account specific, so env only.
+    asr_url: str = ""
+    asr_model: str = "qwen-audio-3.0-asr-flash"
+    asr_timeout_seconds: float = 30.0
     xunfei_ws_url: str = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     tts_storage_dir: Path = Path("data/tts")
@@ -146,6 +151,9 @@ class Settings(BaseSettings):
     jobs_stream: str = "br:jobs"
     jobs_max_attempts: int = 3
     jobs_heartbeat_ttl_seconds: int = 30
+    # Aliyun Bailian (DashScope): one key for the OpenAI-compatible LLM endpoint and for
+    # the batch speech model. Credentials only ever come from the environment.
+    dashscope_api_key: str = ""
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

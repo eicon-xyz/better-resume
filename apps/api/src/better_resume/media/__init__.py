@@ -1,7 +1,9 @@
 from .adapters import (
+    DEFAULT_ASR_MODEL,
     DEFAULT_SCRIPT,
     DEFAULT_WS_URL,
     MediaConfigError,
+    QwenAsrFlashAdapter,
     ScriptedTranscriptionChannel,
     ScriptStep,
     XunfeiAstAdapter,
@@ -37,6 +39,7 @@ from .registry import ChannelRegistry
 from .tts_cache import TtsCache
 
 __all__ = [
+    "DEFAULT_ASR_MODEL",
     "DEFAULT_SCRIPT",
     "DEFAULT_WS_URL",
     "MIN_OVERLAP",
@@ -52,6 +55,7 @@ __all__ = [
     "TtsCache",
     "MediaConfigError",
     "PgsKind",
+    "QwenAsrFlashAdapter",
     "ScriptStep",
     "ScriptedTranscriptionChannel",
     "Sentence",
