@@ -52,3 +52,28 @@
   （V4-EVIDENCE §2）；这也是"真机 vs 假上游"判定的关键字段（假供应商没有 usage）。
 - **教训**：**"可选字段"才是最容易静默丢失的东西**——只要某平台的默认行为与我们的假设不同，
   就没有报错、只有空值。跨平台验证的价值正在这里。
+
+## P20 — 批量 ASR adapter 的 \`wait()\` 违反协议：socket 在第一帧就断（V3 发现）
+
+- **症状**：WS 路径（nginx → 票据 → 推 PCM）客户端**第一次 send 就收到 1006**；服务端日志只有
+  \`WebSocket … [accepted]\` 和 \`connection open\`，**没有任何报错**；直接用 adapter 也"看起来正常"。
+- **根因**：\`TranscriptionChannel.wait()\` 的契约是"阻塞到通道结束"。我的批量 adapter 写成
+  \`if self.failure: raise\` → **立即返回**。WS 端点用 \`asyncio.wait({sender, receiver, watcher},
+  FIRST_COMPLETED)\` 判定结束，于是它把"wait 返回"理解成"通道结束"，立刻取消全部任务、\`stop()\`（此时
+  缓冲还是空的）、关闭 socket —— 客户端自然在第一帧就撞上关闭。
+- **修法**：\`start()\` 建 \`asyncio.Event\`，\`stop()\` 在 \`finally\` 里 set，\`wait()\` 等它再抛 failure。
+  回归测试 \`test_wait_blocks_until_stop_finished\`（先断言 stop 之前 \`wait()\` 未完成）。
+- **同一个 adapter 的第二个坑**：\`httpx.AsyncClient(timeout=…)\` 在本机（WSL 导出的裸 IPv6 \`NO_PROXY\`）
+  构造即抛 \`InvalidURL: Invalid port: ':1]'\` —— M3 在 LLM adapter 上修过同一个问题，新 adapter 又踩了。
+  修法：\`build_client()\` 统一兜底（\`InvalidURL/ValueError\` → \`trust_env=False\`）+ 测试 + 启动日志。
+- **教训**：**实现 Protocol 不等于满足契约**。类型检查看不出"wait() 该阻塞"这种语义，只有端到端跑
+  才会暴露；新 adapter 一律先跑一次真实链路（而不是只看单测绿）。
+
+## P21 — 成功路径不关 WS 握手，客户端报 1006（V3 发现）
+
+- **症状**：final 文本已经收到，但客户端拿到 \`ConnectionClosedError code=1006\`（异常关闭）；
+  浏览器可能据此显示错误或触发重连。
+- **根因**：\`/media/transcribe\` 成功路径 flush 完直接 return，没有显式 \`websocket.close()\`，
+  底层实现于是丢了 close 帧。
+- **修法**：成功路径显式 \`await websocket.close(code=1000)\`（失败路径仍为 4411）。
+- **证据**：修复前后同一条 probe：\`code=1006\` → \`ConnectionClosedOK code=1000\`。
