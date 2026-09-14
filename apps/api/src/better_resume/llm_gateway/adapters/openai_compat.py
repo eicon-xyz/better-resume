@@ -123,6 +123,10 @@ class OpenAICompatAdapter:
         }
         if stream:
             payload["stream"] = True
+            if self._spec.extra.get("stream_usage"):
+                # Opt-in per model row: DeepSeek sends usage frames anyway, DashScope needs
+                # stream_options, and some vendors reject payload keys they do not know.
+                payload["stream_options"] = {"include_usage": True}
         elif req.response_schema is not None:
             payload["response_format"] = {"type": "json_object"}
         return payload
