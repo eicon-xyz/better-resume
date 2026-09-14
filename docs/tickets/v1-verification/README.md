@@ -26,8 +26,8 @@ M6 的所有 AI 调用都打在确定性假供应商上（`scripts/fake_openai.p
 | --- | --- | --- | --- | --- |
 | [V1](V1-real-model-end-to-end.md) | 真模型端到端：四链路 + 失败面（超时/限流/熔断）复验 | `BR_DEEPSEEK_API_KEY` + 账号可用 model id | — | 1 会话 |
 | [V2](V2-real-model-capacity.md) | 真模型容量：填 §2.4 + 找我们自己的拐点（连接池/事件循环） | 同上（数十次调用） | V1 | 1 会话 |
-| [V3](V3-xunfei-real-machine.md) | 讯飞 AST 真机：签名/推流/接续/final/错误码 | `BR_XUNFEI_APP_ID/ACCESS_KEY_ID/ACCESS_KEY_SECRET` + 一段真实中文语音（16k PCM/WAV） | — | 1 会话 |
-| [V4](V4-xingyun-real-machine.md) | 星云工作流真机：SSE 归一 + 字段映射 + 错误三态 | `XINGCHEN_API_KEY/SECRET` + 五个场景的 flow_id | — | 1 会话 |
+| [V3](V3-realtime-asr-real-machine.md) | 实时 ASR 真机（**改用阿里百炼 Paraformer**）：握手/推流/增量句/final/错误码 | 百炼 key + 开通实时语音识别 + 30–60s 中文录音 | — | 1–1.5 会话 |
+| [V4](V4-second-llm-platform-real-machine.md) | 第二家 LLM 平台真机（**改用阿里百炼**）：契约 + 对照 + 多副本复证 | 百炼 key + 开通一个文本模型 | — | 0.5 会话 |
 | [V5](V5-browser-manual.md) | 真实浏览器人工 4 步清单（麦克风→转写→不被覆盖→TTS 播放） | **你本人**在真浏览器操作（我提供清单/自查页） | — | 0.5 会话（你做 10 分钟） |
 | [V6](V6-soak-and-fault-injection.md) | 浸泡测试 + 故障注入（Redis 暂停/kill、worker kill、nginx 摘除） | 无（本机 docker） | — | 1 会话 |
 
