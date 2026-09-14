@@ -26,7 +26,7 @@ M6 的所有 AI 调用都打在确定性假供应商上（`scripts/fake_openai.p
 | --- | --- | --- | --- | --- |
 | [V1](V1-real-model-end-to-end.md) | 真模型端到端：四链路 + 失败面（超时/限流/熔断）复验 | `BR_DEEPSEEK_API_KEY` + 账号可用 model id | — | 1 会话 |
 | [V2](V2-real-model-capacity.md) | 真模型容量：填 §2.4 + 找我们自己的拐点（连接池/事件循环） | 同上（数十次调用） | V1 | 1 会话 |
-| [V3](V3-realtime-asr-real-machine.md) | 实时 ASR 真机（**改用阿里百炼 Paraformer**）：握手/推流/增量句/final/错误码 | 百炼 key + 开通实时语音识别 + 30–60s 中文录音 | — | 1–1.5 会话 |
+| [V3](V3-speech-to-text-real-machine.md) | 语音识别真机（**阿里百炼 Qwen-Audio-3.0-ASR-Flash**，批量）：松手后出字 | 百炼 key（已有）+ 可调用 qwen-audio-3.0-asr-flash | — | 1 会话 |
 | [V4](V4-second-llm-platform-real-machine.md) | 第二家 LLM 平台真机（**改用阿里百炼**）：契约 + 对照 + 多副本复证 | 百炼 key + 开通一个文本模型 | — | 0.5 会话 |
 | [V5](V5-browser-manual.md) | 真实浏览器人工 4 步清单（麦克风→转写→不被覆盖→TTS 播放） | **你本人**在真浏览器操作（我提供清单/自查页） | — | 0.5 会话（你做 10 分钟） |
 | [V6](V6-soak-and-fault-injection.md) | 浸泡测试 + 故障注入（Redis 暂停/kill、worker kill、nginx 摘除） | 无（本机 docker） | — | 1 会话 |
@@ -66,7 +66,7 @@ M6 的所有 AI 调用都打在确定性假供应商上（`scripts/fake_openai.p
 | --- | --- | --- |
 | V1 真模型端到端 | ✅ | V1-EVIDENCE.md：四链路真机跑通（models=[deepseek-flash]、tokens=1347、worker 1.0s 写出总结）+ 缺凭据 503 点名变量 |
 | V2 真模型容量 + 拐点 | ✅ | V2-EVIDENCE.md + docs/perf/M6-capacity.md §2.4/§2.5/§2.6；顺带抓出并修掉 P18 |
-| V3 实时 ASR（阿里百炼 Paraformer） | ⬜ 待提案确认 | 需要百炼开通实时语音识别；adapter 待写（缝已有） |
+| V3 语音识别（百炼 Qwen-Audio-ASR-Flash） | ⬜ 待提案确认 | 预检已 200/1.15s 出文本；adapter 待写（缝已有），产品差异见票据 §2 |
 | V4 第二家 LLM 平台（阿里百炼 qwen-plus） | ✅ | V4-EVIDENCE.md：零代码接入 + 四链路真机 + 与 DeepSeek 对照 + P18 多副本复证；顺带修掉 P19 |
 | V5 浏览器人工清单 | ⬜ 待用户执行 | 清单草案在票据里，执行后回填 V5-EVIDENCE.md |
 | V6 浸泡 + 故障注入 | ✅ | V6-EVIDENCE.md：redis-pause/restart、worker-crash（59.3s 接管）、10 分钟浸泡 600 请求 0 失败；顺带修掉 P17 |
