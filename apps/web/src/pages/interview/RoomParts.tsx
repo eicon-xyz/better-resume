@@ -110,7 +110,7 @@ export function AnswerComposer({
         </p>
       ) : null}
       {transcriptNotice ? (
-        <p className={styles.hint}>已检测到新的转写文本：请手动确认后再插入，避免覆盖你写的内容。</p>
+        <p className={styles.hint}>已保留你写的内容：新的转写追加在后面，请确认。</p>
       ) : null}
       <Textarea
         name="answer"

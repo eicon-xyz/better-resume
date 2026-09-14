@@ -33,8 +33,13 @@ export interface TranscriptState {
 export function mergeTranscript(local: string, merged: string): { text: string; notice: boolean } {
   if (merged.length === 0) return { text: local, notice: false };
   if (local.length === 0 || merged.startsWith(local)) return { text: merged, notice: false };
-  // The candidate typed something the transcript does not know about: never clobber it.
-  return { text: local, notice: true };
+  // The same run arriving again (or the candidate edited around it): already in the box.
+  if (local.includes(merged)) return { text: local, notice: false };
+  // A batch vendor answers once per press with a whole utterance, so a transcript that is
+  // not an evolution of what is in the box is new text: append it and never clobber the
+  // candidate's own words (M4's rule dropped it, which made every press after the first
+  // look like a no-op).
+  return { text: `${local}${merged}`, notice: true };
 }
 
 const EMPTY = {

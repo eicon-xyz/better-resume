@@ -70,7 +70,7 @@ export function Composer({
       {recordingError ? (
         <p role="alert">{recordingError}</p>
       ) : null}
-      {notice ? <p>已检测到新的转写文本，未自动插入。</p> : null}
+      {notice ? <p>已保留你写的内容，新的转写追加在后面。</p> : null}
       <div className={styles.actions}>
         {onToggleRecording ? (
           <Button
