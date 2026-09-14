@@ -68,3 +68,13 @@ uv run python scripts/v3_ws_probe.py               # V3 端到端（需栈在跑
 cd '/root/better resume' && bash scripts/fault_injection_drill.sh --quick    # V6（15 分钟内）
 pnpm -C apps/web test --run                        # 161
 ```
+
+## 7. 人工验收结论
+
+**用户已验收通过（2026-09-14）**，原话："已通过"。此前 V5 浏览器手测由用户在本机完成并确认"没问题了"
+（连续两次不同句子均追加显示、手写内容未被覆盖、TTS 正常）。
+
+验收方式：用户按 `V5-browser-manual.md` 手测 + 阅读本文件逐票结论与数字；两轮失败-修复（P22 采集接线、
+P23 追加语义）均在用户复测通过后才计入验收。
+
+下一步：开 `v1/verification` → `main` 的 PR → 双 job CI 绿 → 用户点头后合并 → main 复跑 678。
