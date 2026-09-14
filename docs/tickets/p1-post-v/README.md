@@ -55,6 +55,9 @@ V 阶段验收包 §4 如实记录了 7 条未验证项，其中 4 条按价值�
 
 ### P1-B｜真模型高并发压测 + 限流桶按真实流量标定
 
+> **状态：已完成，待用户验收**（2026-09-15）。证据：`P1-B-EVIDENCE.md`；报告 `docs/perf/M6-capacity.md` §2.7。
+> 24 并发真流（V2 的 6 倍）0 供应商 429/5xx；标定 `ai_call 6→2`、`answer 8→2`（红-绿钉住 + 实证）；真调用 174/200。
+
 - **现状**：`scripts/load_test.py` 已支持 `--scenario chat-sse --concurrency N --duration D`
   （不带 `--fake-llm` 即打真供应商）；V2 只压到 c≤4（避免打供应商）；限流是进程内
   token bucket（`ai_resilience/ratelimit.py`，rate/burst 来自 settings，burst=2.0）。

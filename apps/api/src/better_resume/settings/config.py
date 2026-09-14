@@ -88,9 +88,11 @@ class RateLimitSettings(BaseModel):
     enabled: bool = True
     general_per_second: float = 20.0
     read_per_second: float = 15.0
-    answer_per_second: float = 8.0
+    # P1-B 标定（2026-09-15，docs/perf/M6-capacity.md §2.7）：真实单用户 answer ~0.2 rps、
+    # chat 流 ~0.5 rps；旧值（8/6）曾允许单身份经 2 副本维持 24 并发供应商流。
+    answer_per_second: float = 2.0
     heavy_per_second: float = 2.0
-    ai_call_per_second: float = 6.0
+    ai_call_per_second: float = 2.0
     burst_multiplier: float = 2.0
 
 
