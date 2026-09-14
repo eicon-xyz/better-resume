@@ -66,11 +66,16 @@ class MediaSettings(BaseModel):
     """M4 media wiring: which transcription adapter, and how TTS behaves."""
 
     #: scripted (CI/local) | xunfei (AST websocket) | qwen-asr (Aliyun Bailian batch ASR)
-    transcription_adapter: Literal["xunfei", "scripted", "qwen-asr"] = "scripted"
+    #: | paraformer-rt (Bailian realtime ASR, incremental)
+    transcription_adapter: Literal["xunfei", "scripted", "qwen-asr", "paraformer-rt"] = "scripted"
     #: MaaS workspace endpoint for qwen-audio-3.0-asr-flash; account specific, so env only.
     asr_url: str = ""
     asr_model: str = "qwen-audio-3.0-asr-flash"
     asr_timeout_seconds: float = 30.0
+    #: P1-A realtime recognition: explicit wss endpoint; empty = derive the wss:// host
+    #: from asr_url (same workspace domain, fixed /api-ws/v1/inference path).
+    asr_ws_url: str = ""
+    asr_realtime_model: str = "paraformer-realtime-v2"
     xunfei_ws_url: str = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     tts_storage_dir: Path = Path("data/tts")
