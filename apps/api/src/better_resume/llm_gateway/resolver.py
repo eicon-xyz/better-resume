@@ -7,6 +7,7 @@ how to materialise a gateway for that binding, and how to describe both honestly
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -43,6 +44,27 @@ class SceneView:
 GatewayBuilder = Callable[[Any, str], LlmGateway]
 
 
+async def _call(factory: GatewayFactory, name: str, binding: SceneBinding) -> object | None:
+    """Factories may answer sync (vendor adapter) or async (registry lookup): accept both."""
+    method = getattr(factory, name, None)
+    if method is None:
+        return None
+    result = method(binding)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+async def is_configured(factory: GatewayFactory, binding: SceneBinding) -> bool:
+    return bool(await _call(factory, "is_configured", binding))
+
+
+async def credential_hint(factory: GatewayFactory, binding: SceneBinding) -> str | None:
+    """Optional factory hook: the missing credential name, so the 503 is actionable."""
+    hint = await _call(factory, "credential_hint", binding)
+    return str(hint) if hint else None
+
+
 @runtime_checkable
 class GatewayFactory(Protocol):
     """One per adapter kind: knows if it *can* run a binding and how to build the gateway."""
@@ -71,6 +93,16 @@ class OpenAiCompatFactory:
         except Exception:  # noqa: BLE001 - unknown/disabled model is simply "not configured"
             return False
         return self._registry.is_configured(spec)
+
+    async def credential_hint(self, binding: SceneBinding) -> str | None:
+        """Which environment variable the operator has to set (None when nothing is missing)."""
+        try:
+            spec = await self._registry.resolve(binding.target_ref)
+        except Exception:  # noqa: BLE001 - an unknown model has no variable to name
+            return None
+        if self._registry.is_configured(spec):
+            return None
+        return spec.api_key_env
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
         return await self.build_for_model(binding.target_ref)
@@ -148,10 +180,14 @@ class SceneResolver:
                 f"scene {scene.value!r} is bound to adapter {binding.adapter.value!r}, "
                 "which this build does not provide"
             )
-        if not factory.is_configured(binding):
-            raise LlmConfigError(
+        if not await is_configured(factory, binding):
+            detail = (
                 f"scene {scene.value!r} ({binding.adapter.value}:{binding.target_ref}) "
-                "is not configured; check the credentials in the environment"
+                "is not configured"
+            )
+            missing = await credential_hint(factory, binding)
+            raise LlmConfigError(
+                f"{detail}: set {missing}" if missing else f"{detail}; credentials are missing"
             )
         gateway = await factory.build(binding)
         logger.debug(
@@ -189,7 +225,7 @@ class SceneResolver:
                     label=scene_label(scene),
                     adapter=binding.adapter,
                     target_ref=binding.target_ref,
-                    configured=bool(factory and factory.is_configured(binding)),
+                    configured=bool(factory) and await is_configured(factory, binding),
                     is_default=(
                         binding.adapter is DEFAULT_ADAPTER
                         and binding.target_ref == DEFAULT_TARGET_REF

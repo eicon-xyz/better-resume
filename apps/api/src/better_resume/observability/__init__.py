@@ -1,4 +1,4 @@
 from .logging import configure_logging, get_logger
-from .middleware import RequestIdMiddleware
+from .middleware import InstanceIdMiddleware, RequestIdMiddleware
 
-__all__ = ["RequestIdMiddleware", "configure_logging", "get_logger"]
+__all__ = ["InstanceIdMiddleware", "RequestIdMiddleware", "configure_logging", "get_logger"]

@@ -23,7 +23,17 @@ from .follow_up import (
     decide_follow_up_or_fallback,
 )
 from .follow_up_service import FollowUpQuestion, FollowUpService
-from .locks import QuestionLockRegistry
+from .hot_state import (
+    HotStateStore,
+    InMemoryHotState,
+    RedisHotState,
+    build_hot_state,
+)
+from .locks import (
+    QuestionLockRegistry,
+    QuestionLockTimeout,
+    RedisQuestionLockRegistry,
+)
 from .models import (
     AnswerRecord,
     AnswerTurn,
@@ -74,7 +84,13 @@ __all__ = [
     "decide_follow_up_or_fallback",
     "AnswerResult",
     "AnswerService",
+    "HotStateStore",
+    "InMemoryHotState",
     "QuestionLockRegistry",
+    "RedisHotState",
+    "build_hot_state",
+    "QuestionLockTimeout",
+    "RedisQuestionLockRegistry",
     "QuestionNotCurrent",
     "ScoreResult",
     "MAX_QUESTIONS",

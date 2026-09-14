@@ -1,0 +1,19 @@
+# Build context hygiene (the web image builds from the repo root).
+.git
+.github
+node_modules
+**/node_modules
+.pnpm-store
+.cache
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+dist
+**/dist
+data
+.env
+*.log
+docs
+skills

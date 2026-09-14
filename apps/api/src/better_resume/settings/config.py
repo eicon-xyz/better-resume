@@ -7,6 +7,7 @@ single file serves both docker compose (repo root) and local `uv run` (apps/api)
 from __future__ import annotations
 
 import functools
+import socket
 from pathlib import Path
 from typing import Literal
 
@@ -51,6 +52,13 @@ class ResilienceSettings(BaseModel):
     breaker_half_open_permits: int = 10
 
     singleflight_max_entries: int = 256
+
+    # M6: cross-instance single flight (Redis). Off by default; the kill
+    # drill exercises it, so it is not a dead branch.
+    distributed: bool = False
+    flight_lease_seconds: float = 30.0
+    flight_wait_seconds: float = 10.0
+    flight_poll_seconds: float = 0.1
     stream_buffer_frames: int = 1024
 
 
@@ -117,6 +125,23 @@ class Settings(BaseSettings):
 
     # M4: D11 one-shot WS ticket lifetime, plus vendor credentials (env only).
     ws_ticket_ttl_seconds: int = 30
+
+    # M6: question locks and other cross-instance coordination.
+    lock_backend: Literal["memory", "redis"] = "memory"
+    lock_ttl_seconds: float = 30.0
+    lock_wait_seconds: float = 10.0
+    hot_state_backend: Literal["memory", "redis"] = "memory"
+    hot_state_ttl_seconds: int = 600
+
+    # M6: which container answered. Compose sets it per replica; the default is the host.
+    instance_id: str = Field(default_factory=socket.gethostname)
+
+    # M6: background jobs. Off by default (single-process dev); the compose
+    # worker runs with it enabled, and the drill exercises that path.
+    jobs_enabled: bool = False
+    jobs_stream: str = "br:jobs"
+    jobs_max_attempts: int = 3
+    jobs_heartbeat_ttl_seconds: int = 30
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

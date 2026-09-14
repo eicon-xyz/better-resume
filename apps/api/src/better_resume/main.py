@@ -15,7 +15,9 @@ from .ai_resilience import (
     AiResilienceError,
     AiTimeout,
     AiUnavailable,
+    DistributedAiResilience,
     RateLimiter,
+    RedisFlight,
     ResilientAiResilience,
 )
 from .conversation import ConversationConflictError, ConversationNotFoundError
@@ -36,8 +38,11 @@ from .interview_engine import (
     IllegalSessionTransition,
     InterviewEngineError,
     QuestionLockRegistry,
+    RedisQuestionLockRegistry,
     SessionNotFound,
+    build_hot_state,
 )
+from .jobs import JobQueue
 from .llm_gateway import (
     AdapterKind,
     LlmError,
@@ -47,7 +52,7 @@ from .llm_gateway import (
     build_llm_gateway,
 )
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
-from .observability import RequestIdMiddleware, configure_logging
+from .observability import InstanceIdMiddleware, RequestIdMiddleware, configure_logging
 from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
 
@@ -61,6 +66,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_store = build_session_store(settings)
     app.state.ws_ticket_store = build_ws_ticket_store(settings)
     app.state.transcription_registry = ChannelRegistry()
+    app.state.hot_state = build_hot_state(settings)
+    app.state.job_queue = JobQueue(
+        settings.redis_url,
+        stream=settings.jobs_stream,
+        max_attempts=settings.jobs_max_attempts,
+    )
     app.state.tts_synthesizer = EdgeTtsSynthesizer(
         cache=TtsCache(settings.media.tts_storage_dir),
         default_voice=settings.media.tts_voice,
@@ -73,15 +84,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
-    app.state.ai_resilience = ResilientAiResilience(settings)
+    resilience: object = ResilientAiResilience(settings)
+    if settings.resilience.distributed:
+        resilience = DistributedAiResilience(
+            resilience,
+            RedisFlight(
+                settings.redis_url,
+                lease_seconds=settings.resilience.flight_lease_seconds,
+                wait_seconds=settings.resilience.flight_wait_seconds,
+                poll_seconds=settings.resilience.flight_poll_seconds,
+            ),
+        )
+    app.state.ai_resilience = resilience
     app.state.llm_gateway_factory = build_llm_gateway
     app.state.rate_limiter = RateLimiter(settings.rate_limit)
     # Process-local question locks; M6 swaps them for Redis behind the same seam.
-    app.state.question_locks = QuestionLockRegistry()
+    app.state.question_locks = _build_question_locks(settings)
     try:
         yield
     finally:
         await app.state.ai_resilience.aclose()
+        await app.state.question_locks.aclose()
+        await app.state.hot_state.aclose()
+        await app.state.job_queue.close()
         await app.state.ws_ticket_store.aclose()
         await app.state.session_store.aclose()
         await engine.dispose()
@@ -95,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     # add_middleware prepends, so the request id stays the outermost layer (added last).
     app.add_middleware(RateLimitMiddleware, settings=resolved)
+    app.add_middleware(InstanceIdMiddleware, instance_id=resolved.instance_id)
     app.add_middleware(RequestIdMiddleware, header_name=resolved.request_id_header)
     app.add_exception_handler(ConversationNotFoundError, _not_found)
     app.add_exception_handler(ConversationConflictError, _conflict)
@@ -119,6 +145,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(interview_router)
     return app
+
+
+def _build_question_locks(settings: Settings) -> object:
+    """Process-local locks by default; Redis when running multiple instances."""
+    if settings.lock_backend == "redis":
+        return RedisQuestionLockRegistry(
+            settings.redis_url,
+            ttl_seconds=settings.lock_ttl_seconds,
+            wait_seconds=settings.lock_wait_seconds,
+        )
+    return QuestionLockRegistry()
 
 
 async def _not_found(request: Request, exc: Exception) -> JSONResponse:

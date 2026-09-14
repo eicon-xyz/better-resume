@@ -39,7 +39,13 @@ def tight_app(settings: Settings) -> FastAPI:
 
 
 @pytest.fixture
-def tight_client(tight_app: FastAPI, clock: ManualClock) -> Iterator[TestClient]:
+def tight_client(
+    tight_app: FastAPI, clock: ManualClock, migrated_database: str
+) -> Iterator[TestClient]:
+    # The app talks to Postgres on every model lookup: without the fixture this file
+    # failed with asyncpg tracebacks instead of skipping (M6 acceptance finding).
+    del migrated_database  # only here to gate on a reachable database
+
     with TestClient(tight_app) as client:
         # Swap the limiter for one driven by the manual clock (lifespan built the real one).
         client.app.state.rate_limiter = RateLimiter(

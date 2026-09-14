@@ -549,6 +549,11 @@
             ],
             "title": "Summary"
           },
+          "summary_pending": {
+            "default": false,
+            "title": "Summary Pending",
+            "type": "boolean"
+          },
           "turns": {
             "items": {
               "$ref": "#/components/schemas/ReportTurnView"
@@ -861,6 +866,11 @@
           },
           "session": {
             "$ref": "#/components/schemas/InterviewSessionView"
+          },
+          "source": {
+            "default": "derived",
+            "title": "Source",
+            "type": "string"
           },
           "total_questions": {
             "default": 0,
