@@ -26,6 +26,10 @@ import httpx
 from scripts.interview_smoke import ANSWERS, build_resume_pdf
 
 SCENES = ("chat", "question_extraction", "answer_evaluation", "follow_up", "report_summary")
+#: The first post-kill request can be held by the dead upstream until nginx fails it.
+#: Poll with a short client timeout so the reported number measures nginx, not the probe.
+PROBE_TIMEOUT_SECONDS = 1.0
+
 REDIS_PATTERNS = {
     "locks": "br:lock:*",
     "hot_state": "br:hot:*",
@@ -104,18 +108,20 @@ async def bind_every_scene_to_the_fake(client: httpx.AsyncClient, model: str) ->
 
 async def wait_for_another_instance(
     client: httpx.AsyncClient, *, killed: str, timeout_seconds: float
-) -> tuple[str, float]:
+) -> tuple[str, float, int]:
     started = time.monotonic()
+    attempts = 0
     while time.monotonic() - started < timeout_seconds:
+        attempts += 1
         try:
-            response = await client.get("/healthz", timeout=5.0)
+            response = await client.get("/healthz", timeout=PROBE_TIMEOUT_SECONDS)
         except httpx.HTTPError:
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.1)
             continue
         instance = instance_of(response)
         if response.status_code == 200 and instance and instance != killed:
-            return instance, (time.monotonic() - started) * 1000
-        await asyncio.sleep(0.2)
+            return instance, (time.monotonic() - started) * 1000, attempts
+        await asyncio.sleep(0.1)
     raise TimeoutError(f"no surviving instance answered within {timeout_seconds}s")
 
 
@@ -165,12 +171,13 @@ async def run(args: argparse.Namespace) -> int:
         kill_started = time.monotonic()
         docker("kill", serving)
         print(f"killed instance {serving}")
-        survivor, recovery_ms = await wait_for_another_instance(
+        survivor, recovery_ms, attempts = await wait_for_another_instance(
             client, killed=serving, timeout_seconds=args.recovery_timeout
         )
         total_ms = (time.monotonic() - kill_started) * 1000
         print(
-            f"nginx now routes to {survivor} (first healthy response after {recovery_ms:.0f} ms, "
+            f"nginx now routes to {survivor} (first healthy response after {recovery_ms:.0f} ms "
+            f"in {attempts} attempts of {PROBE_TIMEOUT_SECONDS:.0f}s, "
             f"kill -> recovery {total_ms:.0f} ms)"
         )
         if survivor == serving:

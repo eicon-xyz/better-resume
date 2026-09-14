@@ -175,3 +175,28 @@
 - **指纹键前缀别靠猜**：drill 最初用 `br:lock:*`/`br:hot:*`/`br:flight:*` 统计 Redis 键，
   结果全是 0 也解释不出原因。现在 drill 同时打印**它统计用的原始 key 样本**，
   让"0"变成可核对的事实（对照 `locks.py`/`hot_state.py`/`distributed.py` 里的键构造）。
+
+## P15 — 测试依赖了运行环境（M6 验收时被用户的干净 shell 抓出来）
+
+- **症状**：用户在自己的 root shell 里跑 `uv run pytest -q`：5 个失败。4 个是
+  `ConnectionRefusedError ('127.0.0.1', 5432)`，1 个是
+  `test_client_survives_malformed_no_proxy: assert True is False`（httpx 客户端 `trust_env` 没被兜底）。
+- **根因（两条，都是测试自身的问题）**：
+  1. **代理用例依赖环境变量集合**：用例 monkeypatch `NO_PROXY=[::1]`，指望 httpx 构造时抛
+     `InvalidURL: Invalid port: ':1]'`。但 urllib 扫环境时只取**第一个**后缀为 `_proxy` 的键
+     （大小写不敏感），用户 shell 里先有一个无害的小写 `no_proxy`，于是 httpx 没抛、兜底没触发。
+     我的机器因为小写 `no_proxy` 里也含 `[::1]` 才一直绿——**测试在别人的环境里静默失效**。
+  2. **需要数据库的用例没声明 `migrated_database` fixture**：没导出 `BR_DATABASE_URL` 时它们直接
+     连默认 5432 并炸出一屏 asyncpg traceback，而不是像其他用例那样 `skipped: postgres not reachable`。
+     审计结果：全量 645 例里恰好这 4 例（`test_ratelimit_http.py` 的 `tight_client` 两个用例、
+     `test_resilience_concurrency.py` 里两个自建 client 的用例）。
+- **修法**：
+  1. 代理用例先把所有 `*_proxy` 环境变量删干净（`monkeypatch.delenv`）再设 `NO_PROXY=[::1]`；
+     另加一条**确定性**孪生用例（monkeypatch `httpx.AsyncClient` 抛 `InvalidURL`）覆盖兜底分支，
+     从此与 shell 无关。复现命令：`env no_proxy=localhost NO_PROXY=localhost uv run pytest tests/llm_gateway/test_openai_compat.py`
+     （修前 1 failed，修后 0 failed）。
+  2. 三个 fixture/用例补 `migrated_database`：没库时整组 skip（`124 → 128 skipped`，failures 4 → 0）。
+  3. 顺带把"uv 不在 PATH"这类前置摩擦做掉：两个 shell 脚本自己找 `$HOME/.local/bin/uv` 并提示
+     `export PATH=...`；README 的本地开发段补上可直接复制的 `BR_DATABASE_URL`(5433)/`BR_REDIS_URL`(6379)。
+- **教训**：**测试必须自带环境**（代理变量、PATH、DB 地址都算环境）。凡是"我这台机器上过、别人那里
+  静默失效"的断言，都是在给未来的验收埋雷；干净 shell 才是真验收环境。
