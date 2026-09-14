@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import time
 from pathlib import Path
 
 from better_resume.media import (
     ChannelCtx,
     EdgeTtsSynthesizer,
+    QwenAsrFlashAdapter,
     ScriptedTranscriptionChannel,
     TranscriptEvent,
     TtsCache,
@@ -93,6 +95,55 @@ async def xunfei_transcription(settings: Settings) -> bool:
     return True
 
 
+def read_pcm(path: Path) -> bytes:
+    """Read a 16 kHz mono 16-bit WAV and hand back its raw PCM (the channel's format)."""
+    import wave
+
+    with wave.open(str(path), "rb") as handle:
+        if (handle.getnchannels(), handle.getframerate(), handle.getsampwidth()) != (1, 16000, 2):
+            raise SystemExit(
+                f"{path} must be 16 kHz mono 16-bit WAV, got "
+                f"{handle.getnchannels()}ch/"
+                f"{handle.getframerate()}Hz/{handle.getsampwidth() * 8}bit"
+            )
+        return handle.readframes(handle.getnframes())
+
+
+async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
+    """V3: the batch ASR channel against the real MaaS endpoint, one release per file."""
+    print("== transcription (real qwen-audio-3.0-asr-flash, batch: one request per release) ==")
+    pcm = read_pcm(wav_path)
+    print(f"  audio: {wav_path.name} {len(pcm) / 32000:.1f}s ({len(pcm)} bytes of 16 kHz mono pcm)")
+    recorder = Recorder()
+    try:
+        adapter = QwenAsrFlashAdapter(
+            api_key=settings.dashscope_api_key,
+            endpoint=settings.media.asr_url,
+            model=settings.media.asr_model,
+            timeout_seconds=settings.media.asr_timeout_seconds,
+            on_event=recorder,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"  SKIPPED: {exc}")
+        print("  set BR_DASHSCOPE_API_KEY and BR_MEDIA__ASR_URL (MaaS workspace endpoint)")
+        return False
+
+    started = time.monotonic()
+    await adapter.start(ChannelCtx(session_id="smoke"))
+    for offset in range(0, len(pcm), 3200):  # feed in 100 ms slices, like the browser does
+        await adapter.feed(pcm[offset : offset + 3200])
+    await adapter.stop()
+    elapsed = time.monotonic() - started
+    print(f"  request: {adapter.last_request_bytes} wav bytes, release -> text {elapsed:.2f}s")
+    print(f"  events : {[event.kind for event in recorder.events]}")
+    final = recorder.events[-1].text if recorder.events else ""
+    print(f"  final  : {final!r}")
+    if not final:
+        print("  FAILED: no final text (silence, or the vendor refused)")
+        return False
+    return True
+
+
 async def tts_once(settings: Settings) -> bool:
     print("== tts (real edge-tts through the cache) ==")
     cache = TtsCache(settings.media.tts_storage_dir)
@@ -116,7 +167,15 @@ async def tts_once(settings: Settings) -> bool:
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scripted", action="store_true", help="skip the vendor entirely")
+    parser.add_argument(
+        "--qwen-asr-real",
+        action="store_true",
+        help="V3: run the batch ASR channel against the real Bailian endpoint",
+    )
+    parser.add_argument("--wav", type=Path, help="16 kHz mono WAV for --qwen-asr-real")
     args = parser.parse_args()
+    if args.qwen_asr_real and args.wav is None:
+        parser.error("--qwen-asr-real needs --wav PATH")
 
     _load_env()
     settings = get_settings()
@@ -125,6 +184,8 @@ async def main() -> int:
     ok = True
     if args.scripted:
         ok &= await scripted_transcription()
+    elif args.qwen_asr_real:
+        ok &= await qwen_asr_transcription(settings, args.wav)
     else:
         ok &= await xunfei_transcription(settings)
     ok &= await tts_once(settings)
