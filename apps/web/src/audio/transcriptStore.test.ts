@@ -51,10 +51,23 @@ describe("mergeTranscript", () => {
     expect(mergeTranscript("你好", "你好世界")).toEqual({ text: "你好世界", notice: false });
   });
 
-  it("never clobbers text the candidate typed", () => {
-    expect(mergeTranscript("我负责了", "完全不同的话")).toEqual({
-      text: "我负责了",
+  it("appends a new utterance instead of dropping it (batch ASR presses)", () => {
+    expect(mergeTranscript("第一句。", "第二句。")).toEqual({
+      text: "第一句。第二句。",
       notice: true,
+    });
+  });
+
+  it("never clobbers text the candidate typed", () => {
+    expect(mergeTranscript("我负责了", "完全不同的话").text).toBe("我负责了完全不同的话");
+    expect(mergeTranscript("手写", "转写").text).toContain("手写");
+  });
+
+  it("does not append the same run twice", () => {
+    expect(mergeTranscript("你好世界", "你好世界")).toEqual({ text: "你好世界", notice: false });
+    expect(mergeTranscript("你好世界！", "你好世界")).toEqual({
+      text: "你好世界！",
+      notice: false,
     });
   });
 
