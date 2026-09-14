@@ -10,7 +10,7 @@ from .memory_store import InMemorySessionStore
 from .models import Principal, SessionRecord
 from .redis_store import RedisSessionStore
 from .router import router as auth_router
-from .store import SessionStore, new_session_id
+from .store import SessionBackendUnavailable, SessionStore, new_session_id
 from .tickets import (
     InMemoryWsTicketStore,
     RedisWsTicketStore,
@@ -22,6 +22,7 @@ __all__ = [
     "InMemorySessionStore",
     "Principal",
     "RedisSessionStore",
+    "SessionBackendUnavailable",
     "SessionRecord",
     "SessionStore",
     "InMemoryWsTicketStore",

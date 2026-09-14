@@ -32,7 +32,12 @@ from .http import (
     resilience_router,
     scenes_router,
 )
-from .identity import auth_router, build_session_store, build_ws_ticket_store
+from .identity import (
+    SessionBackendUnavailable,
+    auth_router,
+    build_session_store,
+    build_ws_ticket_store,
+)
 from .interview_engine import (
     IllegalFlowTransition,
     IllegalSessionTransition,
@@ -77,10 +82,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_voice=settings.media.tts_voice,
     )
     app.state.model_registry = ModelRegistry(app.state.session_factory)
-    # M5: scenes resolve to a gateway through their binding row (cached).
+    # M5/V1: scenes resolve to a gateway through their binding row. The cache is short
+    # because each replica keeps its own copy: a PUT must reach the others within the TTL.
     app.state.scene_resolver = SceneResolver(
         app.state.session_factory,
         gateway_builder=lambda: app.state.llm_gateway_factory,
+        cache_ttl_seconds=settings.scene_binding_cache_seconds,
     )
     app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
@@ -136,6 +143,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(AiUnavailable, _service_unavailable)
     app.add_exception_handler(AiInvalid, _bad_gateway)
     app.add_exception_handler(AiResilienceError, _service_unavailable)
+    # A session store outage is an availability problem: 503 + Retry-After, not 500.
+    app.add_exception_handler(SessionBackendUnavailable, _service_unavailable)
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(models_router)
