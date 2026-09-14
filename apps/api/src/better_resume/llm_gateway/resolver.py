@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -123,6 +124,8 @@ class SceneResolver:
         *,
         factories: dict[AdapterKind, GatewayFactory] | None = None,
         gateway_builder: Callable[[], GatewayBuilder] | None = None,
+        cache_ttl_seconds: float = 5.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._session_factory = session_factory
         self._factories: dict[AdapterKind, GatewayFactory] = factories or {
@@ -130,7 +133,10 @@ class SceneResolver:
                 session_factory, gateway_builder=gateway_builder
             )
         }
-        self._bindings: dict[LlmScene, SceneBinding] = {}
+        #: scene -> (binding, cached_at). The TTL is what makes a PUT reach other replicas.
+        self._bindings: dict[LlmScene, tuple[SceneBinding, float]] = {}
+        self._cache_ttl = max(0.0, cache_ttl_seconds)
+        self._clock = clock
         self._lock = asyncio.Lock()
         self._loads = 0
 
@@ -151,8 +157,11 @@ class SceneResolver:
     async def binding_for(self, scene: LlmScene) -> SceneBinding:
         async with self._lock:
             cached = self._bindings.get(scene)
+            if cached is not None and self._clock() - cached[1] < self._cache_ttl:
+                return cached[0]
             if cached is not None:
-                return cached
+                # Stale: another replica changed it (or the row moved on). Re-read below.
+                self._bindings.pop(scene, None)
             async with self._session_factory() as session:
                 self._loads += 1
                 binding = await SceneBindingStore(session).get(scene)
@@ -161,7 +170,7 @@ class SceneResolver:
                     f"scene {scene.value!r} has no binding; set one via PUT /api/v1/scenes/"
                     f"{scene.value}"
                 )
-            self._bindings[scene] = binding
+            self._bindings[scene] = (binding, self._clock())
             return binding
 
     async def resolve_model(self, model_ref: str | None) -> LlmGateway:
