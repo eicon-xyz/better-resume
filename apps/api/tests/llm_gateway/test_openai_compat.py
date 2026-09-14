@@ -66,6 +66,25 @@ async def collect(stream: AsyncIterator[object]) -> list[object]:
     return [event async for event in stream]
 
 
+def test_streaming_usage_is_requested_only_when_the_model_row_asks_for_it() -> None:
+    """DeepSeek sends usage frames for free; DashScope needs stream_options, and some vendors
+    reject unknown payload keys, so the request is opt-in per model row (extra.stream_usage)."""
+    request = ChatRequest(messages=[Message(role="user", content="hi")])
+    plain = OpenAICompatAdapter(SPEC, api_key="k")
+    noisy = OpenAICompatAdapter(
+        SPEC.model_copy(update={"extra": {"stream_usage": True}}), api_key="k"
+    )
+    try:
+        assert "stream_options" not in plain._payload(request, stream=True)  # noqa: SLF001
+        assert noisy._payload(request, stream=True)["stream_options"] == {  # noqa: SLF001
+            "include_usage": True
+        }
+        assert "stream_options" not in noisy._payload(request, stream=False)  # noqa: SLF001
+    finally:
+        asyncio.run(plain.aclose())
+        asyncio.run(noisy.aclose())
+
+
 def test_client_survives_malformed_no_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     # httpx parses NO_PROXY eagerly and chokes on bare IPv6 entries (common in WSL setups).
     # urllib only reads the FIRST *_proxy-suffixed "no_proxy" it finds (case-insensitive),
