@@ -1,13 +1,15 @@
-# 交接文档（better-resume · V 阶段进行中）
+# 交接文档（better-resume · P1 阶段收口）
 
-> 写给下一个窗口/接手的人：先读这一页，再读 `docs/tickets/v1-verification/README.md`（当前阶段票据与进度）。
-> 最后更新：2026-09-14（V3 完成、V5 待用户手测）。
+> 写给下一个窗口/接手的人：先读这一页与仓库根 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
+> 再读 `docs/tickets/p1-post-v/README.md`（当前阶段票据与进度）。
+> 最后更新：2026-09-15（P1-A/B/C/D 完成，待用户验收）。
 
 ## 1. 一句话状态
 
-**M0–M6 已全部完成并合并进 main**（main tip `689b011`，M6 = PR #6）；
-**V 阶段（验证欠账）进行中**：分支 `v1/verification` @ `044cad3`（已推送，工作区干净），
-V1/V2/V3/V4/V6 ✅、**只剩 V5（真实浏览器人工手测，等用户）**；后端 **678 passed / 0 failed**，前端 158 passed。
+**M0–M6 与 V 阶段都已合并进 main**（main tip `e202eab`，V 阶段 = PR #7；V5 浏览器手测已由用户通过）。
+**P1 阶段（实时 ASR / 真模型容量 / 阿里 API 补验 / 生产形态演练）已完成，待用户验收**：
+分支 `p1/realtime-asr`（基于 `e202eab`，工作区干净）；后端 **695 passed / 0 failed**，前端 **161 passed**。
+本机 `.env` 已切 `BR_MEDIA__TRANSCRIPTION_ADAPTER=paraformer-rt`（边说边出字）。
 
 ## 2. 仓库与流程约定
 
@@ -42,8 +44,19 @@ docker compose --profile smoke down -v        # 停栈
 # 两个验收脚本（都会自己起栈）
 bash scripts/compose_smoke.sh                 # 部署面：REST/SSE/WS/非 root/双实例轮询/worker 心跳
 bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在服务的实例，状态/报告一致
+bash scripts/fault_injection_drill.sh           # 5 个故障实验 + 浸泡（--quick 为 2 分钟浸泡）
+
+# P1-D 生产形态演练（恢复动作在 finally，可安全重跑）
+uv run python -m scripts.fault_probe fault --scenario redis-partition --seconds 20   # 网络分区：503/timeout 语义 + 自愈
+uv run python -m scripts.fault_probe fault --scenario redis-failover  --seconds 20   # 主从切换：恢复时间 + worker 存活
+# P1 真机探针（各 1 次真调用）
+uv run python scripts/media_smoke.py --paraformer-rt-real --wav ../../data/audio/p1c-multi-sentence-16k.wav
+uv run python scripts/assembler_real_probe.py        # 真机增量包回放句池（提交语义 + 已知边界）
+uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序 + 关闭码
 ```
 
+- **P1 阶段新增**：`media/adapters/paraformer_rt.py`（百炼实时 ASR）、`scripts/assembler_real_probe.py`、
+  `fault_probe.py` 的 `redis-partition` / `redis-failover` 两个场景、`data/audio/p1c-multi-sentence-16k.wav`（本地素材）。
 - **V 阶段专属脚本**：`apps/api/scripts/real_model_smoke.py`（真模型四链路 + 失败面）、
   `scripts/load_test.py`（压测，带 `--tag`）、`apps/api/scripts/fault_probe.py` +
   `scripts/fault_injection_drill.sh`（浸泡/故障注入）、`apps/api/scripts/v3_ws_probe.py`（ASR 走 WS 端到端）。
@@ -56,6 +69,7 @@ bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在�
 | --- | --- |
 | WSL2 + Docker Desktop（VM 与发行版不同网络） | 构建要 `build.network: host` + shell 里带 `HTTPS_PROXY=http://127.0.0.1:7897`（compose 会自动转成 build args）；**不要**往 `~/.docker/config.json` 写 proxies |
 | Docker Hub 直连不通 | `.env` 里 `BR_LIBRARY_PREFIX=docker.m.daocloud.io/library/`、`BR_UV_IMAGE=ghcr.m.daocloud.io/astral-sh/uv:latest`（仓库默认仍是上游 tag） |
+| **Docker Desktop 的 WSL 集成会掉线** | 症状：`docker` 命令突然消失（`/usr/bin/docker` 指向 `/mnt/wsl/docker-desktop/...`，挂载没了）。恢复：`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'`，等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次） |
 | GitHub：SSH 可用、API 时断时续 | `git push` 正常；`gh pr create/create api` 可能 SSL EOF（重试/稍后再试），必要时用 REST + `--body-file` |
 | 没有 ffmpeg | 转音频用 `uv run --with soundfile --with numpy python …`（已把用户录音转成 `data/audio/v3-sample-16k.wav`） |
 | pytest 输出被 `-q` 压掉摘要 | 一律 `--junitxml=/tmp/x.xml` 再解析 `tests/failures/errors`；**跑前先 rm 掉旧 xml**，否则读到陈旧结果 |
@@ -81,10 +95,21 @@ bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在�
 | V2 真模型容量 + 拐点 | ✅ | chat p50 1.9s（我们增量 ~30ms）；限流钉住 ~23 ok/s，c=80 拒绝路径 p50 134ms | `V2-EVIDENCE.md` + `docs/perf/M6-capacity.md` §2.4–2.6 |
 | V3 语音识别真机 | ✅ | 百炼 Qwen-Audio-ASR-Flash（**批量**）：5.5s 音频 1.15s 出文本；WS 端到端 0.77s 收 final、干净关闭 1000 | `V3-EVIDENCE.md`；`media_smoke.py --qwen-asr-real --wav data/audio/v3-sample-16k.wav`；`scripts/v3_ws_probe.py` |
 | V4 第二家 LLM 平台 | ✅ | 百炼 qwen-plus **零代码**接入，四链路 + 与 DeepSeek 对照 + P18 多副本复证 | `V4-EVIDENCE.md` |
-| V5 浏览器人工手测 | ⬜ **等用户** | 4 步：授权麦克风 → 边说边手打 → 松手出文本且不覆盖手写 → TTS 播放/停止 | 清单 `V5-browser-manual.md`；栈已接真 ASR，直接测 |
+| V5 浏览器人工手测 | ✅ | 用户本机 Chrome：两次不同句子**追加**显示、手写内容未被覆盖、TTS 正常 | `V5-EVIDENCE.md` |
 | V6 浸泡 + 故障注入 | ✅ | redis-pause/restart 语义；worker 崩溃任务 59.3s 被接管；10 分钟 600 请求 0 失败 | `V6-EVIDENCE.md`；`bash scripts/fault_injection_drill.sh [--quick]` |
 
 阶段问题台账：`docs/tickets/v1-verification/PROBLEMS.md`（P17–P21）。
+
+## 6b. P1 阶段逐票状态（证据入口）
+
+| 票 | 状态 | 一句话 | 证据 / 复跑 |
+| --- | --- | --- | --- |
+| P1-A 实时 ASR | ✅ 待验收 | 百炼 Paraformer 实时：端到端首增量 **0.56s**、松手→final **1.1s**（修 P24 前 10.1s）；句池不被该供应商触发（直连 replace/archive） | `P1-A-EVIDENCE.md`；`scripts/v3_ws_probe.py --realtime` |
+| P1-B 真模型容量 + 限流标定 | ✅ 待验收 | 24 并发真流 0 供应商错误；标定 `ai_call 6→2`、`answer 8→2`（红-绿 + 实证） | `P1-B-EVIDENCE.md` + `docs/perf/M6-capacity.md` §2.7 |
+| P1-C 阿里 API 补验 | ✅ 待验收 | 多句真机（3 句、含供应商自我纠错）；句池真机包回放提交语义 PASS + 已知边界 | `P1-C-EVIDENCE.md`；`scripts/assembler_real_probe.py` |
+| P1-D 生产形态演练 | ✅ 待验收 | 分区（503+Retry-After、恢复 0.2–2.2s）/ 主从切换（恢复 109ms、worker 存活）/ 浸泡 3600 请求 0 失败 | `P1-D-EVIDENCE.md`；`fault_probe.py fault --scenario redis-partition|redis-failover` |
+
+阶段问题台账：`docs/tickets/p1-post-v/PROBLEMS.md`（P24–P27）；阶段验收包：`docs/tickets/p1-post-v/ACCEPTANCE.md`。
 
 ## 7. 可复用的经验教训（精华）
 
@@ -115,39 +140,49 @@ bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在�
 **流程**
 17. 提案先行、验收包交付、由人拍板——本项目已经因此两次避免了"假绿"（M6 收尾、V 阶段）。
 
+**验证与演练（P1 阶段补充）**
+18. **连接参数不能信库默认值**：`websockets` 的 `close_timeout` 默认 10s，供应商不回关闭帧 → 松手后干等 10 秒（P24）。
+19. **证据工具本身要先被校准**：探针"发完才收"会把增量时序塌缩（P25）；漏 cookie 会把 503 读成 401（P27）；
+    演练的恢复动作必须放 `finally`，否则一次崩溃就把栈留在故障态。
+20. **兜底 try 要罩住循环里的每一次依赖调用**：心跳写漏在 try 外，Redis 抖动就让 worker 退出（P26，M6 P9 的补完）。
+21. **单身份压测测的是"我们的桶"**：进程内限流 × N 副本 = 配额 ×N；要压供应商必须多身份并行（P1-B §2.7）。
+
 ## 8. 未验证 / 欠账（诚实清单）
 
-- **V5 真实浏览器**（等人操作）；ASR 只有 5.5s 素材（长音频多句/耗时线性度未验）。
-- 真模型**高并发**未压（V2 只到 c≤4，避免打供应商）；供应商限流 429 真机表现未触发。
-- 火山方舟（未充值/未开通）、星云真机（无凭据）、讯飞真机（改用阿里后未验）——票据里都写明"未验证"。
-- Redis 集群/多可用区/网络分区、>10 分钟浸泡（V6 做了 10 分钟）、真实 LB 抖动。
-- 前端测试 158 例自 M5 起未增（M6/V 阶段无前端改动）。
+- **讯飞 AST / 星云工作流真机**：无凭据，未验证（P1-C 用阿里实时 ASR 覆盖同类能力，非同一协议）；
+  星云的阿里等价物（百炼应用调用）**等用户提供 app_id**。
+- **真实浏览器手测（P1-A）**：实时增量只验到 WS 协议层（穿 nginx），浏览器麦克风节奏待用户手测。
+- **供应商 429**：P1 阶段 177 次真调用一次未触发；退避/重试路径仍是纸面推演。
+- **>24 并发 / 自动 Redis failover / 多可用区 / 真实 LB 抖动**：未测；应用是单 `BR_REDIS_URL`，自动切换需改代码。
+- 浏览器矩阵（Safari/Firefox/蓝牙）延续未验证；长音频最长只验到 13.1s。
 
 ## 9. 交接动作清单
 
-1. **用户**：按 `V5-browser-manual.md` 做 10 分钟浏览器手测 → 回填结果（我整理成 `V5-EVIDENCE.md`）。
-2. **我**（验收通过后）：
+1. **用户**：验收 P1（读 `docs/tickets/p1-post-v/ACCEPTANCE.md`）；**P1-A 浏览器手测**（说话过程中逐字出字、手写不被覆盖、TTS）。
+2. **用户**：要做"星云等价物"验证时给百炼应用 **app_id**；轮换三个 key（对话里出现过）；删远端分支 `m1`–`m6`。
+3. **我**（验收通过后）：
    ```bash
    cd '/root/better resume'
    export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897
-   gh pr create --base main --head v1/verification \
-     --title 'V1: 真模型/真机/故障注入验证收口' --body-file <验收包正文>
+   gh pr create --base main --head p1/realtime-asr \
+     --title 'P1: 实时 ASR / 真模型容量 / 阿里 API 补验 / 生产形态演练' --body-file <验收包正文>
    gh pr checks --watch          # 双 job 绿
    gh pr merge --merge           # 用户点头后
-   git checkout main && git pull && uv run pytest -q   # main 复跑 678
+   git checkout main && git pull && uv run pytest -q   # main 复跑 695
    ```
-3. **用户**：轮换三个 key（对话里出现过）；删远端分支 `m1`–`m6`（合并后）。
-4. 可选下一阶段（都要**先提案**）：Paraformer 实时 ASR（边说边出字）、讯飞/星云真机、Redis 集群故障演练。
+4. 后续候选（都要**先提案**）：自动 Redis failover（哨兵/多端点）、>24 并发与供应商 429 行为、讯飞真机、浏览器矩阵。
 
 ## 10. 文件地图（找东西用这个）
 
 ```
+AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律（接手先读）
 docs/HANDOFF.md                         ← 本文档
 docs/DECISIONS.md                       17 项技术决议（冲突以它为准）
+docs/tickets/p1-post-v/                 P1 阶段：README + ACCEPTANCE + PROBLEMS(P24–P27) + 4 份 EVIDENCE
 docs/tickets/m0..m6/                    各里程碑票据 + ACCEPTANCE + PROBLEMS
 docs/tickets/m6/ACCEPTANCE.md           M6 验收包（含 kill 实例 drill 原始输出）
 docs/tickets/v1-verification/           V 阶段：README（进度）+ 6 票据 + 4 份 EVIDENCE + PROBLEMS(P17–P21)
-docs/perf/M6-capacity.md                容量报告（§2.4 真模型、§2.5 拐点、§2.6 P18）
+docs/perf/M6-capacity.md                容量报告（§2.4 真模型、§2.5 拐点、§2.6 P18、§2.7 真模型并发与限流标定）
 docs/resume/MN-resume-draft.md          各里程碑简历草稿
 skills/repo-map/SKILL.md                "改 X 先看哪"（含两跳示例）
 apps/api/src/better_resume/
@@ -156,9 +191,9 @@ apps/api/src/better_resume/
   ai_resilience/{resilient,distributed}.py   单飞/熔断/舱壁/超时 + Redis 分布式单飞
   interview_engine/{locks,hot_state,report_service}.py  题级锁/热层/报告冻结
   jobs/queue.py + worker.py             Redis Stream 队列 + worker（心跳、重试、死信、接管）
-  media/adapters/{xunfei_ast,qwen_asr,edge_tts,scripted}.py  语音适配器
-apps/api/scripts/                       real_model_smoke / fault_probe / load_test / deploy_probe / fake_openai / extract_api_index
-apps/api/tests/                         678 例；test_source_hygiene.py 拦语法警告与转义反引号
+  media/adapters/{xunfei_ast,qwen_asr,paraformer_rt,edge_tts,scripted}.py  语音适配器（paraformer_rt=实时，默认）
+apps/api/scripts/                       real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / assembler_real_probe / fake_openai / extract_api_index
+apps/api/tests/                         695 例；test_source_hygiene.py 拦语法警告与转义反引号
 scripts/compose_smoke.sh                部署面验收
 scripts/kill_instance_drill.sh          §12.4 硬验收
 scripts/fault_injection_drill.sh        V6 浸泡/故障注入

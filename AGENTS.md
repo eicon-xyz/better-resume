@@ -47,6 +47,9 @@
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
 - 本机 `NO_PROXY` 含裸 IPv6：新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`，P20/P24）。
 - GitHub 走 SSH；`gh` API 偶发 SSL EOF——命令前带代理变量 `export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=…`，失败重试。
+- **Docker Desktop 的 WSL 集成会掉线**（症状：`docker` 命令突然消失，`/mnt/wsl/docker-desktop` 挂载没了）：用
+  `powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'` 拉起，
+  等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次）。
 - 真机凭据**只进仓库根 gitignored `.env`**；`.env.example` 只写变量名。目前有 `BR_DEEPSEEK_API_KEY`、`BR_DASHSCOPE_API_KEY`（LLM+ASR 共用）、`BR_ARK_API_KEY`（弃用）。
 
 ## 常用命令
@@ -71,7 +74,13 @@ docker compose --profile smoke down -v   # 停栈
 # 验收脚本（会自己起栈）
 bash scripts/compose_smoke.sh            # 部署面：REST/SSE/WS/非 root/双实例轮询/worker 心跳
 bash scripts/kill_instance_drill.sh      # kill 正在服务的实例，状态/报告一致
-bash scripts/fault_injection_drill.sh    # 浸泡 + Redis/worker 故障注入（--quick 15 分钟内）
+bash scripts/fault_injection_drill.sh    # 5 个故障实验 + 浸泡（--quick 2 分钟浸泡）
+
+# P1-D 生产形态演练（恢复动作在 finally，可安全重跑；各约 1 分钟）
+uv run python -m scripts.fault_probe fault --scenario redis-partition --seconds 20
+uv run python -m scripts.fault_probe fault --scenario redis-failover  --seconds 20
+# P1 真机探针（各 1 次真调用）
+uv run python scripts/assembler_real_probe.py        # 真机增量包回放句池（提交语义 + 已知边界）
 
 # 真机冒烟（需 .env 凭据；不属于 CI）
 uv run python -m scripts.real_model_smoke            # 四条 LLM 链路 + 失败面
@@ -99,7 +108,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 │   │   ├── jobs/ + worker.py        # Redis Stream 队列 + worker（心跳/重试/死信/接管）
 │   │   └── observability/           # structlog 配置
 │   ├── migrations/                  # Alembic
-│   ├── scripts/                     # real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / fake_openai / export_openapi / extract_api_index
+│   ├── scripts/                     # real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / assembler_real_probe / fake_openai / export_openapi / extract_api_index
 │   ├── tests/                       # pytest（hermetic；test_source_hygiene 拦语法警告）
 │   └── openapi.json                 # export_openapi.py 产物（契约源，勿手改）
 ├── apps/web/                        # React 19 + Vite SPA
@@ -155,6 +164,9 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - **开工顺序**：先读 `docs/HANDOFF.md`（状态/怎么跑/坑），再按 `skills/repo-map/SKILL.md` 路由到对应模块的 `SKILL.md`；跨窗口断点在 `~/.dsh/session-memory/better resume.md`（仓库外）。
 - **版本差异**：Python 3.12（`asyncio.TimeoutError` 即 `TimeoutError`）；websockets ≥14 把 `extra_headers` 改名 `additional_headers` 且新增 `proxy` 参数——写适配器要兼容两种签名（见 `media/adapters/paraformer_rt.py:open_connection` 的写法）。
 - **供应商语义**：百炼批量 ASR（qwen-audio-3.0-asr-flash）= 整段一次返回；实时（paraformer-realtime-v2）= WS 增量，`result-generated.sentence.sentence_end` 区分 live/完结；二者共用同一 workspace 域名与 key。
-- **worker/Redis**：队列兼容 Redis 6.0 下限（无 `XAUTOCLAIM`，M6 P7）；worker 不允许死于依赖抖动（M6 P9）；崩溃恢复时间 ≈ 接管阈值本身，不要美化数字。
-- **e2e 探针会撒谎**：探针"发完才收"会把服务器帧的到达时序塌缩（P25）——证据工具必须先于结论被校准；所有数字写清口径（探针超时会截断"接管耗时"这类测量，V6 教训）。
+- **worker/Redis**：队列兼容 Redis 6.0 下限（无 `XAUTOCLAIM`，M6 P7）；worker 不允许死于依赖抖动——
+  **循环里每一次依赖调用（含心跳写）都必须在兜底 try 内**（P26：心跳写在 try 外，主从切换时 worker exit 1）；
+  崩溃恢复时间 ≈ 接管阈值本身，不要美化数字。
+- **e2e 探针会撒谎**：探针"发完才收"会把服务器帧的到达时序塌缩（P25）；探针漏了前置状态（如 cookie）会把 503 读成 401（P27）——
+  证据工具必须先于结论被校准；演练的故障恢复动作必须放 `finally`；所有数字写清口径（探针超时会截断"接管耗时"这类测量，V6 教训）。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
