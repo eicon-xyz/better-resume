@@ -559,6 +559,11 @@ export interface components {
             suggestions?: string[];
             /** Summary */
             summary?: string | null;
+            /**
+             * Summary Pending
+             * @default false
+             */
+            summary_pending: boolean;
             /** Turns */
             turns?: components["schemas"]["ReportTurnView"][];
         };
@@ -683,6 +688,11 @@ export interface components {
             flow: components["schemas"]["FlowView"];
             last_answer?: components["schemas"]["AnswerView"] | null;
             session: components["schemas"]["InterviewSessionView"];
+            /**
+             * Source
+             * @default derived
+             */
+            source: string;
             /**
              * Total Questions
              * @default 0

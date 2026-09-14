@@ -200,3 +200,19 @@
      `export PATH=...`；README 的本地开发段补上可直接复制的 `BR_DATABASE_URL`(5433)/`BR_REDIS_URL`(6379)。
 - **教训**：**测试必须自带环境**（代理变量、PATH、DB 地址都算环境）。凡是"我这台机器上过、别人那里
   静默失效"的断言，都是在给未来的验收埋雷；干净 shell 才是真验收环境。
+
+## P16 — 漏了前端生成物：CI 抓住的契约漂移（M6 PR #6）
+
+- **症状**：PR #6 的 frontend job 失败（50s），backend job 绿；而我在本机跑 lint / typecheck / vitest 全绿。
+- **根因**：M6 给 `RestoreResponseView` 加了 `source`、给 `InterviewReportView` 加了 `summary_pending`，
+  我只按 D17 重跑了 `export_openapi.py`，**漏了 `pnpm gen:api`**（`src/api/schema.d.ts` 是第二份生成物）。
+  CI 的 `pnpm -C apps/web check:api` 一比就露；本地那份"验收清单"（ACCEPTANCE §5）当时也漏了这一步，
+  所以本地看起来全绿——**验收矩阵没对齐 CI，就等于没验**。
+- **修法**：`pnpm -C apps/web gen:api` 重新生成（+10 行：`source: string`、`summary_pending: boolean`）；
+  生成类型把这两个字段标成**必填**（它们有 default），于是两个 web 测试夹具要补字段
+  （`radar.test.ts`、`InterviewReportPage.test.tsx`）→ `tsc` 立刻报出来，这正是生成物该起的作用。
+  ACCEPTANCE §5 补上 `check:api` 这一行。
+- **证据**：本地 `pnpm -C apps/web typecheck` 0 / `lint` 0 / `vitest` 158 passed；提交生成物后
+  `pnpm -C apps/web check:api` exit 0；CI frontend job 重跑转绿。
+- **教训**：**本地验收清单必须逐条镜像 CI**（D17 的两处生成物 + schema.d.ts），否则"我这儿全绿"只是
+  少跑了一步的错觉。
