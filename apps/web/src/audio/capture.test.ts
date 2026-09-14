@@ -16,15 +16,19 @@ class FakeProcessor {
 function fakeContext(sampleRate = 48000) {
   const processor = new FakeProcessor();
   const source = { connect: vi.fn(), disconnect: vi.fn() };
+  const sink = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+  const destination = { id: 'destination' };
   const context = {
     sampleRate,
+    destination,
     resume: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
     createMediaStreamSource: vi.fn(() => source),
     createScriptProcessor: vi.fn(() => processor),
+    createGain: vi.fn(() => sink),
     // audioWorklet is intentionally missing: this covers the fallback branch.
   } as unknown as AudioContext;
-  return { context, processor, source };
+  return { context, processor, source, sink, destination };
 }
 
 function fakeDevices() {
@@ -58,9 +62,27 @@ describe("startCapture", () => {
     expect(Array.from(frames[0]!)).toEqual([16384, 16384, 16384, 16384]);
   });
 
+  it("keeps the capture node on a path to the destination (or nothing ever fires)", async () => {
+    const { context, processor, sink, destination } = fakeContext();
+    const { mediaDevices } = fakeDevices();
+
+    await startCapture({
+      onFrame: () => undefined,
+      audioContextFactory: () => context,
+      mediaDevices: mediaDevices as unknown as MediaDevices,
+    });
+
+    // A real browser only calls process()/onaudioprocess for nodes that reach the
+    // destination; the sink is muted so the microphone is not echoed to the speakers.
+    expect(processor.connect).toHaveBeenCalledWith(sink);
+    expect(sink.connect).toHaveBeenCalledWith(destination);
+    expect(sink.gain.value).toBe(0);
+  });
+
+
   it("flushes the tail and releases the microphone on stop", async () => {
     // 16 kHz input keeps the tail-padding assertion about padding, not resampling.
-    const { context, processor, source } = fakeContext(16000);
+    const { context, processor, source, sink } = fakeContext(16000);
     const { mediaDevices, track } = fakeDevices();
     const frames: Int16Array[] = [];
 
@@ -79,6 +101,7 @@ describe("startCapture", () => {
     expect(track.stop).toHaveBeenCalledTimes(1);
     expect(processor.disconnect).toHaveBeenCalled();
     expect(source.disconnect).toHaveBeenCalled();
+    expect(sink.disconnect).toHaveBeenCalled();
     expect(context.close).toHaveBeenCalled();
   });
 
