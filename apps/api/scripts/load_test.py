@@ -413,6 +413,7 @@ async def run_scenario(
             "mode": "requests" if args.requests is not None else "duration",
             "requested": args.requests if args.requests is not None else round(args.duration, 2),
             "upstream": "fake" if args.fake_llm else "real",
+            "tag": args.tag or ("fake" if args.fake_llm else "real"),
             "fake_llm": bool(args.fake_llm),
             "model": args.model,
             "base_url": base_url,
@@ -433,6 +434,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     budget.add_argument("--duration", type=float, default=None, help="stop after this many seconds")
     parser.add_argument("--model", default=None, help="model_ref sent with every request")
     parser.add_argument("--fake-llm", action="store_true", help="local deterministic upstream")
+    parser.add_argument(
+        "--tag",
+        default=None,
+        help="label this run (e.g. real-model, saturation-c80) so reports never mix runs",
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--json", default=None, help="write the summary here")
     args = parser.parse_args(argv)
@@ -451,6 +457,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 SUMMARY_KEYS = (
+    "tag",
     "scenario",
     "mode",
     "requested",
