@@ -12,7 +12,7 @@ compose 最终形态（nginx 入口 + api 可 `--scale` + 一次性 migrate 服�
 自研压测脚本与容量报告、skills 自描述层（repo-map + 10 份模块 SKILL.md + 生成式 API 索引 + CI 漂移检查）。
 **硬验收**：`bash scripts/kill_instance_drill.sh` —— 面试进行中 kill 掉正在服务的 api 实例，
 另一实例接管且题号/已答/分数/追问/冻结报告全部一致（实测 kill→恢复 237 ms）；
-部署面 `bash scripts/compose_smoke.sh` 全绿。后端 645 / 前端 158 全绿；
+部署面 `bash scripts/compose_smoke.sh` 全绿。后端 648 / 前端 158 全绿；
 **真模型高并发未压测**（容量报告 §2.4 为空），证据与未验证项见 docs/tickets/m6/ACCEPTANCE.md，
 问题台账见 docs/tickets/m6/PROBLEMS.md（P0–P14）。
 
@@ -60,13 +60,22 @@ skills        # 仓库自描述层（repo-map + 每模块 SKILL.md + 生成式 A
 ## 本地开发
 
 ```bash
-# 后端
+# 后端（uv 常装在 ~/.local/bin，root 新 shell 里记得带上）
+export PATH="$HOME/.local/bin:$PATH"
 cd apps/api && uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run pytest
+
+# 测试要一个可达的 Postgres + Redis：本机原生是 5433 / 6379（CI 与 compose 用各自默认值）。
+# 不导出这两个变量时，需要数据库的用例会 skipped（postgres not reachable），不会假装通过。
+export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
+export BR_REDIS_URL='redis://127.0.0.1:6379/0'
+uv run pytest -q
+
 uv run uvicorn better_resume.main:app --port 8000
 
 # 前端
+# 前端（在仓库根跑；-C 的路径相对当前目录，从 apps/api 跑要用 ../web）
+cd "$(git rev-parse --show-toplevel)"
 pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test -- --run
 
 # 本地数据库与缓存（本机无 Docker 时）：原生 Postgres 5433 + 原生 Redis 6379，

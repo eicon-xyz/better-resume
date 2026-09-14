@@ -19,8 +19,23 @@ if ! docker info >/dev/null 2>&1; then
   echo "需要可用的 docker daemon（docker info 失败）" >&2
   exit 2
 fi
-if ! command -v uv >/dev/null 2>&1; then
-  echo "需要 uv：driver 通过 uv run --project apps/api 运行" >&2
+# uv is often installed into ~/.local/bin, which a fresh root shell does not have on PATH.
+find_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+  for candidate in "$HOME/.local/bin/uv" /root/.local/bin/uv /usr/local/bin/uv; do
+    if [ -x "$candidate" ]; then
+      export PATH="$(dirname "$candidate"):$PATH"
+      echo "note: uv 不在 PATH，已临时使用 $candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! find_uv; then
+  echo "需要 uv：请先 export PATH=\"$HOME/.local/bin:$PATH\"（或安装 uv 后重试）" >&2
   exit 2
 fi
 

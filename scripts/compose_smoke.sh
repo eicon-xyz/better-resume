@@ -11,6 +11,26 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
+# uv is often installed into ~/.local/bin, which a fresh root shell does not have on PATH.
+find_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+  for candidate in "$HOME/.local/bin/uv" /root/.local/bin/uv /usr/local/bin/uv; do
+    if [ -x "$candidate" ]; then
+      export PATH="$(dirname "$candidate"):$PATH"
+      echo "note: uv 不在 PATH，已临时使用 $candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! find_uv; then
+  echo "需要 uv：请先 export PATH=\"$HOME/.local/bin:$PATH\"（或安装 uv 后重试）" >&2
+  exit 2
+fi
+
 BASE="http://127.0.0.1:${NGINX_PORT:-8080}"
 export NGINX_PORT="${NGINX_PORT:-8080}"
 export BR_SMOKE_KEY="${BR_SMOKE_KEY:-smoke-fake-key}"

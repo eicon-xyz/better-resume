@@ -97,7 +97,7 @@ T7 skills 知识库 ────────────────────
 
 **验收口径**：§12.4 的"kill 实例恢复面试会话不丢状态"由 `bash scripts/kill_instance_drill.sh` 一条命令复跑；
 部署面由 `bash scripts/compose_smoke.sh` 复跑；容量数字由 `docs/perf/README.md` 里的命令复跑。
-后端 645 例 / 前端 158 例全绿；未验证项集中在真机凭据与生产网络（见 ACCEPTANCE §6）。
+后端 648 例 / 前端 158 例全绿；未验证项集中在真机凭据与生产网络（见 ACCEPTANCE §6）。
 
 **续做入口**：`git checkout main && git pull` → 读 `skills/repo-map/SKILL.md` 找模块入口 →
-`uv run pytest -q`（645 例）与 `bash scripts/compose_smoke.sh`（需要 docker）应全绿。
+`uv run pytest -q`（648 例）与 `bash scripts/compose_smoke.sh`（需要 docker）应全绿。
