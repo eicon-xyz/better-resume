@@ -53,6 +53,12 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureHand
   };
 
   const source = context.createMediaStreamSource(stream);
+  // Web Audio only runs a node that reaches the destination, so the capture node goes
+  // through a zero-gain sink: without it process()/onaudioprocess never fires in a real
+  // browser (the unit tests faked the frames, which is how this slipped through in M4).
+  const sink = context.createGain();
+  sink.gain.value = 0;
+  sink.connect(context.destination);
   let node: AudioWorkletNode | ScriptProcessorNode | null = null;
   let workletUrl: string | null = null;
   let usingWorklet = false;
@@ -64,6 +70,7 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureHand
       const tap = new AudioWorkletNode(context, "pcm-tap");
       tap.port.onmessage = (event: MessageEvent<Float32Array>) => emit(event.data);
       source.connect(tap);
+      tap.connect(sink);
       node = tap;
       usingWorklet = true;
     } catch {
@@ -82,6 +89,7 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureHand
       emit(event.inputBuffer.getChannelData(0));
     };
     source.connect(processor);
+    processor.connect(sink);
     node = processor;
   }
 
@@ -94,6 +102,7 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureHand
       try {
         node?.disconnect();
         source.disconnect();
+        sink.disconnect();
       } catch {
         /* already torn down */
       }
