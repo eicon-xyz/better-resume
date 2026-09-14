@@ -138,10 +138,17 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
     failures = 0
     try:
         while not stopping.is_set():
-            await beat(
-                health, key=key, consumer=consumer, ttl_seconds=settings.jobs_heartbeat_ttl_seconds
-            )
             try:
+                # The heartbeat is a Redis write like any other: during a failover it can
+                # time out, and that must throttle the loop instead of killing the process
+                # (P1-D/P26: the worker exited 1 while the replica was being promoted, which
+                # silently stopped every background job until someone restarted it).
+                await beat(
+                    health,
+                    key=key,
+                    consumer=consumer,
+                    ttl_seconds=settings.jobs_heartbeat_ttl_seconds,
+                )
                 await run_once(queue, runtime, consumer=consumer)
             except asyncio.CancelledError:
                 raise

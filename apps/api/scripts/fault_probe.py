@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import shutil
 import subprocess
@@ -31,6 +32,8 @@ from scripts.kill_instance_drill import bind_every_scene_to_the_fake
 PROBE_TIMEOUT_SECONDS = 2.0
 
 DOCKER = shutil.which("docker") or "docker"
+#: P1-D: the throwaway replica used by the failover drill.
+REPLICA_NAME = "br-redis-replica"
 POSTGRES_USER = "better_resume"
 POSTGRES_DB = "better_resume"
 
@@ -53,6 +56,40 @@ def docker(*args: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"docker {' '.join(args)} failed: {result.stderr.strip()[:200]}")
     return result.stdout.strip()
+
+
+def parse_replica_link(info: str) -> str:
+    """'up' / 'down' / 'unknown' from a replica's INFO replication output (P1-D)."""
+    for line in info.splitlines():
+        key, _, value = line.strip().partition(":")
+        if key == "master_link_status":
+            return value.strip() or "unknown"
+    return "unknown"
+
+
+def service_container(service: str) -> str:
+    ids = docker("compose", "ps", "-q", service).split()
+    if not ids:
+        raise RuntimeError(f"service {service!r} has no running container")
+    return ids[0]
+
+
+def compose_network(container: str) -> str:
+    names = docker(
+        "inspect", "-f", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}", container
+    ).split()
+    if not names:
+        raise RuntimeError(f"container {container} is not attached to any network")
+    return names[0]
+
+
+def container_image(container: str) -> str:
+    return docker("inspect", "-f", "{{.Config.Image}}", container)
+
+
+def try_docker(*args: str) -> None:
+    with contextlib.suppress(RuntimeError):
+        docker(*args)
 
 
 def classify_response(*, status: int | None = None, exc: BaseException | None = None) -> str:
@@ -213,7 +250,16 @@ async def soak(args: argparse.Namespace) -> int:
     waves: list[dict[str, Any]] = []
     deadline = time.monotonic() + args.duration
     async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
-        login = await client.post("/api/v1/auth/session", json=_session_payload())
+        # A fault drill leaves brief stale pooled connections behind (observed after a
+        # failover): retry the login instead of aborting an hour-long soak on one 503.
+        login = None
+        for attempt in range(5):
+            login = await client.post("/api/v1/auth/session", json=_session_payload())
+            if login.status_code < 400:
+                break
+            print(f"== login attempt {attempt + 1} -> {login.status_code}; retrying")
+            await asyncio.sleep(1.0)
+        assert login is not None
         login.raise_for_status()
         while time.monotonic() < deadline:
             started = time.monotonic()
@@ -245,6 +291,9 @@ async def soak(args: argparse.Namespace) -> int:
 
 async def fault(args: argparse.Namespace) -> int:
     counts: dict[str, int] = {}
+    redis_ct = ""
+    network = ""
+    notes: list[str] = []
     async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
         if args.scenario == "redis-pause":
             print(f"== pausing redis for {args.seconds}s (docker pause)")
@@ -264,17 +313,95 @@ async def fault(args: argparse.Namespace) -> int:
             ) as old:
                 me = await old.get("/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS)
             print(f"old cookie after restart: {me.status_code} (401 = session really gone)")
+        elif args.scenario == "redis-partition":
+            redis_ct = service_container("redis")
+            network = compose_network(redis_ct)
+            # A session must exist BEFORE the cut, otherwise /auth/me answers 401 for the
+            # (correct) reason "no cookie" and hides the question we are actually asking.
+            login = await client.post("/api/v1/auth/session", json=_session_payload())
+            login.raise_for_status()
+            print(f"== cutting the api<->redis path for {args.seconds}s (network disconnect)")
+            injected = time.monotonic()
+            docker("network", "disconnect", network, redis_ct)
+        elif args.scenario == "redis-failover":
+            redis_ct = service_container("redis")
+            network = compose_network(redis_ct)
+            image = container_image(redis_ct)
+            login = await client.post("/api/v1/auth/session", json=_session_payload())
+            login.raise_for_status()
+            print(f"== starting a replica of redis ({image}) and waiting for a full sync")
+            try_docker("rm", "-f", REPLICA_NAME)
+            docker(
+                "run",
+                "-d",
+                "--name",
+                REPLICA_NAME,
+                "--network",
+                network,
+                image,
+                "redis-server",
+                "--replicaof",
+                "redis",
+                "6379",
+            )
+            link, master_keys, replica_keys = "unknown", -1, -1
+            sync_deadline = time.monotonic() + 45
+            while time.monotonic() < sync_deadline:
+                link = parse_replica_link(
+                    docker("exec", REPLICA_NAME, "redis-cli", "info", "replication")
+                )
+                if link == "up":
+                    master_keys = int(docker("exec", redis_ct, "redis-cli", "dbsize") or 0)
+                    replica_keys = int(docker("exec", REPLICA_NAME, "redis-cli", "dbsize") or 0)
+                    if master_keys > 0 and replica_keys >= master_keys:
+                        break
+                await asyncio.sleep(1)
+            print(f"== replica link={link} dbsize master={master_keys} replica={replica_keys}")
+            if link != "up" or replica_keys < master_keys:
+                print("FAIL: replica never caught up; aborting before touching the master")
+                try_docker("rm", "-f", REPLICA_NAME)
+                return 2
+            injected = time.monotonic()
+            docker("compose", "stop", "redis")
+            docker("exec", REPLICA_NAME, "redis-cli", "REPLICAOF", "NO", "ONE")
+            docker("network", "disconnect", network, REPLICA_NAME)
+            docker("network", "connect", "--alias", "redis", network, REPLICA_NAME)
+            print("== master stopped; replica promoted and now answers to the name 'redis'")
         else:
             raise SystemExit(f"unknown scenario {args.scenario!r}")
 
-        while time.monotonic() - injected < args.seconds:
-            outcome = await probe_once(client)
-            counts[outcome] = counts.get(outcome, 0) + 1
-            await asyncio.sleep(0.2)
+        health_ok = 0
+        auth_sampled = False
+        try:
+            while time.monotonic() - injected < args.seconds:
+                outcome = await probe_once(client)
+                counts[outcome] = counts.get(outcome, 0) + 1
+                if args.scenario == "redis-partition":
+                    health = await client.get("/healthz", timeout=PROBE_TIMEOUT_SECONDS)
+                    health_ok += 1 if health.status_code == 200 else 0
+                    if not auth_sampled:
+                        auth_sampled = True
+                        try:
+                            me = await client.get(
+                                "/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS
+                            )
+                            notes.append(f"auth_status_during_partition={me.status_code}")
+                            notes.append(f"retry_after={me.headers.get('retry-after')!r}")
+                        except httpx.HTTPError as exc:
+                            notes.append(f"auth_during_partition={type(exc).__name__}")
+                await asyncio.sleep(0.2)
+        finally:
+            # The drill must never leave the stack cut off, whatever happened above.
+            if args.scenario == "redis-partition":
+                docker("network", "connect", "--alias", "redis", network, redis_ct)
+        if args.scenario == "redis-partition":
+            notes.append(f"healthz_ok_during_partition={health_ok}")
 
         if args.scenario == "redis-pause":
             docker("compose", "unpause", "redis")
             print("== redis unpaused, waiting for the first success")
+        if args.scenario == "redis-partition":
+            print("== network path restored, waiting for the first success")
         recovered_at: float | None = None
         deadline = time.monotonic() + args.recovery_timeout
         while time.monotonic() < deadline:
@@ -282,6 +409,21 @@ async def fault(args: argparse.Namespace) -> int:
                 recovered_at = time.monotonic()
                 break
             await asyncio.sleep(0.2)
+
+        if args.scenario == "redis-failover":
+            try:
+                me = await client.get("/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS)
+                notes.append(f"old_session_after_failover={me.status_code}")
+            except httpx.HTTPError as exc:
+                notes.append(f"old_session_after_failover={type(exc).__name__}")
+            notes.append(
+                "worker_health="
+                + docker("inspect", "-f", "{{.State.Health.Status}}", service_container("worker"))
+            )
+            print("== restoring the original topology (replica removed, master back)")
+            try_docker("rm", "-f", REPLICA_NAME)
+            docker("compose", "up", "-d", "--wait", "redis")
+            notes.append("topology_restored=true")
 
     total = sum(counts.values())
     print(f"fault window: {json.dumps(dict(sorted(counts.items())), ensure_ascii=False)}")
@@ -291,6 +433,8 @@ async def fault(args: argparse.Namespace) -> int:
     recovery_ms = ((recovered_at - injected) - args.seconds) * 1000
     print(f"recovery: {recovery_ms:.0f} ms after the fault ended")
     print(f"total={total} ok_during_fault={counts.get('ok', 0)}")
+    for note in notes:
+        print(f"note: {note}")
     return 0
 
 
@@ -391,7 +535,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     fault_parser.add_argument("--base", default="http://127.0.0.1:8080")
     fault_parser.add_argument(
         "--scenario",
-        choices=["redis-pause", "redis-restart", "worker-crash"],
+        choices=[
+            "redis-pause",
+            "redis-restart",
+            "worker-crash",
+            "redis-partition",
+            "redis-failover",
+        ],
         required=True,
     )
     fault_parser.add_argument("--model", default="smoke-fake")
