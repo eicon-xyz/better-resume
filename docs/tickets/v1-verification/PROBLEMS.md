@@ -37,3 +37,18 @@
 - **教训**：**多实例下"进程内缓存 + 只在本地失效"= 配置漂移**。M5 的票据备注里其实写着
   "绑定配置的多实例一致性也在 M6"——M6 漏了，V1/V2 才把它抓出来。凡是"改了要生效"的缓存，
   都要么有 TTL，要么有跨进程失效通道。
+
+## P19 — 流式 usage 没有主动请求：换一家平台就静默丢 token 统计（V4 发现）
+
+- **症状**：V4 第一次跑百炼 \`qwen-plus\`，\`chat-stream\` 步骤拿不到 \`meta\` 帧：
+  \`models: []\`、\`total_tokens: 0\`，而同一脚本打 DeepSeek 时一切正常。
+- **根因**：OpenAI 兼容协议里流式响应的 \`usage\` 是**可选**的，DeepSeek 默认带、DashScope 默认不带
+  （需要请求里给 \`stream_options: {"include_usage": true}\`）。我们从未发送该字段，于是这类平台的
+  token 统计与前端 \`event: meta\` 一直为空——**没有任何报错**，只是数字悄悄消失。
+- **修法**：按模型行开关（\`extra.stream_usage=true\` → 流式请求带 \`stream_options\`），默认关闭，
+  因为不认这个字段的厂商可能直接 400。测试：\`tests/llm_gateway/test_openai_compat.py::
+  test_streaming_usage_is_requested_only_when_the_model_row_asks_for_it\`。
+- **证据**：修复后同一命令 → \`usage={total_tokens: 70, completion_tokens: 52, prompt_tokens: 18}\`
+  （V4-EVIDENCE §2）；这也是"真机 vs 假上游"判定的关键字段（假供应商没有 usage）。
+- **教训**：**"可选字段"才是最容易静默丢失的东西**——只要某平台的默认行为与我们的假设不同，
+  就没有报错、只有空值。跨平台验证的价值正在这里。
