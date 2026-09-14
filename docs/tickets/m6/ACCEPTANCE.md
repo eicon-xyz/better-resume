@@ -114,6 +114,7 @@ $ uv run pytest tests/test_skills_index.py -q   →  tests 39 failures 0 errors 
 | 7 | 前端 lint | `pnpm -C apps/web lint` | 通过 |
 | 8 | 前端类型 | `pnpm -C apps/web typecheck` | 通过 |
 | 9 | 前端测试 | `pnpm -C apps/web test --run` | 23 files / **158 passed**（M6 无前端改动，与 M5 持平） |
+| 9b | 前端契约漂移 | `pnpm -C apps/web check:api` | up to date（**CI 就是在这步抓到漏生成**，见 PROBLEMS P16） |
 | 10 | compose 清单 | `docker compose config` + `tests/test_deploy_manifest.py`（14 例） | 通过 |
 | 11 | 部署冒烟 | `bash scripts/compose_smoke.sh` | **ALL CHECKS PASSED**（T5-EVIDENCE.md） |
 | 12 | kill 实例 drill | `bash scripts/kill_instance_drill.sh` | **PASS**（§1） |
