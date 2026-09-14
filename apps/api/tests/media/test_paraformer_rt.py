@@ -256,13 +256,29 @@ async def test_connect_failure_is_reported_not_swallowed() -> None:
     assert events == []
 
 
-async def test_vendor_never_finishes_reports_a_failure() -> None:
-    adapter, events, _vendor = build_adapter([], finish=False, finish_timeout_seconds=0.1)
+async def test_stuck_vendor_tail_is_bounded_and_still_clean() -> None:
+    """After finish-task the vendor may keep streaming junk instead of task-finished
+    (observed live: ~10 s of empty frames). The tail budget ends the run cleanly —
+    no failure raised, the transcript simply closes."""
+    results = [result_generated("", end=False) for _ in range(500)]
+    adapter, events, _vendor = build_adapter(results, finish=False, finish_timeout_seconds=0.2)
     await adapter.start(ChannelCtx(session_id="p1a"))
     await adapter.feed(SAMPLE_PCM)
-    with pytest.raises(AiUnavailable):
-        await adapter.stop()
-    assert events == []
+    await adapter.stop()  # must NOT raise
+    await adapter.wait()
+    assert adapter.failure is None
+    assert events == []  # the vendor only ever sent empty partials
+
+
+async def test_tail_budget_still_delivers_the_final_text() -> None:
+    """A vendor that goes quiet after the audio (no task-finished) must not swallow the
+    transcript: the final snapshot is emitted from the text we already have."""
+    results = [result_generated("你好", end=False)]
+    adapter, events, _vendor = build_adapter(results, finish=False, finish_timeout_seconds=0.15)
+    await run_press(adapter)
+    kinds = [(event.kind, event.text) for event in events]
+    assert kinds == [("replace", "你好"), ("final", "你好")]
+    assert adapter.failure is None
 
 
 async def test_empty_text_partial_is_not_emitted() -> None:
@@ -281,6 +297,29 @@ async def test_missing_key_or_ws_url_is_a_config_error() -> None:
 async def test_realtime_ws_url_is_derived_from_the_batch_endpoint() -> None:
     assert derive_realtime_ws_url(BATCH_URL) == WS_URL
     assert derive_realtime_ws_url("") == ""
+
+
+async def test_real_connection_bounds_the_close_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The vendor stalls the WS close handshake (~10 s observed live, the websockets
+    default close_timeout); the transcript is already complete by then, so the real
+    connection must close fast or abort."""
+    import websockets
+
+    from better_resume.media.adapters.paraformer_rt import open_connection
+
+    captured: dict[str, Any] = {}
+
+    async def fake_connect(url: str, **kwargs: Any) -> FakeVendor:
+        captured["url"] = url
+        captured.update(kwargs)
+        return FakeVendor([])
+
+    monkeypatch.setattr(websockets, "connect", fake_connect)
+    await open_connection(WS_URL, {"Authorization": "Bearer sk-test"}, 5)
+    assert captured["url"] == WS_URL
+    assert captured["close_timeout"] <= 1
+    assert captured["open_timeout"] == 5
+    assert captured["additional_headers"]["Authorization"] == "Bearer sk-test"
 
 
 async def test_factory_builds_the_realtime_channel() -> None:

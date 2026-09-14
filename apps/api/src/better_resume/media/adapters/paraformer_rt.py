@@ -7,7 +7,9 @@ Wire contract verified against the live workspace endpoint (2026-09-15 preflight
   host from BR_MEDIA__ASR_URL unless BR_MEDIA__ASR_WS_URL says otherwise);
 * `Authorization: Bearer <key>` is validated at the WS handshake (bad key = HTTP 401/403);
 * run-task JSON -> task-started -> binary mono PCM frames (100 ms each) -> incremental
-  result-generated events -> finish-task -> tail events -> task-finished.
+  result-generated events -> finish-task -> tail events -> task-finished;
+* the tail after finish-task is bounded (finish_timeout_seconds): once the user releases,
+  the final snapshot goes out within that budget even if the vendor drags its feet.
 
 Event mapping follows the xunfei streaming precedent (M4): a partial sentence rewrites the
 live area (replace), a completed sentence is appended to the committed text (archive), and
@@ -65,13 +67,20 @@ async def open_connection(ws_url: str, headers: dict[str, str], open_timeout: fl
 
     websockets >= 14 renamed extra_headers and grew a proxy argument, and a malformed
     NO_PROXY on this machine must not take the channel down (P20) — hence the fallbacks.
+    close_timeout is bounded because the vendor stalls the close handshake (~10 s
+    observed live): the transcript is already complete, so we must not wait for it.
     """
     import websockets
 
     attempts: tuple[dict[str, Any], ...] = (
-        {"additional_headers": headers, "open_timeout": open_timeout, "proxy": None},
-        {"additional_headers": headers, "open_timeout": open_timeout},
-        {"extra_headers": headers, "open_timeout": open_timeout},
+        {
+            "additional_headers": headers,
+            "open_timeout": open_timeout,
+            "close_timeout": 1,
+            "proxy": None,
+        },
+        {"additional_headers": headers, "open_timeout": open_timeout, "close_timeout": 1},
+        {"extra_headers": headers, "open_timeout": open_timeout, "close_timeout": 1},
     )
     for kwargs in attempts:
         try:
@@ -106,7 +115,10 @@ class ParaformerRealtimeAdapter:
         model: str = DEFAULT_RT_MODEL,
         sample_rate: int = 16000,
         timeout_seconds: float = 30.0,
-        finish_timeout_seconds: float = 5.0,
+        #: After finish-task the vendor can hold the task open for ~10s while streaming
+        #: junk; the transcript is complete by then, so we only drain this long for a
+        #: last flush before emitting the final snapshot.
+        finish_timeout_seconds: float = 2.0,
         connect: ConnectFn | None = None,
     ) -> None:
         if not api_key:
@@ -206,23 +218,31 @@ class ParaformerRealtimeAdapter:
                     del self._buffer[: len(chunk)]
                     await connection.send(chunk)
                     continue
+                now = loop.time()
+                # Deadline checks run every iteration, not only on recv timeouts: a
+                # chatty vendor must not be able to extend its own tail budget.
                 if not finish_sent and self._stopped:
                     await connection.send(self._finish_task_frame())
                     finish_sent = True
-                    finish_deadline = loop.time() + self._finish_timeout
+                    finish_deadline = now + self._finish_timeout
+                elif finish_sent and now > finish_deadline:
+                    # The vendor kept the task open past the tail budget while streaming
+                    # (empty) frames. The transcript is already complete: end the run
+                    # cleanly and deliver the final snapshot instead of failing the user.
+                    logger.warning(
+                        "paraformer_rt_tail_budget_exceeded",
+                        task_id=self._task_id,
+                        budget_seconds=self._finish_timeout,
+                    )
+                    break
+                elif not finish_sent and now - last_message_at > self._timeout:
+                    raise AiUnavailable(
+                        "paraformer-rt: vendor went silent mid-run",
+                        stage=Stage.EXTRACTION,
+                    )
                 try:
                     frame = await asyncio.wait_for(connection.recv(), timeout=0.02)
                 except TimeoutError:
-                    if finish_sent and loop.time() > finish_deadline:
-                        raise AiUnavailable(
-                            "paraformer-rt: vendor never finished the task",
-                            stage=Stage.EXTRACTION,
-                        ) from None
-                    if not finish_sent and loop.time() - last_message_at > self._timeout:
-                        raise AiUnavailable(
-                            "paraformer-rt: vendor went silent mid-run",
-                            stage=Stage.EXTRACTION,
-                        ) from None
                     continue
                 last_message_at = loop.time()
                 event, text, end = parse_event(frame)
