@@ -22,7 +22,7 @@ from better_resume.media.adapters import (
 )
 
 ENDPOINT = "https://example.invalid/api/v1/services/aigc/multimodal-generation/generation"
-SAMPLE_PCM = b"\x00\x01" * 1600  # 3200 bytes = 100 ms of 16 kHz mono s16le
+SAMPLE_PCM = b"\x00\x01" * 8000  # 0.5 s of 16 kHz mono s16le, loud enough to be speech
 VENDOR_TEXT = "你好，我是来自重庆大学人工智能本科的杨明。"
 
 
@@ -127,6 +127,26 @@ async def test_a_hostile_proxy_environment_does_not_break_the_client(
     assert len(attempts) == 2
     assert attempts[1]["trust_env"] is False
     await client.aclose()
+
+
+async def test_silence_and_too_short_clips_never_reach_the_vendor() -> None:
+    """The vendor answers 400 with an empty body for silence/short clips: skip the call and
+    end cleanly, because the useful signal here is "the client sent silence", not an error."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"text": "should not happen"})
+
+    silent, silent_events = build_adapter(handler)
+    await feed_and_stop(silent, b"\x00" * 64000)  # 2 s of digital silence
+    assert calls == 0 and silent_events == []
+    assert silent.failure is None, "silence is not a failure, it is a capture problem"
+
+    tiny, tiny_events = build_adapter(handler)
+    await feed_and_stop(tiny, b"\x10\x27" * 500)  # loud but only 31 ms
+    assert calls == 0 and tiny_events == []
 
 
 async def test_empty_audio_never_calls_the_vendor() -> None:

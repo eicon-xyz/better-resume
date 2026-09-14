@@ -12,6 +12,7 @@ A "data:audio/wav;base64,..." URI is required; a bare base64 string is rejected 
 
 from __future__ import annotations
 
+import array
 import asyncio
 import base64
 import io
@@ -30,8 +31,19 @@ logger = structlog.get_logger("better_resume.media.qwen_asr")
 EventSink = Callable[[TranscriptEvent], Awaitable[None] | None]
 
 DEFAULT_ASR_MODEL = "qwen-audio-3.0-asr-flash"
+#: Below ~0.25 s the vendor answers 400 with an empty body, so do not even ask.
+MIN_CLIP_BYTES = 8000
+#: int16 peak below this is treated as "the microphone sent silence" (the vendor 400s on it).
+SILENCE_PEAK = 200
 #: The MaaS workspace endpoint is account specific, so it has no sensible default.
 DEFAULT_ASR_URL = ""
+
+
+def pcm_peak(pcm: bytes) -> int:
+    """Loudest sample in the clip: 0 means the client sent silence."""
+    samples = array.array("h")
+    samples.frombytes(pcm[: len(pcm) // 2 * 2])
+    return max((abs(value) for value in samples), default=0)
 
 
 def pcm_to_wav(pcm: bytes, *, sample_rate: int = 16000, channels: int = 1, bits: int = 16) -> bytes:
@@ -128,7 +140,22 @@ class QwenAsrFlashAdapter:
         self._stopped = True
         try:
             if self._buffer:
-                text = await self._transcribe(bytes(self._buffer))
+                pcm = bytes(self._buffer)
+                seconds = len(pcm) / (self._sample_rate * 2)
+                peak = pcm_peak(pcm)
+                logger.info("qwen_asr_clip", bytes=len(pcm), seconds=round(seconds, 2), peak=peak)
+                if len(pcm) < MIN_CLIP_BYTES or peak < SILENCE_PEAK:
+                    # Nothing to recognise: skip the vendor call (it answers 400 for this) and
+                    # end cleanly. Logged loudly because it usually means the client sent
+                    # silence, which is a capture problem, not a transcription problem.
+                    logger.warning(
+                        "qwen_asr_no_speech",
+                        bytes=len(pcm),
+                        seconds=round(seconds, 2),
+                        peak=peak,
+                    )
+                    return
+                text = await self._transcribe(pcm)
                 if text:
                     await self._emit(TranscriptEvent(kind="final", text=text))
         except Exception as exc:  # noqa: BLE001 - the endpoint surfaces this via .failure
@@ -184,9 +211,11 @@ class QwenAsrFlashAdapter:
             if self._owns_client:
                 await client.aclose()
         if response.status_code >= 400:
-            raise MediaConfigError(
-                f"qwen-asr returned {response.status_code}: {response.text[:200]}"
-            )
+            body = response.text[:200]
+            hint = ""
+            if response.status_code == 400 and body.strip() in ("", "{}"):
+                hint = " (empty 400: the vendor rejected the audio, usually too short or silent)"
+            raise MediaConfigError(f"qwen-asr returned {response.status_code}: {body}{hint}")
         return parse_text(response.json())
 
     async def _emit(self, event: TranscriptEvent) -> None:
