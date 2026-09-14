@@ -8,7 +8,7 @@ from collections.abc import Callable
 import redis.asyncio as redis
 
 from .models import Principal, SessionRecord
-from .store import new_session_id
+from .store import SessionBackendUnavailable, new_session_id
 
 
 class RedisSessionStore:
@@ -29,9 +29,16 @@ class RedisSessionStore:
     def _key(self, session_id: str) -> str:
         return f"{self._key_prefix}{session_id}"
 
+    async def _call(self, command):  # noqa: ANN001, ANN202 - one seam for every command
+        """Redis trouble is an availability problem, not an authentication answer."""
+        try:
+            return await command
+        except redis.RedisError as exc:
+            raise SessionBackendUnavailable("session store is unavailable") from exc
+
     async def _write(self, record: SessionRecord, *, ttl_seconds: int) -> None:
-        await self._redis.set(
-            self._key(record.session_id), record.model_dump_json(), ex=ttl_seconds
+        await self._call(
+            self._redis.set(self._key(record.session_id), record.model_dump_json(), ex=ttl_seconds)
         )
 
     async def create(self, principal: Principal, *, ttl_seconds: int) -> SessionRecord:
@@ -46,7 +53,7 @@ class RedisSessionStore:
         return record
 
     async def get(self, session_id: str) -> SessionRecord | None:
-        raw = await self._redis.get(self._key(session_id))
+        raw = await self._call(self._redis.get(self._key(session_id)))
         if raw is None:
             return None
         return SessionRecord.model_validate_json(raw)
@@ -60,7 +67,7 @@ class RedisSessionStore:
         return refreshed
 
     async def delete(self, session_id: str) -> None:
-        await self._redis.delete(self._key(session_id))
+        await self._call(self._redis.delete(self._key(session_id)))
 
     async def aclose(self) -> None:
         await self._redis.aclose()
