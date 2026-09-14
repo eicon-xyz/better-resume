@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
@@ -66,10 +68,41 @@ async def collect(stream: AsyncIterator[object]) -> list[object]:
 
 def test_client_survives_malformed_no_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     # httpx parses NO_PROXY eagerly and chokes on bare IPv6 entries (common in WSL setups).
+    # urllib only reads the FIRST *_proxy-suffixed "no_proxy" it finds (case-insensitive),
+    # so the ambient variables must go: a benign lowercase no_proxy otherwise shadows the
+    # malformed value and this test silently stops testing anything (found by the M6
+    # acceptance run in a clean shell).
+    for name in [key for key in os.environ if key.lower().endswith("_proxy")]:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("NO_PROXY", "[::1]")
+
     adapter = OpenAICompatAdapter(SPEC, api_key="k")
 
     assert adapter._client.trust_env is False  # noqa: SLF001 - asserting our own fallback
+    asyncio.run(adapter.aclose())
+
+
+def test_build_client_falls_back_when_httpx_rejects_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deterministic twin of the test above: whatever the shell exports, a rejected proxy
+    environment must still produce a usable client with trust_env=False."""
+    attempts: list[dict[str, object]] = []
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        attempts.append(dict(kwargs))
+        if len(attempts) == 1:
+            raise httpx.InvalidURL("Invalid port: ':1]'")
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+
+    adapter = OpenAICompatAdapter(SPEC, api_key="k")
+
+    assert len(attempts) == 2, "the adapter must retry without the environment"
+    assert attempts[1]["trust_env"] is False
+    asyncio.run(adapter.aclose())
 
 
 async def test_stream_normalizes_recorded_deepseek_frames() -> None:

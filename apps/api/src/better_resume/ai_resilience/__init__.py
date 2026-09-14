@@ -1,6 +1,7 @@
 from .breaker import BreakerPolicy, BreakerRegistry, BreakerState, CircuitBreaker
 from .bulkhead import Bulkhead, BulkheadRegistry
 from .clock import Clock, ManualClock, SystemClock
+from .distributed import DistributedAiResilience, RedisFlight
 from .errors import (
     AiInvalid,
     AiOverloaded,
@@ -39,12 +40,14 @@ __all__ = [
     "CircuitBreaker",
     "Clock",
     "DirectAiResilience",
+    "DistributedAiResilience",
     "FailureKind",
     "Flight",
     "FlightState",
     "ManualClock",
     "RateLimitDecision",
     "RateLimiter",
+    "RedisFlight",
     "ResilienceMetrics",
     "ResilientAiResilience",
     "SingleFlight",

@@ -55,6 +55,7 @@ const REPORT: InterviewReportView = {
   suggestions: ["补充量化结果"],
   summary: "整体不错，细节可再展开。",
   llm_summary_used: true,
+  summary_pending: false,
 };
 
 function fakeClient(report: InterviewReportView | Error = REPORT) {

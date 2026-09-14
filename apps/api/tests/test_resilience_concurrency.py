@@ -287,8 +287,9 @@ def build_client(settings: Settings, resilience: ResilienceSettings, fake: objec
 
 
 def test_open_breaker_sheds_load_without_calling_the_vendor(
-    settings: Settings, monkeypatch: pytest.MonkeyPatch
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, migrated_database: str
 ) -> None:
+    del migrated_database  # the app needs Postgres; skip cleanly when it is absent
     monkeypatch.setenv("BR_DEEPSEEK_API_KEY", "sk-test-not-real")
     gateway = FakeInterviewGateway(error=LlmTimeoutError("vendor down"))
     client = build_client(
@@ -315,8 +316,9 @@ def test_open_breaker_sheds_load_without_calling_the_vendor(
 
 
 def test_slow_vendor_hits_the_deadline_and_returns_504(
-    settings: Settings, monkeypatch: pytest.MonkeyPatch
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, migrated_database: str
 ) -> None:
+    del migrated_database  # the app needs Postgres; skip cleanly when it is absent
     monkeypatch.setenv("BR_DEEPSEEK_API_KEY", "sk-test-not-real")
     gateway = FakeInterviewGateway(delay=0.4)
     client = build_client(settings, ResilienceSettings(extraction_timeout_seconds=0.05), gateway)
