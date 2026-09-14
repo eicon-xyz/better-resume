@@ -55,7 +55,7 @@
 ## 常用命令
 
 ```bash
-# 后端全量测试（692 例；不导出 BR_* 会静默 skip）
+# 后端全量测试（695 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
 # 前端测试（161 例）——必须从仓库根跑
