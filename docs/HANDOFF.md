@@ -7,7 +7,7 @@
 
 **M0–M6 已全部完成并合并进 main**（main tip `689b011`，M6 = PR #6）；
 **V 阶段（验证欠账）进行中**：分支 `v1/verification` @ `044cad3`（已推送，工作区干净），
-V1/V2/V3/V4/V6 ✅、**只剩 V5（真实浏览器人工手测，等用户）**；后端 **677 passed / 0 failed**，前端 158 passed。
+V1/V2/V3/V4/V6 ✅、**只剩 V5（真实浏览器人工手测，等用户）**；后端 **678 passed / 0 failed**，前端 158 passed。
 
 ## 2. 仓库与流程约定
 
@@ -29,7 +29,7 @@ export UV_CACHE_DIR='/root/better resume/.cache/uv'
 cd '/root/better resume/apps/api'
 export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
 export BR_REDIS_URL='redis://127.0.0.1:6379/0'
-uv run pytest -q          # 677 例；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
+uv run pytest -q          # 678 例；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
 
 # 前端
 cd '/root/better resume' && pnpm -C apps/web test --run     # 必须从仓库根；在 apps/api 下用 -C ../web
@@ -134,7 +134,7 @@ bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在�
      --title 'V1: 真模型/真机/故障注入验证收口' --body-file <验收包正文>
    gh pr checks --watch          # 双 job 绿
    gh pr merge --merge           # 用户点头后
-   git checkout main && git pull && uv run pytest -q   # main 复跑 677
+   git checkout main && git pull && uv run pytest -q   # main 复跑 678
    ```
 3. **用户**：轮换三个 key（对话里出现过）；删远端分支 `m1`–`m6`（合并后）。
 4. 可选下一阶段（都要**先提案**）：Paraformer 实时 ASR（边说边出字）、讯飞/星云真机、Redis 集群故障演练。
@@ -158,7 +158,7 @@ apps/api/src/better_resume/
   jobs/queue.py + worker.py             Redis Stream 队列 + worker（心跳、重试、死信、接管）
   media/adapters/{xunfei_ast,qwen_asr,edge_tts,scripted}.py  语音适配器
 apps/api/scripts/                       real_model_smoke / fault_probe / load_test / deploy_probe / fake_openai / extract_api_index
-apps/api/tests/                         677 例；test_source_hygiene.py 拦语法警告与转义反引号
+apps/api/tests/                         678 例；test_source_hygiene.py 拦语法警告与转义反引号
 scripts/compose_smoke.sh                部署面验收
 scripts/kill_instance_drill.sh          §12.4 硬验收
 scripts/fault_injection_drill.sh        V6 浸泡/故障注入
