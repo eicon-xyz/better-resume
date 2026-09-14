@@ -66,7 +66,7 @@ M6 的所有 AI 调用都打在确定性假供应商上（`scripts/fake_openai.p
 | --- | --- | --- |
 | V1 真模型端到端 | ✅ | V1-EVIDENCE.md：四链路真机跑通（models=[deepseek-flash]、tokens=1347、worker 1.0s 写出总结）+ 缺凭据 503 点名变量 |
 | V2 真模型容量 + 拐点 | ✅ | V2-EVIDENCE.md + docs/perf/M6-capacity.md §2.4/§2.5/§2.6；顺带抓出并修掉 P18 |
-| V3 语音识别（百炼 Qwen-Audio-ASR-Flash） | ⬜ 待提案确认 | 预检已 200/1.15s 出文本；adapter 待写（缝已有），产品差异见票据 §2 |
+| V3 语音识别（百炼 Qwen-Audio-ASR-Flash） | ✅ | V3-EVIDENCE.md：adapter + 假服务端 10 例；真机 5.5s 音频出文本；WS 端到端 0.77s 收 final 且干净关闭 1000；顺带修掉 P20/P21 |
 | V4 第二家 LLM 平台（阿里百炼 qwen-plus） | ✅ | V4-EVIDENCE.md：零代码接入 + 四链路真机 + 与 DeepSeek 对照 + P18 多副本复证；顺带修掉 P19 |
 | V5 浏览器人工清单 | ⬜ 待用户执行 | 清单草案在票据里，执行后回填 V5-EVIDENCE.md |
 | V6 浸泡 + 故障注入 | ✅ | V6-EVIDENCE.md：redis-pause/restart、worker-crash（59.3s 接管）、10 分钟浸泡 600 请求 0 失败；顺带修掉 P17 |
@@ -74,7 +74,8 @@ M6 的所有 AI 调用都打在确定性假供应商上（`scripts/fake_openai.p
 ## 8. 状态
 
 用户已确认（Q1–Q6）：真模型 key 可用、许可花费、V5 由用户执行、顺序 V6 → V1 → V2 已同意。
-执行分支 `v1/verification`；V6/V1/V2/V4 已完成（见 §7），V3 待提案确认（阿里百炼 Paraformer adapter），
-V5 等用户浏览器操作。本阶段不改业务代码，三个例外都是真机/故障注入暴露的契约错误，且都先补了红-绿测试：
+执行分支 `v1/verification`；**V6/V1/V2/V3/V4 已完成**（见 §7），只剩 V5 等用户浏览器操作。
+本阶段不改业务代码；例外都是真机、故障注入或端到端跑出来的契约错误，且都先补了红-绿测试：
 P17（会话后端不可用 → 503 而不是 500）、P18（场景绑定缓存加 TTL，让配置变更跨副本生效）、
-P19（流式 usage 按模型行开关请求，否则换平台就静默丢 token 统计）。
+P19（流式 usage 按模型行开关请求）、P20（批量 ASR 的 wait() 契约 + httpx 代理兜底）、
+P21（成功后显式关闭 WS 握手，避免客户端报 1006）。
