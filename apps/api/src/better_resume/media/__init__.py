@@ -10,6 +10,7 @@ from .adapters import (
     XunfeiAstAdapter,
     XunfeiCredentials,
     build_signed_url,
+    derive_realtime_ws_url,
     parse_result_payload,
 )
 from .adapters.edge_tts import DEFAULT_VOICE, EdgeTtsSynthesizer
@@ -58,6 +59,7 @@ __all__ = [
     "PgsKind",
     "ParaformerRealtimeAdapter",
     "QwenAsrFlashAdapter",
+    "derive_realtime_ws_url",
     "ScriptStep",
     "ScriptedTranscriptionChannel",
     "Sentence",
