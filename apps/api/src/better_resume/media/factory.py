@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from ..settings import Settings
 from .adapters import (
     MediaConfigError,
+    QwenAsrFlashAdapter,
     ScriptedTranscriptionChannel,
     XunfeiAstAdapter,
     XunfeiCredentials,
@@ -31,5 +32,14 @@ def build_transcription_channel(settings: Settings, *, on_event: EventSink) -> T
             credentials=credentials,
             on_event=on_event,
             ws_url=media.xunfei_ws_url,
+        )
+    if media.transcription_adapter == "qwen-asr":
+        # Batch model: buffer while the button is held, one request on release.
+        return QwenAsrFlashAdapter(
+            api_key=settings.dashscope_api_key,
+            endpoint=media.asr_url,
+            model=media.asr_model,
+            timeout_seconds=media.asr_timeout_seconds,
+            on_event=on_event,
         )
     raise MediaConfigError(f"unknown transcription adapter: {media.transcription_adapter}")

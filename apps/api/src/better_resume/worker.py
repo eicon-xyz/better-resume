@@ -42,6 +42,7 @@ def build_worker_runtime(settings: Settings) -> dict[str, Any]:
         gateway_builder=lambda: (
             __import__("better_resume.main", fromlist=["create_app"]).build_llm_gateway
         ),
+        cache_ttl_seconds=settings.scene_binding_cache_seconds,
     )
     resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
     return {

@@ -26,3 +26,11 @@ class SessionStore(Protocol):
     async def delete(self, session_id: str) -> None: ...
 
     async def aclose(self) -> None: ...
+
+
+class SessionBackendUnavailable(RuntimeError):
+    """The session store itself is unreachable (Redis down/restarting).
+
+    Distinct from "no such session" on purpose: a missing key is a 401 (log in again),
+    while an unreachable store is a 503 with Retry-After (logging in would fail too).
+    """

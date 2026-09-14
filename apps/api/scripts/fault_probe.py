@@ -1,0 +1,414 @@
+"""V6: soak sampling and fault injection for the distributed pieces.
+
+Everything here talks to the stack through nginx (never straight into a container) and injects
+faults with docker, so the evidence is "what a client saw while Redis/worker were broken".
+
+Run it through \`scripts/fault_injection_drill.sh\`, or by hand:
+
+    uv run python -m scripts.fault_probe soak --duration 1200
+    uv run python -m scripts.fault_probe fault --scenario redis-pause --seconds 20
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from scripts.interview_smoke import ANSWERS, build_resume_pdf
+from scripts.kill_instance_drill import bind_every_scene_to_the_fake
+
+#: A client that waits longer than this is reporting its own patience, not the outage.
+PROBE_TIMEOUT_SECONDS = 2.0
+
+DOCKER = shutil.which("docker") or "docker"
+POSTGRES_USER = "better_resume"
+POSTGRES_DB = "better_resume"
+
+_COUNTER_KEYS = (
+    "ok",
+    "rate_limited",
+    "client_error",
+    "server_error",
+    "timeout",
+    "transport",
+    "unexpected",
+)
+
+
+def docker(*args: str) -> str:
+    """Fixed argv, no shell: the probe only ever runs docker/redis-cli/psql commands."""
+    result = subprocess.run(  # noqa: S603
+        [DOCKER, *args], capture_output=True, text=True, check=False, timeout=180
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"docker {' '.join(args)} failed: {result.stderr.strip()[:200]}")
+    return result.stdout.strip()
+
+
+def classify_response(*, status: int | None = None, exc: BaseException | None = None) -> str:
+    """One name per outcome, so a fault window can be read as counts instead of prose."""
+    if exc is not None:
+        if isinstance(exc, httpx.TimeoutException):
+            return "timeout"
+        if isinstance(exc, httpx.HTTPError):
+            return "transport"
+        return "unexpected"
+    if status is None:
+        return "unexpected"
+    if status == 429:
+        return "rate_limited"
+    if status >= 500:
+        return "server_error"
+    if status >= 400:
+        return "client_error"
+    return "ok"
+
+
+def summarise_waves(waves: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate per-wave counters plus the first->last growth of the sampled gauges."""
+    kinds: dict[str, int] = {}
+    for wave in waves:
+        for key in _COUNTER_KEYS:
+            value = int(wave.get(key, 0))
+            if value:
+                kinds[key] = kinds.get(key, 0) + value
+    total = sum(kinds.values())
+    failures = total - kinds.get("ok", 0)
+    first = waves[0] if waves else {}
+    last = waves[-1] if waves else {}
+    return {
+        "waves": len(waves),
+        "total": total,
+        "ok": kinds.get("ok", 0),
+        "failures": failures,
+        "error_rate": (failures / total) if total else 0.0,
+        "kinds": dict(sorted(kinds.items())),
+        "redis_keys_growth": int(last.get("redis_keys", 0)) - int(first.get("redis_keys", 0)),
+        "redis_sessions_growth": int(last.get("redis_sessions", 0))
+        - int(first.get("redis_sessions", 0)),
+        "redis_other_keys_growth": (
+            int(last.get("redis_keys", 0))
+            - int(last.get("redis_sessions", 0))
+            - (int(first.get("redis_keys", 0)) - int(first.get("redis_sessions", 0)))
+        ),
+        "redis_memory_mb_growth": round(
+            float(last.get("redis_memory_mb", 0.0)) - float(first.get("redis_memory_mb", 0.0)), 2
+        ),
+        "pg_connections_growth": int(last.get("pg_connections", 0))
+        - int(first.get("pg_connections", 0)),
+        "api_memory_mb_growth": round(
+            float(last.get("api_memory_mb", 0.0)) - float(first.get("api_memory_mb", 0.0)), 1
+        ),
+    }
+
+
+# ---- gauges ---------------------------------------------------------------------
+
+
+def redis_gauges() -> dict[str, float]:
+    """Keys, sessions and memory. Sessions are the probe's own churn (30-day TTL), so the
+    interesting number is everything else plus the memory trend."""
+    keys = docker("compose", "exec", "-T", "redis", "redis-cli", "DBSIZE")
+    sessions = docker(
+        "compose", "exec", "-T", "redis", "redis-cli", "--scan", "--pattern", "session:*"
+    )
+    memory = docker("compose", "exec", "-T", "redis", "redis-cli", "INFO", "memory")
+    used = 0.0
+    for line in memory.splitlines():
+        if line.startswith("used_memory:"):
+            used = round(int(line.split(":", 1)[1]) / (1024 * 1024), 2)
+    session_count = len([row for row in sessions.splitlines() if row.strip()])
+    return {
+        "redis_keys": int(keys or 0),
+        "redis_sessions": session_count,
+        "redis_memory_mb": used,
+    }
+
+
+def pg_connection_count() -> int:
+    out = docker(
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-U",
+        POSTGRES_USER,
+        "-d",
+        POSTGRES_DB,
+        "-tAc",
+        "select count(*) from pg_stat_activity where datname = current_database()",
+    )
+    return int(out or 0)
+
+
+def api_memory_mb() -> float:
+    out = docker("stats", "--no-stream", "--format", "{{.Name}} {{.MemUsage}}")
+    total = 0.0
+    for line in out.splitlines():
+        name, _, usage = line.partition(" ")
+        if "better-resume-api" not in name:
+            continue
+        amount = usage.split("/")[0].strip()
+        number = float("".join(ch for ch in amount if ch.isdigit() or ch == ".") or 0)
+        total += number / (1024 if amount.endswith("GiB") else 1)
+    return round(total, 1)
+
+
+# ---- probes ---------------------------------------------------------------------
+
+
+def _session_payload() -> dict[str, str]:
+    return {"user_id": f"v6-{uuid.uuid4().hex[:8]}"}
+
+
+async def probe_once(client: httpx.AsyncClient, *, create_session: bool = True) -> str:
+    """Liveness plus a Redis/DB read; only some probes write a new session.
+
+    Creating a session on every probe would dwarf every other Redis number (30-day TTL),
+    so the soak logs in once and re-reads "/auth/me" for the rest of the run."""
+    try:
+        health = await client.get("/healthz", timeout=PROBE_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        return classify_response(exc=exc)
+    if health.status_code >= 400:
+        return classify_response(status=health.status_code)
+    path = "/api/v1/auth/session" if create_session else "/api/v1/auth/me"
+    try:
+        if create_session:
+            response = await client.post(
+                path, json=_session_payload(), timeout=PROBE_TIMEOUT_SECONDS
+            )
+        else:
+            response = await client.get(path, timeout=PROBE_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        return classify_response(exc=exc)
+    return classify_response(status=response.status_code)
+
+
+async def run_wave(
+    client: httpx.AsyncClient, *, requests: int, concurrency: int, logins: int = 2
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for index in range(requests):
+        create = index < logins  # a couple of writes per wave, then reads only
+        outcome = await probe_once(client, create_session=create)
+        counts[outcome] = counts.get(outcome, 0) + 1
+        if (index + 1) % concurrency == 0:
+            await asyncio.sleep(0)
+    return counts
+
+
+async def soak(args: argparse.Namespace) -> int:
+    waves: list[dict[str, Any]] = []
+    deadline = time.monotonic() + args.duration
+    async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
+        login = await client.post("/api/v1/auth/session", json=_session_payload())
+        login.raise_for_status()
+        while time.monotonic() < deadline:
+            started = time.monotonic()
+            wave = await run_wave(client, requests=args.requests, concurrency=args.concurrency)
+            wave.update(redis_gauges())
+            wave["pg_connections"] = pg_connection_count()
+            wave["api_memory_mb"] = api_memory_mb()
+            wave["at_seconds"] = round(time.monotonic() - (deadline - args.duration), 1)
+            waves.append(wave)
+            print(json.dumps(wave, ensure_ascii=False), flush=True)
+            sleep_for = args.wave_seconds - (time.monotonic() - started)
+            if sleep_for > 0:
+                await asyncio.sleep(sleep_for)
+
+    summary = summarise_waves(waves)
+    print("\n== soak summary ==")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print(f"duration_s={args.duration} requests_per_wave={args.requests}")
+    if args.json:
+        payload = {"waves": waves, "summary": summary, "args": vars(args)}
+        await asyncio.to_thread(
+            Path(args.json).write_text,
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print("json ->", args.json)
+    return 0 if summary["error_rate"] < 0.01 else 1
+
+
+async def fault(args: argparse.Namespace) -> int:
+    counts: dict[str, int] = {}
+    async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
+        if args.scenario == "redis-pause":
+            print(f"== pausing redis for {args.seconds}s (docker pause)")
+            injected = time.monotonic()
+            docker("compose", "pause", "redis")
+        elif args.scenario == "redis-restart":
+            print("== restarting redis (sessions live there: expect logouts)")
+            login = await client.post("/api/v1/auth/session", json=_session_payload())
+            cookie = "; ".join(f"{k}={v}" for k, v in login.cookies.items())
+            injected = time.monotonic()
+            docker("compose", "restart", "redis")
+            await asyncio.sleep(2)
+            async with httpx.AsyncClient(
+                base_url=args.base,
+                trust_env=False,
+                cookies={"br_session": cookie.split("=", 1)[-1]},
+            ) as old:
+                me = await old.get("/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS)
+            print(f"old cookie after restart: {me.status_code} (401 = session really gone)")
+        else:
+            raise SystemExit(f"unknown scenario {args.scenario!r}")
+
+        while time.monotonic() - injected < args.seconds:
+            outcome = await probe_once(client)
+            counts[outcome] = counts.get(outcome, 0) + 1
+            await asyncio.sleep(0.2)
+
+        if args.scenario == "redis-pause":
+            docker("compose", "unpause", "redis")
+            print("== redis unpaused, waiting for the first success")
+        recovered_at: float | None = None
+        deadline = time.monotonic() + args.recovery_timeout
+        while time.monotonic() < deadline:
+            if await probe_once(client) == "ok":
+                recovered_at = time.monotonic()
+                break
+            await asyncio.sleep(0.2)
+
+    total = sum(counts.values())
+    print(f"fault window: {json.dumps(dict(sorted(counts.items())), ensure_ascii=False)}")
+    if recovered_at is None:
+        print("FAIL: no successful request after recovery")
+        return 1
+    recovery_ms = ((recovered_at - injected) - args.seconds) * 1000
+    print(f"recovery: {recovery_ms:.0f} ms after the fault ended")
+    print(f"total={total} ok_during_fault={counts.get('ok', 0)}")
+    return 0
+
+
+CLAIM_SNIPPET = """
+import asyncio
+from better_resume.jobs.queue import JobQueue
+from better_resume.settings import get_settings
+
+async def main():
+    settings = get_settings()
+    queue = JobQueue(settings.redis_url, stream=settings.jobs_stream)
+    jobs = await queue.claim(consumer='v6-crash-sim', count=1, block_ms=200)
+    print('v6-claimed', [job.task_id for job in jobs])
+    await queue.close()
+
+asyncio.run(main())
+"""
+
+
+async def worker_crash(args: argparse.Namespace) -> int:
+    """A consumer that dies holding a job must not lose it: the worker reclaims it.
+
+    The job is claimed by a one-off container that exits without acking, which is exactly
+    what a crash looks like from Redis' side; the real worker then has to take it over
+    through XPENDING+XCLAIM once the entry has been idle for the reclaim threshold.
+    """
+    async with httpx.AsyncClient(base_url=args.base, trust_env=False, timeout=60.0) as client:
+        login = await client.post("/api/v1/auth/session", json=_session_payload())
+        login.raise_for_status()
+        # Rebinding scenes needs a session: do it after the login, not before.
+        await bind_every_scene_to_the_fake(client, args.model)
+        session_id = (await client.post("/api/v1/interview/sessions", json={})).json()["id"]
+        generated = await client.post(
+            f"/api/v1/interview/sessions/{session_id}/questions",
+            files={"file": ("cv.pdf", build_resume_pdf(), "application/pdf")},
+            data={"count": "2"},
+        )
+        generated.raise_for_status()
+        view = (await client.get(f"/api/v1/interview/sessions/{session_id}/restore")).json()
+        answer = {
+            "question_no": view["flow"]["current_question_no"],
+            "answer": ANSWERS[0],
+            "request_id": "v6-crash-1",
+        }
+        body = await client.post(f"/api/v1/interview/sessions/{session_id}/answers", json=answer)
+        body.raise_for_status()
+        docker("compose", "stop", "worker")
+        finished = await client.post(f"/api/v1/interview/sessions/{session_id}/finish")
+        finished.raise_for_status()
+        print(f"queued report.summary for {session_id} (worker stopped)")
+
+        claimed = docker(
+            "compose", "run", "--rm", "--no-deps", "worker", "python", "-c", CLAIM_SNIPPET
+        )
+        pending = docker(
+            "compose", "exec", "-T", "redis", "redis-cli", "XPENDING", "br:jobs", "br:workers"
+        )
+        print(claimed.strip().splitlines()[-1] if claimed.strip() else "v6-claimed []")
+        print(f"pending before restart: {pending.splitlines()[0] if pending else '0'}")
+
+        started = time.monotonic()
+        docker("compose", "start", "worker")
+        summary = None
+        deadline = time.monotonic() + args.summary_timeout
+        while time.monotonic() < deadline:
+            await asyncio.sleep(2)
+            report = await client.get(f"/api/v1/interview/sessions/{session_id}/report")
+            if report.status_code == 200 and report.json().get("summary"):
+                summary = report.json()["summary"]
+                break
+        elapsed = time.monotonic() - started
+        remaining = docker(
+            "compose", "exec", "-T", "redis", "redis-cli", "XPENDING", "br:jobs", "br:workers"
+        )
+        print(f"pending after recovery: {remaining.splitlines()[0] if remaining else '0'}")
+        print(f"worker restart -> summary written: {elapsed:.1f}s")
+        print(f"summary: {summary!r}")
+        if summary is None:
+            print("FAIL: the reclaimed job never produced a summary")
+            return 1
+        print("PASS: the crashed consumer's job was reclaimed and completed")
+        return 0
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="V6 soak / fault probe (through nginx)")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    soak_parser = sub.add_parser("soak", help="sampled load waves over a long window")
+    soak_parser.add_argument("--base", default="http://127.0.0.1:8080")
+    soak_parser.add_argument("--duration", type=float, default=1200.0)
+    soak_parser.add_argument("--wave-seconds", type=float, default=60.0)
+    soak_parser.add_argument("--requests", type=int, default=30)
+    soak_parser.add_argument("--concurrency", type=int, default=4)
+    soak_parser.add_argument("--json")
+
+    fault_parser = sub.add_parser("fault", help="inject one fault and classify the window")
+    fault_parser.add_argument("--base", default="http://127.0.0.1:8080")
+    fault_parser.add_argument(
+        "--scenario",
+        choices=["redis-pause", "redis-restart", "worker-crash"],
+        required=True,
+    )
+    fault_parser.add_argument("--model", default="smoke-fake")
+    fault_parser.add_argument("--summary-timeout", type=float, default=180.0)
+    fault_parser.add_argument("--seconds", type=float, default=20.0)
+    fault_parser.add_argument("--recovery-timeout", type=float, default=30.0)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.command == "soak":
+        return asyncio.run(soak(args))
+    if args.scenario == "worker-crash":
+        return asyncio.run(worker_crash(args))
+    return asyncio.run(fault(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -42,10 +42,11 @@ M6 是最后一个里程碑（§12.4 收口）；后续欠账是真机凭据与�
 
 ## 必读
 
-1. docs/DECISIONS.md —— 17 项技术栈/范围决议（开工依据，冲突时以它为准）
-2. docs/ai-meeting-architecture-analysis.md —— 原项目全景分析（§12 为新项目模块蓝图）
-3. docs/tickets/m6/ —— 当前里程碑票据与验收证据（ACCEPTANCE / PROBLEMS / T5-EVIDENCE）；
-   M0–M5 存档在 docs/tickets/m0|m1|m2|m3|m4|m5/
+1. **docs/HANDOFF.md —— 交接文档**（当前状态 / 怎么跑 / 本机坑 / 凭据政策 / 欠账 / 下一步），换窗口先读它
+2. docs/DECISIONS.md —— 17 项技术栈/范围决议（开工依据，冲突时以它为准）
+3. docs/ai-meeting-architecture-analysis.md —— 原项目全景分析（§12 为新项目模块蓝图）
+4. docs/tickets/v1-verification/ —— 当前阶段（验证欠账）：README（进度）+ 票据 + EVIDENCE + PROBLEMS(P17–P21)
+5. 历史：M6 docs/tickets/m6/（ACCEPTANCE / PROBLEMS / T5-EVIDENCE），M0–M5 在 docs/tickets/m0|m1|m2|m3|m4|m5/
 
 ## 结构
 

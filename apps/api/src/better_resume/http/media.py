@@ -41,6 +41,7 @@ router = APIRouter(prefix="/api/v1/media", tags=["media"])
 CLOSE_UNAUTHORIZED = 4401
 CLOSE_ALREADY_ACTIVE = 4409
 CLOSE_CHANNEL_FAILED = 4411
+CLOSE_OK = 1000
 
 #: How long the server keeps trying to deliver the tail (archive/final) after stop.
 FLUSH_BUDGET_SECONDS = 1.0
@@ -162,12 +163,20 @@ async def transcribe(websocket: WebSocket, ticket: str | None = Query(default=No
         # tail (archive/final) exists, deliver it, and only then close the socket.
         with contextlib.suppress(BaseException):
             await channel.stop()
+        # A batch channel (qwen-asr) can only fail during stop(), after the watcher was
+        # cancelled: pick the failure up from the channel itself.
+        failure = failure or getattr(channel, "failure", None)
         await _flush(websocket, events)
 
         if failure is not None:
             logger.warning("media_channel_failed", error=str(failure))
             with contextlib.suppress(Exception):
                 await websocket.close(code=CLOSE_CHANNEL_FAILED)
+            return
+        # Close the handshake ourselves: returning without a close frame makes clients
+        # report 1006 (abnormal) even though the final transcript was delivered.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=CLOSE_OK)
     except WebSocketDisconnect:
         logger.info("media_client_disconnected", user_id=principal.user_id)
     finally:
