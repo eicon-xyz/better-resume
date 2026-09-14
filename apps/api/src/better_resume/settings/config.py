@@ -133,6 +133,10 @@ class Settings(BaseSettings):
     hot_state_backend: Literal["memory", "redis"] = "memory"
     hot_state_ttl_seconds: int = 600
 
+    # M6/V1: scene bindings are cached per process, so an admin change only reaches
+    # the other replicas after this TTL (0 disables the cache entirely).
+    scene_binding_cache_seconds: float = 5.0
+
     # M6: which container answered. Compose sets it per replica; the default is the host.
     instance_id: str = Field(default_factory=socket.gethostname)
 
