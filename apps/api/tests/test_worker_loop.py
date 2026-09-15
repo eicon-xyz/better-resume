@@ -90,6 +90,27 @@ async def test_serve_drops_the_heartbeat_on_a_clean_stop(worker_settings: Settin
         await client.aclose()
 
 
+async def test_run_once_dead_letters_a_job_with_no_handler(worker_settings: Settings) -> None:
+    """P2 coverage: an unknown job kind must be failed by the loop, not wedge it."""
+    queue = JobQueue(
+        worker_settings.redis_url,
+        stream=worker_settings.jobs_stream,
+        max_attempts=1,
+    )
+    try:
+        await queue.ensure_group()
+        _task_id, created = await queue.enqueue(
+            "kind.nobody.handles", {"x": 1}, idempotency_key=f"p2-{id(queue)}"
+        )
+        assert created
+        processed = await worker.run_once(queue, _stub_runtime(), consumer="probe", block_ms=100)
+        assert processed == 0
+        # the poisoned message must not stay claimable to this consumer again
+        assert await worker.run_once(queue, _stub_runtime(), consumer="probe", block_ms=100) == 0
+    finally:
+        await queue.close()
+
+
 def test_serve_loop_backoff_is_bounded() -> None:
     assert worker.loop_backoff_seconds(1) <= worker.loop_backoff_seconds(2)
     assert worker.loop_backoff_seconds(50) <= 5.0

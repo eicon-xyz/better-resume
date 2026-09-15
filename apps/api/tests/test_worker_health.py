@@ -81,6 +81,13 @@ async def test_serve_survives_a_redis_timeout_in_the_heartbeat(
         await asyncio.wait_for(task, timeout=5)  # must not raise
 
 
+async def test_check_health_is_false_when_redis_is_unreachable(worker_settings: Settings) -> None:
+    """P2 coverage: during a failover the container health check hits an unreachable
+    Redis; that must read as unhealthy, never raise out of the healthcheck process."""
+    down = worker_settings.model_copy(update={"redis_url": "redis://127.0.0.1:1/0"})
+    assert await check_health(down) is False
+
+
 async def _heartbeat_value(settings: Settings) -> str | None:
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
     try:

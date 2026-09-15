@@ -2,7 +2,8 @@
 
 > 依据：`AGENTS.md`（契约三件套、本地必须镜像 CI）、M6 P16（"本地全绿、CI 直接红"）、
 > P25/P27（证据工具自身要先被校准）、P1 收口时的实测盘点。
-> 状态：**提案，待你确认后动工**（本文件只出方案，未改任何代码/流程）。
+> 状态：**T1–T6 全部落地（含 T6 第二轮深模块底线 ≥90%）**；后端 744 / 前端 161 全绿；
+> nightly/weekly workflow 已建立并首跑验证中。floor 清单见 `scripts/check_coverage_floors.py`，理由见 `coverage-report-round1.md`。
 
 ## 1. 现状盘点（实测，不是印象）
 

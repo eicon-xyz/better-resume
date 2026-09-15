@@ -61,6 +61,8 @@ contract:
   web: pnpm -C apps/web lint
   web: pnpm -C apps/web typecheck
   web: pnpm -C apps/web check:api
+coverage:
+  all: cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json
 deploy:
   all: bash scripts/compose_smoke.sh
   all: bash scripts/kill_instance_drill.sh
@@ -79,7 +81,7 @@ MAP
 fi
 
 case "$LAYER" in
-  unit|contract|deploy|fault|soak|real|scripts|all) ;;
+  unit|contract|coverage|deploy|fault|soak|real|scripts|all) ;;
   "") echo "no --layer given; usage: verify.sh --layer unit|contract|deploy|fault|soak|real|scripts|all" >&2; exit 2 ;;
   *) echo "unknown layer: $LAYER (see --list)" >&2; exit 2 ;;
 esac
@@ -91,7 +93,7 @@ esac
 
 declare -a cmds=()
 
-add_api_unit() { cmds+=("cd apps/api && uv run pytest"); }
+add_api_unit() { cmds+=("cd apps/api && uv run pytest --cov=better_resume --cov-report=json:coverage-api.json --cov-report=term"); }
 add_web_unit() { cmds+=("pnpm -C apps/web exec vitest run"); }
 
 case "$LAYER" in
@@ -120,6 +122,10 @@ case "$LAYER" in
     ;;
   fault)
     cmds+=("bash scripts/fault_injection_drill.sh")
+    ;;
+  coverage)
+    cmds+=("cd apps/api && uv run pytest --cov=better_resume --cov-report=json:coverage-api.json --cov-report=term")
+    cmds+=("cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json")
     ;;
   soak)
     cmds+=("cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json var/evidence/soak-60m.json")

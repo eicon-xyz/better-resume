@@ -35,3 +35,4 @@ pgdata/
 .vscode/
 .DS_Store
 var/
+apps/api/coverage-api.json
