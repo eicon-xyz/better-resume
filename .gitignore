@@ -34,3 +34,4 @@ pgdata/
 .idea/
 .vscode/
 .DS_Store
+var/

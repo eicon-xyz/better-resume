@@ -187,7 +187,16 @@ def test_check_fails_on_drift_and_regeneration_repairs_it(tmp_path: Path) -> Non
 
 
 def test_ci_runs_the_index_drift_check() -> None:
-    assert "extract_api_index.py --check" in read(CI_WORKFLOW)
+    """CI must run the index drift check — directly, or through the verify.sh entry point
+    (P2-T1: ci.yml calls verify.sh, which owns the actual command list)."""
+    workflow = read(CI_WORKFLOW)
+    if "extract_api_index.py --check" in workflow:
+        return  # a direct call also satisfies the contract
+    assert "verify.sh" in workflow, "ci.yml must call verify.sh or the drift check directly"
+    verify_script = read(REPO_ROOT / "scripts" / "verify.sh")
+    assert "extract_api_index.py --check" in verify_script, (
+        "verify.sh contract layer must run the index drift check"
+    )
 
 
 def test_skills_readme_explains_both_audiences_and_the_real_path() -> None:
