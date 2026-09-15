@@ -158,7 +158,8 @@ uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序
 
 ## 9. 交接动作清单
 
-1. **用户**：验收 P1（读 `docs/tickets/p1-post-v/ACCEPTANCE.md`）；**P1-A 浏览器手测**（说话过程中逐字出字、手写不被覆盖、TTS）。
+1. **用户**：按 **`docs/MANUAL-TESTING.md`**（统一人工测试清单）做手测——必测=实时转写浏览器全流程（§1），
+   结果逐项回填 ✅/❌；然后验收 P1（读 `docs/tickets/p1-post-v/ACCEPTANCE.md`）。
 2. **用户**：要做"星云等价物"验证时给百炼应用 **app_id**；轮换三个 key（对话里出现过）；删远端分支 `m1`–`m6`。
 3. **我**（验收通过后）：
    ```bash
