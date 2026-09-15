@@ -1,22 +1,23 @@
 """P2-T1: scripts/verify.sh is the single entry point for every verification layer.
 
 CI and local must call the same commands (M6 P16: "local green, CI red" happened because the
-two drifted). This file pins the script's own contract: the layer list, dry-run behaviour,
-and the refusal to run unknown or not-yet-implemented layers.
+two drifted). This file pins the script's own contract: the layer list and dry-run behaviour.
 """
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 VERIFY = REPO_ROOT / "scripts" / "verify.sh"
+BASH = shutil.which("bash") or "/bin/bash"
 
 
 def run_verify(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["bash", str(VERIFY), *args], capture_output=True, text=True, timeout=120, cwd=REPO_ROOT
+    return subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
+        [BASH, str(VERIFY), *args], capture_output=True, text=True, timeout=120, cwd=REPO_ROOT
     )
 
 
@@ -41,11 +42,3 @@ def test_unknown_layer_refuses_to_run() -> None:
     result = run_verify("--layer", "bogus")
     assert result.returncode == 2
     assert "bogus" in result.stderr
-
-
-def test_real_layer_refuses_until_t4_implements_it() -> None:
-    """T4 will add the budget-guarded real-machine suite; until then the layer must refuse
-    loudly (this repo never fakes a run)."""
-    result = run_verify("--layer", "real", "--dry-run")
-    assert result.returncode == 2
-    assert "T4" in result.stderr or "not implemented" in result.stderr

@@ -50,4 +50,8 @@ ignore = ["S101"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q"
+addopts = "-q --strict-markers -m 'not docker and not real'"
+markers = [
+  "docker: needs the compose stack (excluded from the default unit run; run via verify.sh)",
+  "real: needs real vendor credentials and costs money (never in CI; run via verify.sh --layer real)",
+]

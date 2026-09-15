@@ -1,0 +1,44 @@
+name: weekly-full
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # Sundays 03:00 UTC (11:00 UTC+8)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-full
+  cancel-in-progress: false
+
+jobs:
+  full-fault-and-soak:
+    name: full fault drill (20-min soak) + 60-minute soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      BR_SMOKE_KEY: smoke-fake-key
+      NGINX_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        working-directory: apps/api
+        run: uv sync --frozen
+      - name: Full fault layer (5 experiments + 20-minute soak)
+        run: bash scripts/verify.sh --layer fault --scope all
+      - name: Soak layer (60 minutes, vendor-free)
+        run: bash scripts/verify.sh --layer soak --scope all
+      - name: Collect drill evidence
+        if: always()
+        run: mkdir -p var/evidence && cp /tmp/v6-soak.json var/evidence/ 2>/dev/null || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-evidence
+          path: var/evidence/
+          if-no-files-found: ignore

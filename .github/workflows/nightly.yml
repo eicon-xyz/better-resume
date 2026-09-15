@@ -1,0 +1,44 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # daily 02:30 UTC (10:30 UTC+8)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-fault-quick:
+    name: deploy smoke + kill drill + fault drill (quick soak)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BR_SMOKE_KEY: smoke-fake-key
+      NGINX_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        working-directory: apps/api
+        run: uv sync --frozen
+      - name: Deploy layer (compose smoke + kill drill)
+        run: bash scripts/verify.sh --layer deploy --scope all
+      - name: Fault layer (quick soak)
+        run: bash scripts/fault_injection_drill.sh --quick
+      - name: Collect drill evidence
+        if: always()
+        run: mkdir -p var/evidence && cp /tmp/v6-soak.json var/evidence/ 2>/dev/null || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-evidence
+          path: var/evidence/
+          if-no-files-found: ignore

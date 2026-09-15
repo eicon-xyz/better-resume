@@ -125,8 +125,61 @@ case "$LAYER" in
     cmds+=("cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json var/evidence/soak-60m.json")
     ;;
   real)
-    echo "real layer is not implemented yet (T4: budget-guarded real-machine suite)" >&2
-    exit 2
+    # P2-T4: budget-guarded real-machine suite — stage-closure MANDATORY (Q5).
+    # Order matters: budget math first (pure), then the credential preflight, then the
+    # dry-run exit, and only for a real run the stack health check + execution.
+    budget="${BR_REAL_CALL_BUDGET:-200}"
+    evidence_root="${VERIFY_EVIDENCE_DIR:-var/evidence}"
+    spent_file="$evidence_root/real_calls_spent.txt"
+    spent=0
+    if [[ -f "$spent_file" ]]; then spent="$(cat "$spent_file")"; fi
+    declare -a real_steps=(
+      "12|cd apps/api && uv run python -m scripts.real_model_smoke"
+      "2|cd apps/api && uv run python scripts/media_smoke.py --paraformer-rt-real --wav ../../data/audio/p1c-multi-sentence-16k.wav"
+      "2|cd apps/api && uv run python scripts/media_smoke.py --qwen-asr-real --wav ../../data/audio/v3-sample-16k.wav"
+      "1|cd apps/api && uv run python scripts/assembler_real_probe.py"
+      "4|cd apps/api && uv run python scripts/v3_ws_probe.py --realtime"
+    )
+    total=0
+    for step in "${real_steps[@]}"; do total=$((total + ${step%%|*})); done
+    if (( spent + total > budget )); then
+      echo "real layer would exceed the call budget: spent=$spent + est=$total > budget=$budget (raise BR_REAL_CALL_BUDGET or reset $spent_file)" >&2
+      exit 2
+    fi
+    env_file="${VERIFY_ENV_FILE:-.env}"
+    if [[ ! -f "$env_file" ]]; then
+      echo "real layer needs $env_file with BR_DASHSCOPE_API_KEY / BR_MEDIA__ASR_URL / BR_MEDIA__ASR_WS_URL; refusing" >&2
+      exit 2
+    fi
+    for var in BR_DASHSCOPE_API_KEY BR_MEDIA__ASR_URL BR_MEDIA__ASR_WS_URL; do
+      grep -q "^${var}=" "$env_file" || {
+        echo "real layer needs ${var} in $env_file; refusing" >&2
+        exit 2
+      }
+    done
+    if [[ $DRY_RUN -eq 1 ]]; then
+      echo "DRY RUN -- layer=real scope=all budget=$budget spent=$spent est=$total"
+      for step in "${real_steps[@]}"; do echo "  \$ ${step#*|}"; done
+      exit 0
+    fi
+    if ! curl -sf --max-time 5 http://127.0.0.1:8080/healthz >/dev/null; then
+      echo "real layer needs the compose stack up (curl /healthz failed); refusing" >&2
+      exit 2
+    fi
+    mkdir -p "$evidence_root"
+    for step in "${real_steps[@]}"; do
+      est="${step%%|*}"
+      cmd="${step#*|}"
+      echo "(est $est vendor calls) $cmd"
+      step_log="$evidence_root/real-$(date -u +%H%M%S)-$((RANDOM % 1000)).log"
+      if ! bash -c "$cmd" 2>&1 | tee "$step_log"; then
+        echo "FAIL: $cmd (log: $step_log)" >&2
+        exit 1
+      fi
+      spent=$((spent + est))
+      echo "$spent" > "$spent_file"
+    done
+    echo "real layer done; spent=$spent / budget=$budget"
     ;;
   scripts)
     cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
