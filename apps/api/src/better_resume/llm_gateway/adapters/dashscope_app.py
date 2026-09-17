@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -38,6 +39,8 @@ DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com"
 _BODY_PREVIEW = 500
 #: The vendor sends the literal string "null" while the answer is still streaming.
 _STREAMING_FINISH = {"", "null", "none"}
+#: Comment line the vendor writes before each frame: ":HTTP_STATUS/400".
+_STATUS_COMMENT = re.compile(r"^:HTTP_STATUS/(\d{3})$")
 
 T = TypeVar("T")
 
@@ -211,10 +214,18 @@ class DashScopeAppAdapter:
 
     async def _events(self, response: httpx.Response) -> AsyncIterator[StreamEvent]:
         finish_reason: str | None = None
+        reported_status: int | None = None
         async for raw_line in response.aiter_lines():
             line = raw_line.strip()
-            # The vendor frames carry id:/event:/:HTTP_STATUS comment lines; only data: matters.
-            if not line or line.startswith(":") or not line.startswith("data:"):
+            if not line:
+                continue
+            if line.startswith(":"):
+                # The vendor reports the effective status as a comment line before each frame.
+                frame_status = _STATUS_COMMENT.match(line)
+                if frame_status:
+                    reported_status = int(frame_status.group(1))
+                continue
+            if not line.startswith("data:"):
                 continue
             data = line[len("data:") :].strip()
             if data in ("[DONE]", ""):
@@ -224,6 +235,19 @@ class DashScopeAppAdapter:
             except json.JSONDecodeError:
                 logger.warning("dashscope_app_dirty_frame", app_id=self._app_id)
                 continue
+            if not isinstance(frame, dict):
+                continue
+
+            # Real endpoint, 2026-09-17: failures arrive as HTTP 200 + an error frame. Reading
+            # that as an empty answer would hide a broken binding behind a blank reply, so an
+            # in-band error is raised with the status the vendor itself reported.
+            code = frame.get("code")
+            if isinstance(code, str) and code:
+                message = str(frame.get("message", ""))[:200]
+                raise LlmVendorError(
+                    f"dashscope app {self._app_id} returned {code}: {message}",
+                    status_code=reported_status or 400,
+                )
 
             output = frame.get("output")
             if not isinstance(output, dict):
