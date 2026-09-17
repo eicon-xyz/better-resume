@@ -88,6 +88,15 @@ P1-C 的验收口径里留了一句：两个保留 adapter 是"**真接缝**"不
 | 真机探针 | `scripts/dashscope_app_probe.py`（`--dry-run` / 1 次调用 / `--schema` 边界；缺凭据 exit 2、不假装） | 脚本契约：`--help` + 缺凭据拒绝 + dry-run 不花钱（`tests/test_scripts_contracts.py`） |
 | 模块导航 | `skills/modules/llm_gateway/SKILL.md`（三个 adapter、新陷阱：`finish_reason` 的字符串 `"null"`、结构化边界） | skills 索引与引用校验测试 39 passed |
 
-本机收口：`bash scripts/verify.sh --layer all` = 12 条命令（后端 **778** / 前端 **175** / contract 全绿）；
-覆盖率底线随后复核。**未做**：真机调用（等你点头）、`EVIDENCE.md`（真机数字落进去才有意义）。
+本机收口：`bash scripts/verify.sh --layer all` = 12 条命令（后端 **778** / 前端 **175** / contract 全绿）。
+
+### 9.1 真机轮（2026-09-17，用户许可后）
+
+- 真机 **6 次**调用（P1 记账 ~185 → **~191 / 200**）；**结论：应用调用未成功**——供应商对给定 app_id
+  一律回 `InvalidParameter: Required parameter(AppId) missing or invalid`（主域名与工作区域名相同）。
+  需要你侧确认应用是否已发布、app_id 取值与账号/业务空间是否匹配（详见 `EVIDENCE.md` §4）。
+- **真机抓到一个真 bug 并已红-绿修掉（P34）**：供应商用 HTTP 200 + `event:error` 帧报错，修复前 adapter
+  把它读成"空答案"（`content=""` + `Done("stop")`）——绑定坏了却给用户空白回答。现在解析 `:HTTP_STATUS/<n>`
+  注释、帧里出现 `code` 即抛 `LlmVendorError`（4xx 不可重试 / 5xx 可重试）。
+- 证据：`EVIDENCE.md`（原始报文 + 复跑命令 + 诚实清单）、`PROBLEMS.md`（P34）。
 

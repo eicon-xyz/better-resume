@@ -66,10 +66,10 @@ bash scripts/verify.sh --list
 bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts
 bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱）
 
-# 后端全量测试（747 例；不导出 BR_* 会静默 skip）
+# 后端全量测试（778 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
-# 前端测试（173 例）——必须从仓库根跑
+# 前端测试（175 例）——必须从仓库根跑
 cd '/root/better resume' && pnpm -C apps/web test --run
 
 # 契约三件套：改过 REST 模型后必须一起跑（漏一步 = 本地绿 CI 红，M6 P16）
