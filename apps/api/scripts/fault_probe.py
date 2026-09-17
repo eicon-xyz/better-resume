@@ -382,9 +382,7 @@ async def fault(args: argparse.Namespace) -> int:
                     if not auth_sampled:
                         auth_sampled = True
                         try:
-                            me = await client.get(
-                                "/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS
-                            )
+                            me = await client.get("/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS)
                             notes.append(f"auth_status_during_partition={me.status_code}")
                             notes.append(f"retry_after={me.headers.get('retry-after')!r}")
                         except httpx.HTTPError as exc:

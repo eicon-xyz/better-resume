@@ -31,7 +31,8 @@ def run_verify(*args: str, env: dict[str, str] | None = None) -> subprocess.Comp
     )
 
 
-def test_real_layer_dry_run_lists_steps_and_budget(tmp_path: Path) -> None:
+def write_synthetic_env(tmp_path: Path) -> Path:
+    """Credentials that satisfy the preflight and can never reach a vendor."""
     env_file = tmp_path / "synthetic.env"
     env_file.write_text(
         "BR_DASHSCOPE_API_KEY=sk-test\n"
@@ -39,6 +40,21 @@ def test_real_layer_dry_run_lists_steps_and_budget(tmp_path: Path) -> None:
         "BR_MEDIA__ASR_WS_URL=wss://example.invalid/ws\n",
         encoding="utf-8",
     )
+    return env_file
+
+
+def run_fixture_check(path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
+        [UV, "run", "python", "scripts/make_fixture_audio.py", "--check", "--file", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=REPO_ROOT / "apps" / "api",
+    )
+
+
+def test_real_layer_dry_run_lists_steps_and_budget(tmp_path: Path) -> None:
+    env_file = write_synthetic_env(tmp_path)
     result = run_verify("--layer", "real", "--dry-run", env={"VERIFY_ENV_FILE": str(env_file)})
     assert result.returncode == 0
     assert "real_model_smoke" in result.stdout
@@ -64,24 +80,49 @@ def test_real_layer_budget_guard_blocks_overspend(tmp_path: Path) -> None:
     assert "would exceed the call budget" in result.stderr
 
 
-def test_fixture_audio_check_passes_on_the_pinned_file() -> None:
-    assert FIXTURE_AUDIO.exists(), "generate it first: make_fixture_audio.py --generate"
-    result = subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
-        [
-            UV,
-            "run",
-            "python",
-            "scripts/make_fixture_audio.py",
-            "--check",
-            "--file",
-            str(FIXTURE_AUDIO),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        cwd=REPO_ROOT / "apps" / "api",
+def test_fixture_audio_check_refuses_a_missing_file(tmp_path: Path) -> None:
+    """P32: data/ is gitignored (Q3 never commits the wav), so the fixture is legitimately
+    absent in a clean checkout. The check must therefore be tested against bytes the test
+    owns -- an assertion that the developer's local wav exists is not hermetic (it passed
+    here and failed on CI)."""
+    result = run_fixture_check(tmp_path / "absent.wav")
+    assert result.returncode == 2
+    assert "missing fixture" in (result.stdout + result.stderr)
+
+
+def test_real_layer_refuses_when_the_fixture_audio_is_absent(tmp_path: Path) -> None:
+    """P32: refuse before spending, not halfway through a paid run."""
+    result = run_verify(
+        "--layer",
+        "real",
+        env={
+            "VERIFY_ENV_FILE": str(write_synthetic_env(tmp_path)),
+            "VERIFY_EVIDENCE_DIR": str(tmp_path / "evidence"),
+            "VERIFY_FIXTURE_AUDIO_DIR": str(tmp_path / "no-audio-here"),
+        },
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "fixture" in result.stderr
+    assert "make_fixture_audio.py" in result.stderr
+
+
+def test_real_layer_refuses_when_the_pinned_fixture_drifted(tmp_path: Path) -> None:
+    """P32: present-but-wrong bytes are as blocking as absent bytes (drift guard)."""
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    for name in ("p1c-multi-sentence-16k.wav", "v3-sample-16k.wav"):
+        (audio_dir / name).write_bytes(b"RIFF-not-the-pinned-bytes")
+    result = run_verify(
+        "--layer",
+        "real",
+        env={
+            "VERIFY_ENV_FILE": str(write_synthetic_env(tmp_path)),
+            "VERIFY_EVIDENCE_DIR": str(tmp_path / "evidence"),
+            "VERIFY_FIXTURE_AUDIO_DIR": str(audio_dir),
+        },
+    )
+    assert result.returncode == 2
+    assert "PINNED_SHA256" in result.stderr
 
 
 def test_fixture_audio_check_detects_a_foreign_file(tmp_path: Path) -> None:

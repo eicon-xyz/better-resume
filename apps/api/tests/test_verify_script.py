@@ -42,3 +42,21 @@ def test_unknown_layer_refuses_to_run() -> None:
     result = run_verify("--layer", "bogus")
     assert result.returncode == 2
     assert "bogus" in result.stderr
+
+
+def _dry_run_commands(layer: str) -> set[str]:
+    result = run_verify("--layer", layer, "--dry-run")
+    assert result.returncode == 0, result.stderr
+    return {
+        line.strip()[2:] for line in result.stdout.splitlines() if line.strip().startswith("$ ")
+    }
+
+
+def test_all_layer_actually_runs_unit_contract_and_scripts() -> None:
+    """P31: --list and AGENTS.md advertise "all = unit + contract + scripts"; pin the real
+    expansion instead of trusting the label. The contract layer silently went missing once,
+    which is exactly how a formatting failure stayed invisible locally until CI."""
+    all_commands = _dry_run_commands("all")
+    for layer in ("unit", "contract", "scripts"):
+        missing = _dry_run_commands(layer) - all_commands
+        assert not missing, f"--layer all skips the {layer} layer: {sorted(missing)}"

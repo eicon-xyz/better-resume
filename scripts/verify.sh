@@ -95,6 +95,22 @@ declare -a cmds=()
 
 add_api_unit() { cmds+=("cd apps/api && uv run pytest --cov=better_resume --cov-report=json:coverage-api.json --cov-report=term"); }
 add_web_unit() { cmds+=("pnpm -C apps/web exec vitest run"); }
+add_api_contract() {
+  cmds+=("cd apps/api && uv run ruff check .")
+  cmds+=("cd apps/api && uv run ruff format --check .")
+  cmds+=("cd apps/api && uv run alembic upgrade head")
+  cmds+=("cd apps/api && uv run alembic check")
+  cmds+=("cd apps/api && uv run python scripts/export_openapi.py --check")
+  cmds+=("cd apps/api && uv run python scripts/extract_api_index.py --check")
+}
+add_web_contract() {
+  cmds+=("pnpm -C apps/web lint")
+  cmds+=("pnpm -C apps/web typecheck")
+  cmds+=("pnpm -C apps/web check:api")
+}
+add_scripts() {
+  cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
+}
 
 case "$LAYER" in
   unit)
@@ -102,19 +118,8 @@ case "$LAYER" in
     if [[ "$SCOPE" != "api" ]]; then add_web_unit; fi
     ;;
   contract)
-    if [[ "$SCOPE" != "web" ]]; then
-      cmds+=("cd apps/api && uv run ruff check .")
-      cmds+=("cd apps/api && uv run ruff format --check .")
-      cmds+=("cd apps/api && uv run alembic upgrade head")
-      cmds+=("cd apps/api && uv run alembic check")
-      cmds+=("cd apps/api && uv run python scripts/export_openapi.py --check")
-      cmds+=("cd apps/api && uv run python scripts/extract_api_index.py --check")
-    fi
-    if [[ "$SCOPE" != "api" ]]; then
-      cmds+=("pnpm -C apps/web lint")
-      cmds+=("pnpm -C apps/web typecheck")
-      cmds+=("pnpm -C apps/web check:api")
-    fi
+    if [[ "$SCOPE" != "web" ]]; then add_api_contract; fi
+    if [[ "$SCOPE" != "api" ]]; then add_web_contract; fi
     ;;
   deploy)
     cmds+=("bash scripts/compose_smoke.sh")
@@ -168,6 +173,24 @@ case "$LAYER" in
       for step in "${real_steps[@]}"; do echo "  \$ ${step#*|}"; done
       exit 0
     fi
+    # P32: the real steps need the ignored fixture audio (data/ is gitignored by design, Q3).
+    # Refuse here -- still before the stack check and before any vendor call -- so a missing or
+    # drifted fixture never becomes a half-finished, already-paid-for run.
+    fixture_dir="${VERIFY_FIXTURE_AUDIO_DIR:-data/audio}"
+    case "$fixture_dir" in
+      /*) fixture_abs="$fixture_dir" ;;
+      *) fixture_abs="$ROOT/$fixture_dir" ;;
+    esac
+    for fixture in p1c-multi-sentence-16k.wav v3-sample-16k.wav; do
+      if [[ ! -f "$fixture_abs/$fixture" ]]; then
+        echo "real layer needs the fixture audio $fixture_abs/$fixture (data/ is gitignored: run 'uv run python scripts/make_fixture_audio.py --generate', or point VERIFY_FIXTURE_AUDIO_DIR at your copy); refusing" >&2
+        exit 2
+      fi
+    done
+    if ! (cd apps/api && uv run python scripts/make_fixture_audio.py --check --file "$fixture_abs/p1c-multi-sentence-16k.wav" >/dev/null); then
+      echo "real layer fixture drifted: $fixture_abs/p1c-multi-sentence-16k.wav does not match PINNED_SHA256 (make_fixture_audio.py --check); refusing" >&2
+      exit 2
+    fi
     if ! curl -sf --max-time 5 http://127.0.0.1:8080/healthz >/dev/null; then
       echo "real layer needs the compose stack up (curl /healthz failed); refusing" >&2
       exit 2
@@ -188,12 +211,16 @@ case "$LAYER" in
     echo "real layer done; spent=$spent / budget=$budget"
     ;;
   scripts)
-    cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
+    add_scripts
     ;;
   all)
+    # P31: the advertised local closure. Every fast layer joins through its own builder so the
+    # label in --list cannot drift from what actually runs.
     add_api_unit
     add_web_unit
-    cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
+    add_api_contract
+    add_web_contract
+    add_scripts
     ;;
 esac
 
