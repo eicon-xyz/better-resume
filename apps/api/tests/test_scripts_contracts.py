@@ -21,6 +21,7 @@ ALL_SCRIPTS = sorted(p.name for p in SCRIPTS.glob("*.py") if p.name != "__init__
 ARGPARSE_SCRIPTS = [
     "adapter_smoke.py",
     "assembler_real_probe.py",
+    "dashscope_app_probe.py",
     "deploy_probe.py",
     "extract_api_index.py",
     "fake_openai.py",
@@ -30,9 +31,15 @@ ARGPARSE_SCRIPTS = [
 ENTRY_GUARD_SCRIPTS = ["interview_smoke.py", "resilience_smoke.py", "v3_ws_probe.py"]
 
 
-def run_script(script: str, *args: str) -> subprocess.CompletedProcess[str]:
+def run_script(
+    script: str, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     merged = dict(os.environ)
     merged["BR_ENVIRONMENT"] = merged.get("BR_ENVIRONMENT", "local")
+    if env:
+        # Environment variables beat the dotenv file in pydantic-settings, so a test can
+        # force "no credentials" even on a machine whose .env has them (never spend in CI).
+        merged.update(env)
     return subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
         [sys.executable, "-m", f"scripts.{script[:-3]}", *args],
         capture_output=True,
@@ -72,6 +79,26 @@ def test_media_smoke_refuses_a_real_run_without_wav() -> None:
     result = run_script("media_smoke.py", "--qwen-asr-real")
     assert result.returncode == 2
     assert "--wav" in result.stderr
+
+
+def test_dashscope_app_probe_refuses_without_credentials() -> None:
+    result = run_script(
+        "dashscope_app_probe.py",
+        env={"BR_DASHSCOPE_APP_ID": "", "BR_DASHSCOPE_API_KEY": ""},
+    )
+    assert result.returncode == 2
+    assert "BR_DASHSCOPE_APP_ID" in result.stderr
+
+
+def test_dashscope_app_probe_dry_run_spends_nothing() -> None:
+    result = run_script(
+        "dashscope_app_probe.py",
+        "--dry-run",
+        env={"BR_DASHSCOPE_APP_ID": "app-test-1234", "BR_DASHSCOPE_API_KEY": "sk-test"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "DRY RUN" in result.stdout
+    assert "1 vendor call" in result.stdout
 
 
 def test_export_openapi_check_reports_in_sync() -> None:

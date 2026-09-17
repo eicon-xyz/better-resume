@@ -15,7 +15,8 @@ def _utcnow() -> datetime:
 
 
 class SceneBindingRow(Base):
-    """One row per scene; target_ref is a model name (openai_compat) or a flow id (xingyun)."""
+    """One row per scene; target_ref is a model name (openai_compat), a flow id (xingyun)
+    or a Model Studio application id (dashscope_app)."""
 
     __tablename__ = "llm_scene_bindings"
 

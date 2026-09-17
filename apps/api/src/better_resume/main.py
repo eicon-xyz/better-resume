@@ -50,6 +50,7 @@ from .interview_engine import (
 from .jobs import JobQueue
 from .llm_gateway import (
     AdapterKind,
+    DashScopeAppFactory,
     LlmError,
     ModelRegistry,
     SceneResolver,
@@ -90,6 +91,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cache_ttl_seconds=settings.scene_binding_cache_seconds,
     )
     app.state.scene_resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
+    # P3: the third kind — a Model Studio application call bound by app_id (target_ref).
+    app.state.scene_resolver.register_factory(
+        AdapterKind.DASHSCOPE_APP,
+        DashScopeAppFactory(
+            api_key=settings.dashscope_api_key, base_url=settings.dashscope_app_base_url
+        ),
+    )
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
     resilience: object = ResilientAiResilience(settings)
     if settings.resilience.distributed:

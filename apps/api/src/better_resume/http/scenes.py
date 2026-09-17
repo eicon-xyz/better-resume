@@ -24,7 +24,7 @@ class SceneViewResponse(BaseModel):
 
 
 class SceneUpdateRequest(BaseModel):
-    adapter: Literal["openai_compat", "xingyun"]
+    adapter: Literal["openai_compat", "xingyun", "dashscope_app"]
     target_ref: str = Field(min_length=1, max_length=128)
 
 

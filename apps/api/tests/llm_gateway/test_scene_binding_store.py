@@ -49,8 +49,9 @@ def test_scene_enum_is_the_business_vocabulary() -> None:
     assert scene_label(LlmScene.REPORT_SUMMARY) == "报告总结"
 
 
-def test_adapter_kinds_are_exactly_two() -> None:
-    assert {kind.value for kind in AdapterKind} == {"openai_compat", "xingyun"}
+def test_adapter_kinds_are_the_three_real_ones() -> None:
+    """P3: every kind must be a real, reachable implementation — no speculative enum values."""
+    assert {kind.value for kind in AdapterKind} == {"openai_compat", "xingyun", "dashscope_app"}
 
 
 def test_validate_binding_rejects_nonsense() -> None:

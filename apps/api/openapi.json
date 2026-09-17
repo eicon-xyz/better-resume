@@ -890,7 +890,8 @@
           "adapter": {
             "enum": [
               "openai_compat",
-              "xingyun"
+              "xingyun",
+              "dashscope_app"
             ],
             "title": "Adapter",
             "type": "string"

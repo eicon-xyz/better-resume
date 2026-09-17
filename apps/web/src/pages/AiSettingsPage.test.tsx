@@ -83,6 +83,35 @@ describe("AiSettingsPage", () => {
     expect(missing).toHaveTextContent("XINGCHEN_API_KEY");
   });
 
+  it("offers the Model Studio application kind for every scene", async () => {
+    renderPage(fakeClient());
+
+    const select = (await screen.findByLabelText("对话 供应商")) as HTMLSelectElement;
+
+    expect(Array.from(select.options).map((option) => option.value)).toEqual([
+      "openai_compat",
+      "xingyun",
+      "dashscope_app",
+    ]);
+  });
+
+  it("names BR_DASHSCOPE_API_KEY for an unconfigured application binding", async () => {
+    const client = fakeClient({
+      listScenes: vi.fn(async () => [
+        scene({
+          adapter: "dashscope_app",
+          target_ref: "app-1",
+          configured: false,
+          is_default: false,
+        }),
+      ]),
+    });
+    renderPage(client);
+
+    const missing = await screen.findByText(/未配置/);
+    expect(missing).toHaveTextContent("BR_DASHSCOPE_API_KEY");
+  });
+
   it("switches a scene and sends the new binding", async () => {
     const client = fakeClient();
     renderPage(client);

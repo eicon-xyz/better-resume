@@ -11,9 +11,16 @@ import { Button, Card } from "../components";
 import { sceneKeys } from "../scenes/queries";
 import styles from "./AiSettingsPage.module.css";
 
-const ADAPTERS = ["openai_compat", "xingyun"] as const;
+const ADAPTERS = ["openai_compat", "xingyun", "dashscope_app"] as const;
 
-type AdapterKind = "openai_compat" | "xingyun";
+type AdapterKind = (typeof ADAPTERS)[number];
+
+//: Which variable an operator has to set when a binding cannot run (mirrors the factories).
+const CREDENTIAL_HINTS: Record<AdapterKind, string> = {
+  openai_compat: "：BR_DEEPSEEK_API_KEY",
+  xingyun: "：XINGCHEN_API_KEY / XINGCHEN_API_SECRET",
+  dashscope_app: "：BR_DASHSCOPE_API_KEY（场景绑定里目标填应用 app_id）",
+};
 
 interface DraftState {
   adapter: AdapterKind;
@@ -134,9 +141,7 @@ export function AiSettingsPage() {
                     ) : (
                       <span className={styles.missing}>
                         未配置（检查环境变量）
-                        {scene.scene === "chat" || scene.adapter === "xingyun"
-                          ? "：XINGCHEN_API_KEY / XINGCHEN_API_SECRET"
-                          : "：BR_DEEPSEEK_API_KEY"}
+                        {CREDENTIAL_HINTS[scene.adapter as AdapterKind] ?? "：BR_DEEPSEEK_API_KEY"}
                       </span>
                     )}
                   </td>

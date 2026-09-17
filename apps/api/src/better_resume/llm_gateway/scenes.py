@@ -35,10 +35,13 @@ SCENE_LABELS: dict[LlmScene, str] = {
 
 
 class AdapterKind(StrEnum):
-    """The two implementations of the LlmGateway seam (D04: both are real, neither is dead)."""
+    """The implementations of the LlmGateway seam (D04: all of them real, none is dead)."""
 
     OPENAI_COMPAT = "openai_compat"
+    #: Xingyun workflow: the cloud owns the prompt, we own flow_id + the mapping.
     XINGYUN = "xingyun"
+    #: DashScope application call (P3): the same shape, bound by app_id instead of flow_id.
+    DASHSCOPE_APP = "dashscope_app"
 
 
 def scene_label(scene: LlmScene) -> str:

@@ -161,6 +161,11 @@ class Settings(BaseSettings):
     # Aliyun Bailian (DashScope): one key for the OpenAI-compatible LLM endpoint and for
     # the batch speech model. Credentials only ever come from the environment.
     dashscope_api_key: str = ""
+    # P3: Model Studio application calls. The app id is *not* a credential but it is
+    # account-specific, so it lives here (env name only in .env.example) and the scene
+    # binding row decides which app serves which scene.
+    dashscope_app_id: str = ""
+    dashscope_app_base_url: str = "https://dashscope.aliyuncs.com"
     xunfei_app_id: str = ""
     xunfei_access_key_id: str = ""
     xunfei_access_key_secret: str = ""

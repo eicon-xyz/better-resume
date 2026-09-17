@@ -1,9 +1,9 @@
-"""M5-T5: one contract suite, two LlmGateway implementations.
+"""M5-T5: one contract suite, every LlmGateway implementation (P3 added the third).
 
-Both adapters are driven through the same seam — an injected httpx client over a mock
+All adapters are driven through the same seam — an injected httpx client over a mock
 transport — and every case is expressed once, in vendor-neutral terms. The per-vendor
 harness translates a script into that vendor's wire shape, so a behavioural difference
-between the two adapters fails this file.
+between the adapters fails this file.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import pytest
 from pydantic import BaseModel
 
 from better_resume.llm_gateway import LlmScene
+from better_resume.llm_gateway.adapters.dashscope_app import DashScopeAppAdapter
 from better_resume.llm_gateway.adapters.openai_compat import OpenAICompatAdapter
 from better_resume.llm_gateway.adapters.xingyun import XingyunWorkflowAdapter
 from better_resume.llm_gateway.errors import (
@@ -138,11 +139,49 @@ class XingyunHarness:
         )
 
 
+class DashScopeAppHarness:
+    """P3: the Model Studio application call (app_id + X-DashScope-SSE frames)."""
+
+    name = "dashscope_app"
+
+    def build(self, script: VendorScript, **overrides: Any) -> DashScopeAppAdapter:
+        def handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content or b"{}")
+            script.calls.append(payload)
+            script.stream_requests += 1
+            if script.timeout:
+                raise httpx.TimeoutException("injected timeout", request=request)
+            if script.status >= 400:
+                return httpx.Response(script.status, text=script.error_body)
+            frames: list[dict[str, Any]] = []
+            if script.reasoning:
+                frames.append(
+                    {"output": {"thoughts": script.reasoning, "text": "", "finish_reason": "null"}}
+                )
+            if script.content:
+                frames.append({"output": {"text": script.content, "finish_reason": "null"}})
+            frames.append({"output": {"text": "", "finish_reason": "stop"}})
+            body = "".join(
+                f"id:{index}\nevent:result\n:HTTP_STATUS/200\ndata:{json.dumps(frame)}\n\n"
+                for index, frame in enumerate(frames, start=1)
+            )
+            return httpx.Response(200, text=body)
+
+        return DashScopeAppAdapter(
+            scene=LlmScene.ANSWER_EVALUATION,
+            app_id="app-contract",
+            api_key="sk-test",
+            client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+            sleep=_no_sleep,
+            **overrides,
+        )
+
+
 async def _no_sleep(_seconds: float) -> None:
     return None
 
 
-HARNESSES = [OpenAiHarness(), XingyunHarness()]
+HARNESSES = [OpenAiHarness(), XingyunHarness(), DashScopeAppHarness()]
 
 
 @pytest.fixture(params=HARNESSES, ids=lambda harness: harness.name)

@@ -705,7 +705,7 @@ export interface components {
              * Adapter
              * @enum {string}
              */
-            adapter: "openai_compat" | "xingyun";
+            adapter: "openai_compat" | "xingyun" | "dashscope_app";
             /** Target Ref */
             target_ref: string;
         };

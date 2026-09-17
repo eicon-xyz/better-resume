@@ -5,6 +5,7 @@ from .binding_store import (
     SceneBindingStore,
     validate_binding,
 )
+from .dashscope_app_factory import DashScopeAppFactory
 from .errors import (
     FailureKind,
     LlmConfigError,
@@ -39,13 +40,15 @@ from .resolver import (
     SceneResolver,
     SceneView,
 )
-from .scene_mapping import to_xingyun_payload, validate_structured
+from .scene_mapping import to_dashscope_app_payload, to_xingyun_payload, validate_structured
 from .scenes import AdapterKind, LlmScene, scene_label
 from .xingyun_factory import XingyunGatewayFactory
 
 __all__ = [
     "DEFAULT_ADAPTER",
     "DEFAULT_TARGET_REF",
+    "DashScopeAppFactory",
+    "to_dashscope_app_payload",
     "GatewayFactory",
     "OpenAiCompatFactory",
     "SceneResolver",

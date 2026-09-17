@@ -21,7 +21,14 @@ from .ai_resilience import ResilientAiResilience
 from .db import build_engine, build_session_factory
 from .interview_engine import ReportService
 from .jobs.queue import Job, JobQueue, backoff_seconds
-from .llm_gateway import AdapterKind, LlmScene, ModelRegistry, SceneResolver, XingyunGatewayFactory
+from .llm_gateway import (
+    AdapterKind,
+    DashScopeAppFactory,
+    LlmScene,
+    ModelRegistry,
+    SceneResolver,
+    XingyunGatewayFactory,
+)
 from .settings import Settings, get_settings
 
 logger = structlog.get_logger("better_resume.worker")
@@ -45,6 +52,12 @@ def build_worker_runtime(settings: Settings) -> dict[str, Any]:
         cache_ttl_seconds=settings.scene_binding_cache_seconds,
     )
     resolver.register_factory(AdapterKind.XINGYUN, XingyunGatewayFactory())
+    resolver.register_factory(
+        AdapterKind.DASHSCOPE_APP,
+        DashScopeAppFactory(
+            api_key=settings.dashscope_api_key, base_url=settings.dashscope_app_base_url
+        ),
+    )
     return {
         "engine": engine,
         "session_factory": session_factory,
