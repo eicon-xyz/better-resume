@@ -1,9 +1,10 @@
 # P1 阶段验收包：实时 ASR / 真模型容量 / 阿里 API 补验 / 生产形态演练
 
-- 阶段：P1（`docs/tickets/p1-post-v/README.md`）；分支 `p1/realtime-asr`（基于 main = `e202eab`）
+- 阶段：P1（`docs/tickets/p1-post-v/README.md`）；分支 `p1/realtime-asr`（基于 main = `9679e14`；
+  历史抹除前的旧哈希 `e202eab` 已不存在，见 `docs/HANDOFF.md` §1）
 - 环境：WSL2 Ubuntu 22.04 / Docker Desktop（compose：nginx + 2×api + worker + postgres + redis）
-- 结论：**P1-A / P1-B / P1-C / P1-D 全部完成，待用户验收**。过程中发现并修掉 **3 个真 bug**（P24/P26 与
-  其 P25/P27 两个证据工具缺陷），全部先红-绿补测试再修。
+- 结论：**P1-A / P1-B / P1-C / P1-D 全部完成，已于 2026-09-17 通过用户正式验收**（见 §7）。过程中发现并
+  修掉 **3 个真 bug**（P24/P26 与其 P25/P27 两个证据工具缺陷），全部先红-绿补测试再修。
 - 真机花费：**~177 次调用**（P1-A ~10、P1-B 164、P1-C 2、P1-D 0——浸泡零供应商调用），在约定封顶内。
 
 ## 1. 逐票结果与证据
@@ -33,6 +34,16 @@
 | 静态检查 | ruff format/check 干净（本阶段所有改动文件） |
 | 契约三件套 | 无 REST 模型变更：`export_openapi.py` 复跑后无 diff、`extract_api_index.py --check` 通过 |
 | 演练脚本 | `fault_injection_drill.sh` 现含 5 个故障实验 + 浸泡，语法与纯逻辑测试通过 |
+
+**P2 收口 + 验收当窗复核**（2026-09-17，本机 `bash scripts/verify.sh --layer all`，退出码 0）：
+
+| 项 | 结果 |
+| --- | --- |
+| 后端 | **744 passed**（含 P2 新增的脚本回归与覆盖率插桩） |
+| 前端 | **173 passed (24 files)** |
+| 脚本回归 | **22 passed**（`test_fault_probe` / `test_load_test_script` / `test_real_model_smoke_script` / `test_verify_script`） |
+| 深模块覆盖率底线 | **7/7 通过**（最低 `resume_parser` 93.2%、`media` 93.7%，底线 90%；`check_coverage_floors.py`） |
+| 证据 | `var/evidence/20260917T141212Z-all/` |
 
 ## 4. 未验证项（诚实清单）
 
@@ -69,4 +80,14 @@ pnpm -C apps/web test --run                                 # 161
 
 ## 7. 人工验收结论
 
-**待用户填写**（P1-A 需浏览器手测：说话过程中逐字出字、手写内容不被覆盖、TTS 正常）。
+**通过（用户验收，2026-09-17）**：
+
+- **浏览器手测（P1-A）**：第 3 轮通过——实时转写边说边出字、录音中手写内容原位保留；过程修掉 P28（页面级
+  合并层）/ P29（部署缓存头）/ P30（chat Composer 内部第三层合并），三轮记录见 `docs/MANUAL-TESTING.md` §5。
+- **自动化基线**（验收当窗本机复核，`bash scripts/verify.sh --layer all` 退出码 0）：后端 **744 passed**、
+  前端 **173 passed (24 files)**、脚本回归 **22 passed**；深模块覆盖率底线 **7/7**；
+  证据 `var/evidence/20260917T141212Z-all/`。
+- **验收范围**：P1 四票（P1-A 实时 ASR / P1-B 真模型容量与限流标定 / P1-C 阿里 API 补验 / P1-D 生产形态演练）
+  + P2 六票（T1–T6 测试自动化）**整体通过**；未验证项与 §4 诚实清单一致（讯飞/星云真机、供应商 429、
+  >24 并发与自动 failover、浏览器矩阵仍挂着，不因验收而消失）。
+- **结论**：进入 PR（`p1/realtime-asr` → `main`）；合并需用户再次点头。
