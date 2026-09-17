@@ -2,8 +2,9 @@
 
 > 依据：`AGENTS.md`（契约三件套、本地必须镜像 CI）、M6 P16（"本地全绿、CI 直接红"）、
 > P25/P27（证据工具自身要先被校准）、P1 收口时的实测盘点。
-> 状态：**T1–T6 全部落地（含 T6 第二轮深模块底线 ≥90%）**；后端 744 / 前端 161 全绿；
-> nightly/weekly workflow 已建立并首跑验证中。floor 清单见 `scripts/check_coverage_floors.py`，理由见 `coverage-report-round1.md`。
+> 状态：**T1–T6 全部落地**（T6 含两轮：报告 + 深模块 90% 底线进 CI）。后端 744 / 前端 173 全绿。
+> nightly/weekly workflow 已建并本地 YAML 校验；**首次真实运行要等本分支合入 main 之后**
+> （GitHub 的 schedule/dispatch 只认默认分支上的 workflow 文件）。底线清单 `scripts/check_coverage_floors.py`。
 
 ## 1. 现状盘点（实测，不是印象）
 

@@ -47,6 +47,8 @@
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
 - 本机 `NO_PROXY` 含裸 IPv6：新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`，P20/P24）。
 - GitHub 走 SSH；`gh` API 偶发 SSL EOF——命令前带代理变量 `export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=…`，失败重试。
+- **改过 volume 挂载的文件（如 `deploy/nginx.conf`）后 `restart` 会失败**（WSL2 bind-mount inode 失效："no such file or directory"）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，不要重启引擎。
+- **出网 22 端口可能被拒**：`git push` 报「检查权限/仓库存在」时先 `ssh -T git@github.com`；被拒就走 443：`git push ssh://git@ssh.github.com:443/<owner>/<repo>.git <branch>`。
 - **Docker Desktop 的 WSL 集成会掉线**（症状：`docker` 命令突然消失，`/mnt/wsl/docker-desktop` 挂载没了）：用
   `powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'` 拉起，
   等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次）。
@@ -55,10 +57,15 @@
 ## 常用命令
 
 ```bash
-# 后端全量测试（695 例；不导出 BR_* 会静默 skip）
+# 单一入口（CI 与本地跑同一份命令，P2-T1）——先 --list 看全层
+bash scripts/verify.sh --list
+bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts
+bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱）
+
+# 后端全量测试（744 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
-# 前端测试（161 例）——必须从仓库根跑
+# 前端测试（173 例）——必须从仓库根跑
 cd '/root/better resume' && pnpm -C apps/web test --run
 
 # 契约三件套：改过 REST 模型后必须一起跑（漏一步 = 本地绿 CI 红，M6 P16）
@@ -169,4 +176,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
   崩溃恢复时间 ≈ 接管阈值本身，不要美化数字。
 - **e2e 探针会撒谎**：探针"发完才收"会把服务器帧的到达时序塌缩（P25）；探针漏了前置状态（如 cookie）会把 503 读成 401（P27）——
   证据工具必须先于结论被校准；演练的故障恢复动作必须放 `finally`；所有数字写清口径（探针超时会截断"接管耗时"这类测量，V6 教训）。
+- **前端转写合并历史上存在三层**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect，P28/P30 各漏过一层）：
+  改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
+- **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**（P29：不发头=浏览器启发式缓存 HTML，部署后还在跑旧 bundle；compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
