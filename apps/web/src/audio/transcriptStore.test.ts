@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { mergeTranscript, transcriptText, useTranscriptStore } from "./transcriptStore";
+import {
+  mergeTranscript,
+  replaceTranscript,
+  transcriptText,
+  useTranscriptStore,
+} from "./transcriptStore";
 
 beforeEach(() => {
   useTranscriptStore.getState().reset();
@@ -73,5 +78,52 @@ describe("mergeTranscript", () => {
 
   it("does nothing when there is no transcript", () => {
     expect(mergeTranscript("手写内容", "")).toEqual({ text: "手写内容", notice: false });
+  });
+});
+
+describe("replaceTranscript (P28: realtime partials replace their span, never re-append)", () => {
+  it("replaces the contributed span while trailing handwriting stays put", () => {
+    const r = replaceTranscript("你好我是测试", "你好我是", "你好我是来自重庆");
+    expect(r).toEqual({ text: "你好我是来自重庆测试", notice: false });
+  });
+
+  it("replaces the span mid-text (user typed around it)", () => {
+    const r = replaceTranscript("甲你好我是乙", "你好我是", "你好我是来自");
+    expect(r).toEqual({ text: "甲你好我是来自乙", notice: false });
+  });
+
+  it("vendor correction (not an evolution) still replaces the span", () => {
+    const r = replaceTranscript("第二句。街口响好", "第二句。街口响", "第二句接口响应");
+    expect(r).toEqual({ text: "第二句接口响应好", notice: false });
+  });
+
+  it("first contribution of a session appends and flags a notice", () => {
+    const r = replaceTranscript("好的", "", "你好我是");
+    expect(r).toEqual({ text: "好的你好我是", notice: true });
+  });
+
+  it("first contribution already present in the box is a no-op", () => {
+    expect(replaceTranscript("你好世界", "", "你好世界")).toEqual({
+      text: "你好世界",
+      notice: false,
+    });
+    expect(replaceTranscript("手写内容", "", "")).toEqual({ text: "手写内容", notice: false });
+  });
+
+  it("when the user edited INSIDE the span, the box is left untouched with a notice", () => {
+    const r = replaceTranscript("你好我是重", "你好我是重庆", "你好我是重庆大学");
+    expect(r).toEqual({ text: "你好我是重", notice: true });
+  });
+
+  it("rapid partials plus mid-stream typing never duplicate the transcript", () => {
+    let value = "测";
+    let previous = "";
+    for (const next of ["你好", "你好我是", "你好我是来", "你好我是来自重庆"]) {
+      const r = replaceTranscript(value, previous, next);
+      value = r.text;
+      previous = next;
+      if (value === "测你好我是来") value += "（打字中）";
+    }
+    expect(value).toBe("测你好我是来自重庆（打字中）");
   });
 });

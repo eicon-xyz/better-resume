@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
-import { mergeTranscript } from "../audio/transcriptStore";
+import { replaceTranscript } from "../audio/transcriptStore";
 import { useTranscription } from "../audio/useTranscription";
 import { useTtsPlayback } from "../audio/useTtsPlayback";
 import { Button, Empty, Spinner } from "../components";
@@ -27,6 +27,8 @@ export function InterviewRoomPage() {
   const [answer, setAnswer] = useState("");
   const [notice, setNotice] = useState(false);
   const answerRef = useRef("");
+  // The transcript text we contributed into the box; realtime events replace this span.
+  const transcriptSpanRef = useRef("");
   const speech = useTtsPlayback({ client: api });
 
   const changeAnswer = useCallback((text: string) => {
@@ -35,7 +37,8 @@ export function InterviewRoomPage() {
   }, []);
 
   const onTranscript = useCallback((text: string) => {
-    const merged = mergeTranscript(answerRef.current, text);
+    const merged = replaceTranscript(answerRef.current, transcriptSpanRef.current, text);
+    transcriptSpanRef.current = text;
     setNotice(merged.notice);
     if (merged.text !== answerRef.current) changeAnswer(merged.text);
   }, [changeAnswer]);
@@ -137,7 +140,10 @@ export function InterviewRoomPage() {
         recording={transcription.recording}
         onToggleRecording={() => {
           if (transcription.recording) transcription.stop();
-          else void transcription.start();
+          else {
+            transcriptSpanRef.current = "";
+            void transcription.start();
+          }
         }}
         recordingError={transcription.error}
         micSupported={transcription.supported}
