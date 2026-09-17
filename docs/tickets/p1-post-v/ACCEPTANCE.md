@@ -91,3 +91,18 @@ pnpm -C apps/web test --run                                 # 161
   + P2 六票（T1–T6 测试自动化）**整体通过**；未验证项与 §4 诚实清单一致（讯飞/星云真机、供应商 429、
   >24 并发与自动 failover、浏览器矩阵仍挂着，不因验收而消失）。
 - **结论**：进入 PR（`p1/realtime-asr` → `main`）；合并需用户再次点头。
+
+### 7.1 验收后 CI 暴露的修复（2026-09-17，PR #8 首跑）
+
+验收当窗的"本地全绿"掩盖了 3 个**只有干净 checkout / CI 才看得见**的缺陷（台账 `PROBLEMS.md` P31–P33）。
+PR #8 首跑：frontend ✅ 41s；backend ❌ 1m37s（unit 步 743 passed / 1 failed）。逐条红-绿修完：
+
+| 编号 | 缺陷 | 红（先演示） | 绿 |
+| --- | --- | --- | --- |
+| **P31** | `verify.sh --layer all` 只展开 unit+scripts，而 `--list` 与 AGENTS.md 都写"all = unit + contract + scripts" → 本地"收口"永远不跑 contract（M6 P16 模式复活） | 新增展开漂移测试，列出被静默跳过的 **9 条** contract 命令 | `all` 展开 12 条命令；`test_verify_script.py` 4 passed |
+| **P32** | `test_fixture_audio_check_passes_on_the_pinned_file` 断言本机 `data/audio/*.wav` 存在，但 `data/` 是 gitignored（Q3）→ 干净 checkout 必红 | real 层缺 fixture / 字节漂移时只报 "needs the compose stack"（该拒绝的位置不对） | real 层新增 fixture 预检（缺文件/漂移都在**花钱之前** exit 2）；单测改 hermetic（tmp 路径） |
+| **P33** | `apps/api/scripts/fault_probe.py`（P1-D 提交 2f394be）过不了全仓 `ruff format --check .`；P1 收口只查了"改动文件" | `--layer contract` exit 1 | `--layer contract` **9/9 绿**（纯格式） |
+
+修复后本机复核：`bash scripts/verify.sh --layer all` = **12 条命令全绿**（后端 **747** / 前端 **173 (24 files)** /
+contract 9/9 / 脚本 **23**），证据 `var/evidence/20260917T142720Z-all/`。
+

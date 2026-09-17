@@ -2,7 +2,8 @@
 
 > 依据：`AGENTS.md`（契约三件套、本地必须镜像 CI）、M6 P16（"本地全绿、CI 直接红"）、
 > P25/P27（证据工具自身要先被校准）、P1 收口时的实测盘点。
-> 状态：**T1–T6 全部落地**（T6 含两轮：报告 + 深模块 90% 底线进 CI）。后端 744 / 前端 173 全绿。
+> 状态：**T1–T6 全部落地**（T6 含两轮：报告 + 深模块 90% 底线进 CI）。后端 747 / 前端 173 全绿
+> （P2 收口时为 744/173；PR #8 首跑修掉 P31–P33 后 +3 例，见 §10）。
 > nightly/weekly workflow 已建并本地 YAML 校验；**首次真实运行要等本分支合入 main 之后**
 > （GitHub 的 schedule/dispatch 只认默认分支上的 workflow 文件）。底线清单 `scripts/check_coverage_floors.py`。
 
@@ -157,3 +158,18 @@ CI 现状（`.github/workflows/ci.yml`）：仅 push/PR 触发；无 `schedule`�
 ## 9. 预估
 
 T1–T6 合计 **约 3–3.5 个会话**；其中 T3（云上定时）需要你先回答 Q1。
+
+## 10. 验收后修正（PR #8 首跑，2026-09-17）
+
+§8.1 的验收口径是"本地一次跑通"——**首跑 CI 证明当时并不成立**：backend 首跑 743 passed / 1 failed（frontend ✅ 41s）。
+三个缺口都不是"本地再跑一遍"能发现的（详见 `docs/tickets/p1-post-v/PROBLEMS.md` P31–P33）：
+
+| 缺口 | 归属 | 红 → 绿 |
+| --- | --- | --- |
+| `--layer all` 静默漏 contract（`--list` 的标签 vs 实际展开） | T1 | 展开漂移测试列出被跳过的 **9 条** contract 命令 → 抽 builder 复用，`all` = 12 条命令、`test_verify_script.py` 4 passed |
+| fixture 断言依赖本机 `data/audio/*.wav`（gitignored，Q3） | T4 | real 层缺 fixture 时只报 "needs the compose stack" → 新增 fixture 预检（缺文件/字节漂移都在**花钱之前** exit 2）+ 单测改 hermetic |
+| 全仓 `ruff format --check .` 有 1 个文件未格式化（`fault_probe.py`，P1-D 遗留） | T1/T6 收口口径 | `--layer contract` exit 1 → `ruff format`（纯格式）后 **9/9 绿** |
+
+修正后：`bash scripts/verify.sh --layer all` = **12 条命令全绿**（后端 **747** / 前端 **173 (24 files)** /
+contract 9/9 / 脚本 **23**），证据 `var/evidence/20260917T142720Z-all/`。教训进 HANDOFF §7（25/26）。
+

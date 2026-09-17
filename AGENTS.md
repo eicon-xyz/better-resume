@@ -47,6 +47,10 @@
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
 - 本机 `NO_PROXY` 含裸 IPv6：新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`，P20/P24）。
 - GitHub 走 SSH；`gh` API 偶发 SSL EOF——命令前带代理变量 `export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=…`，失败重试。
+  - **该代理（7897）不一定在跑**：没起时直连 HTTPS 被本机 Watt Toolkit 的中间人证书（CN=SteamTools Certificate）拦截，
+    系统 CA 不认 → `gh` **误报「token invalid」**。修法：`openssl s_client -connect api.github.com:443 -servername
+    api.github.com -showcerts </dev/null | awk '/BEGIN CERT/,/END CERT/' > /tmp/chain.pem`，再 `export SSL_CERT_FILE=/tmp/chain.pem`
+    （`git push` 走 ssh.github.com:443，不受影响）。
 - **改过 volume 挂载的文件（如 `deploy/nginx.conf`）后 `restart` 会失败**（WSL2 bind-mount inode 失效："no such file or directory"）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，不要重启引擎。
 - **出网 22 端口可能被拒**：`git push` 报「检查权限/仓库存在」时先 `ssh -T git@github.com`；被拒就走 443：`git push ssh://git@ssh.github.com:443/<owner>/<repo>.git <branch>`。
 - **Docker Desktop 的 WSL 集成会掉线**（症状：`docker` 命令突然消失，`/mnt/wsl/docker-desktop` 挂载没了）：用
@@ -62,7 +66,7 @@ bash scripts/verify.sh --list
 bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts
 bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱）
 
-# 后端全量测试（744 例；不导出 BR_* 会静默 skip）
+# 后端全量测试（747 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
 # 前端测试（173 例）——必须从仓库根跑

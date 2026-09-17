@@ -14,5 +14,14 @@
 
 | P30 | P28 修完仍复发（用户第二轮报障「我好好，我是来…」）：**chat 的 Composer 是第三个合并层**——它持有自己的输入框状态，内部还在用 mergeTranscript；上轮只改了页面级 onTranscript，且既有测试全从 store 事件驱动，从未测过「transcript prop 逐事件变化」这条组件内部路径 | Composer 改用 replaceTranscript + 组件内 spanRef（transcript 变空/发送清空框时归零）；全仓 mergeTranscript 调用点清零 | 新增 Composer.test.tsx 3 例（红 2：增长/纠错序列、纠错时保留手写；绿后 173 全绿）；教训：**改合并语义必须清点全部调用层**，测试缝要覆盖「prop 驱动的组件内部合并」 |
 
+| P31 | **`verify.sh --layer all` 静默漏掉 contract 层**：`--list` 与 AGENTS.md 都写「all = unit + contract + scripts」，但 `all)` 只展开 unit+scripts；`tests/test_verify_script.py` 也只断言 `--list` 里出现层名，没钉 `all` 的展开 → 本地"收口"永远不跑 ruff/eslint/tsc/alembic/契约三件套，**M6 P16 那个失败模式原地复活**（PR #8 上暴露：本地"全绿"、CI 直接红） | 抽出 `add_api_contract` / `add_web_contract` / `add_scripts` 复用，`all)` 逐层调用各层自己的 builder（标签与展开共用一个定义） | 红：`test_all_layer_actually_runs_unit_contract_and_scripts` 列出被跳过的 9 条 contract 命令 → 绿（`test_verify_script.py` 4 passed） |
+
+| P32 | **fixture 断言不 hermetic**：`test_fixture_audio_check_passes_on_the_pinned_file` 断言 `data/audio/p1c-multi-sentence-16k.wav` 存在——但 `data/` 是 gitignored（Q3：不入库 wav）→ 干净 checkout 必红（CI 实测 743 passed / 1 failed），本机因文件在才绿 | 单测只留 hermetic 的「缺失即拒绝」（tmp 路径）；把「存在 + pin 一致」挪到真正需要它的 **real 层预检**：缺文件或字节漂移都在**花钱之前** exit 2（`VERIFY_FIXTURE_AUDIO_DIR` 可覆盖，测试才 hermetic） | 红：`test_real_layer_refuses_when_the_fixture_audio_is_absent` / `..._pinned_fixture_drifted`（当时只报 "needs the compose stack"）→ 绿；本地真 fixture sha256 = pin `8bcd67…`（`make_fixture_audio.py --check` exit 0） |
+
+| P33 | **`fault_probe.py` 过不了全仓 `ruff format --check .`**：P1-D 提交 2f394be 里多行 `client.get(...)` 可折叠成一行；P1 收口写的"静态检查干净"只查了**改动文件**，而 CI contract 步查全仓 → P32 修完这里会接着红 | `uv run ruff format scripts/fault_probe.py`（纯格式，无语义变化） | `--layer contract` **9/9 绿**（ruff check/format、alembic upgrade/check、openapi check、api-index check、eslint、tsc、check:api） |
+
 教训：**close() 也是一次网络等待**——所有连接参数（open/ Close/代理）都必须显式化，不能信库默认值；
 **e2e 探针的收发时序本身会撒谎**，证据工具要先于结论被校准。
+**收口脚本自己的「标签 vs 展开」也会漂移**（P31）：本地收口必须跑「与 CI 同一条命令」，而不是「我以为它跑了」——
+`--list` 写着 contract 不代表 `all` 会跑 contract，这次靠回归测试把两者钉在一起才收口。
+**测试里不许出现「我这台机器上恰好有的文件」**（P32）：本机绿、干净 checkout 红，是 hermetic 纪律（P15）的正面案例。
