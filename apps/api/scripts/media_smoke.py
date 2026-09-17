@@ -20,12 +20,14 @@ from pathlib import Path
 from better_resume.media import (
     ChannelCtx,
     EdgeTtsSynthesizer,
+    ParaformerRealtimeAdapter,
     QwenAsrFlashAdapter,
     ScriptedTranscriptionChannel,
     TranscriptEvent,
     TtsCache,
     XunfeiAstAdapter,
     XunfeiCredentials,
+    derive_realtime_ws_url,
 )
 from better_resume.settings import Settings, get_settings
 
@@ -144,6 +146,58 @@ async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
     return True
 
 
+async def paraformer_rt_transcription(settings: Settings, wav_path: Path) -> bool:
+    """P1-A: the realtime channel against the real vendor, paced at 1x like a microphone.
+
+    Unlike the batch adapter this exercises the incremental path: partial sentences are
+    expected to arrive while the audio is still being fed.
+    """
+    print(f"== transcription (real {settings.media.asr_realtime_model}, realtime WS) ==")
+    pcm = read_pcm(wav_path)
+    print(f"  audio: {wav_path.name} {len(pcm) / 32000:.1f}s ({len(pcm)} bytes of 16 kHz mono pcm)")
+    recorder = Recorder()
+    ws_url = settings.media.asr_ws_url or derive_realtime_ws_url(settings.media.asr_url)
+    try:
+        adapter = ParaformerRealtimeAdapter(
+            api_key=settings.dashscope_api_key,
+            ws_url=ws_url,
+            model=settings.media.asr_realtime_model,
+            timeout_seconds=settings.media.asr_timeout_seconds,
+            on_event=recorder,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"  SKIPPED: {exc}")
+        print("  set BR_DASHSCOPE_API_KEY and BR_MEDIA__ASR_URL (or BR_MEDIA__ASR_WS_URL)")
+        return False
+
+    started = time.monotonic()
+    first_partial: float | None = None
+    await adapter.start(ChannelCtx(session_id="smoke"))
+    for offset in range(0, len(pcm), 3200):  # 1x pacing: partials arrive while "speaking"
+        await adapter.feed(pcm[offset : offset + 3200])
+        if first_partial is None and any(e.kind == "replace" for e in recorder.events):
+            first_partial = time.monotonic() - started
+        await asyncio.sleep(0.1)
+    await adapter.stop()
+    elapsed = time.monotonic() - started
+    kinds = [event.kind for event in recorder.events]
+    first = f"{first_partial:.2f}s" if first_partial is not None else "N/A"
+    print(f"  streamed at 1x in {elapsed:.2f}s; first partial at {first}")
+    print(
+        f"  events : replace={kinds.count('replace')} "
+        f"archive={kinds.count('archive')} final={kinds.count('final')}"
+    )
+    final = recorder.events[-1].text if recorder.events else ""
+    print(f"  final  : {final!r}")
+    if not final:
+        print("  FAILED: no final text (silence, or the vendor refused)")
+        return False
+    if not kinds.count("replace"):
+        print("  FAILED: no incremental replace events (realtime must stream partials)")
+        return False
+    return True
+
+
 async def tts_once(settings: Settings) -> bool:
     print("== tts (real edge-tts through the cache) ==")
     cache = TtsCache(settings.media.tts_storage_dir)
@@ -172,10 +226,17 @@ async def main() -> int:
         action="store_true",
         help="V3: run the batch ASR channel against the real Bailian endpoint",
     )
-    parser.add_argument("--wav", type=Path, help="16 kHz mono WAV for --qwen-asr-real")
+    parser.add_argument(
+        "--paraformer-rt-real",
+        action="store_true",
+        help="P1-A: run the realtime ASR channel against the real Bailian endpoint",
+    )
+    parser.add_argument(
+        "--wav", type=Path, help="16 kHz mono WAV for --qwen-asr-real / --paraformer-rt-real"
+    )
     args = parser.parse_args()
-    if args.qwen_asr_real and args.wav is None:
-        parser.error("--qwen-asr-real needs --wav PATH")
+    if (args.qwen_asr_real or args.paraformer_rt_real) and args.wav is None:
+        parser.error("--qwen-asr-real / --paraformer-rt-real need --wav PATH")
 
     _load_env()
     settings = get_settings()
@@ -186,6 +247,8 @@ async def main() -> int:
         ok &= await scripted_transcription()
     elif args.qwen_asr_real:
         ok &= await qwen_asr_transcription(settings, args.wav)
+    elif args.paraformer_rt_real:
+        ok &= await paraformer_rt_transcription(settings, args.wav)
     else:
         ok &= await xunfei_transcription(settings)
     ok &= await tts_once(settings)

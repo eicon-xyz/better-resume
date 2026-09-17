@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import { Button, Textarea } from "../../components";
-import { mergeTranscript } from "../../audio/transcriptStore";
+import { replaceTranscript } from "../../audio/transcriptStore";
 import styles from "./Composer.module.css";
 
 export interface ComposerProps {
@@ -30,6 +30,9 @@ export function Composer({
   const [value, setValue] = useState("");
   const valueRef = useRef("");
   const [notice, setNotice] = useState(false);
+  // The transcript text this composer contributed into the box; realtime partials replace
+  // that span (P28) instead of re-appending the whole cumulative text each event.
+  const spanRef = useRef("");
 
   const update = useCallback((text: string) => {
     valueRef.current = text;
@@ -37,8 +40,13 @@ export function Composer({
   }, []);
 
   useEffect(() => {
-    if (!transcript) return;
-    const mergedValue = mergeTranscript(valueRef.current, transcript);
+    if (transcript.length === 0) {
+      // session reset (new recording / store cleared): the old span is gone from the box
+      spanRef.current = "";
+      return;
+    }
+    const mergedValue = replaceTranscript(valueRef.current, spanRef.current, transcript);
+    spanRef.current = transcript;
     setNotice(mergedValue.notice);
     if (mergedValue.text !== valueRef.current) update(mergedValue.text);
   }, [transcript, update]);
@@ -46,6 +54,7 @@ export function Composer({
   function submit() {
     const trimmed = value.trim();
     if (!trimmed || streaming || disabled) return;
+    spanRef.current = ""; // the contributed span leaves with the cleared box
     update("");
     onSend(trimmed);
   }

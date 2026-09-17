@@ -42,6 +42,32 @@ export function mergeTranscript(local: string, merged: string): { text: string; 
   return { text: `${local}${merged}`, notice: true };
 }
 
+
+/**
+ * Realtime merge (P28): the transcript is cumulative within a run, so each new text
+ * REPLACES the span it contributed last time instead of being appended again. The box is
+ * left untouched (with a notice) when the user edited inside that span — handwriting
+ * must never be clobbered or interleaved. First contribution of a session keeps the
+ * batch-era append rule (P23).
+ */
+export function replaceTranscript(
+  value: string,
+  previous: string,
+  next: string,
+): { text: string; notice: boolean } {
+  if (next.length === 0) return { text: value, notice: false };
+  if (previous.length > 0) {
+    const at = value.indexOf(previous);
+    if (at >= 0) {
+      return { text: value.slice(0, at) + next + value.slice(at + previous.length), notice: false };
+    }
+    return { text: value, notice: true };
+  }
+  if (value.length === 0) return { text: next, notice: false };
+  if (value.includes(next)) return { text: value, notice: false };
+  return { text: value + next, notice: true };
+}
+
 const EMPTY = {
   live: "",
   committed: "",

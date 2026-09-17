@@ -74,6 +74,12 @@ docker compose ps
 step "SPA is served by nginx"
 curl -fsS "$BASE/" | grep -q '<div id="root">'
 check $? "GET / returns the built SPA"
+# P29: index.html without cache policy = browsers run the PREVIOUS bundle after a deploy.
+curl -fsSI "$BASE/" | grep -qi 'cache-control: no-store'
+check $? "GET / is served with Cache-Control: no-store"
+asset="$(curl -fsS "$BASE/" | grep -oE 'assets/[A-Za-z0-9._-]+\.js' | head -1)"
+[ -n "$asset" ] && curl -fsSI "$BASE/$asset" | grep -qi 'cache-control:.*immutable'
+check $? "hashed asset ($asset) is served immutable"
 
 step "api containers do not run as root"
 for service in api worker; do

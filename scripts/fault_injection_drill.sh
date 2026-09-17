@@ -7,6 +7,8 @@
 # refuses to pretend it ran. Every experiment prints its own evidence:
 #   redis-pause    : Redis frozen for 20s -> request classes + time to first success
 #   redis-restart  : sessions live in Redis -> the old cookie must really stop working
+#   redis-partition: api<->redis network path cut for 20s -> semantics + self-heal (P1-D)
+#   redis-failover : replica promoted while the master is down -> worker must survive (P1-D)
 #   worker-crash   : a consumer dies holding a job -> XPENDING+XCLAIM must reclaim it
 #   soak           : sampled waves over 20 min (--quick: 2 min) -> growth of keys/connections/memory
 set -euo pipefail
@@ -73,15 +75,23 @@ check $? "docker compose up --wait --scale api=2"
 cd apps/api
 run_probe() { uv run python -m scripts.fault_probe "$@"; }
 
-step "fault 1/3: redis-pause (20s)"
+step "fault 1/5: redis-pause (20s)"
 run_probe fault --base "$BASE" --scenario redis-pause --seconds 20
 check $? "redis-pause window classified and recovery measured"
 
-step "fault 2/3: redis-restart (sessions live in Redis)"
+step "fault 2/5: redis-restart (sessions live in Redis)"
 run_probe fault --base "$BASE" --scenario redis-restart --seconds 10
 check $? "redis-restart: honesty about session loss"
 
-step "fault 3/3: worker-crash (claim without ack -> reclaim)"
+step "fault 3/5: redis-partition (network cut, then restored)"
+run_probe fault --scenario redis-partition --seconds 20
+check $? "redis network partition: no wrong answers, self-heal measured"
+
+step "fault 4/5: redis-failover (replica promoted, worker must survive)"
+run_probe fault --scenario redis-failover --seconds 20
+check $? "manual failover: recovery measured, worker survived, sessions intact"
+
+step "fault 5/5: worker-crash (claim without ack -> reclaim)"
 run_probe fault --base "$BASE" --scenario worker-crash --model smoke-fake --summary-timeout 180
 check $? "crashed consumer's job reclaimed and finished"
 

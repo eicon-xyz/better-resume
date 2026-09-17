@@ -340,6 +340,70 @@ describe("interview room voice wiring", () => {
   });
 });
 
+describe("interview room realtime partials (P28 regression)", () => {
+  it("streams growing partials into the box without ever duplicating them", async () => {
+    const client = fakeClient();
+    renderRoom(client);
+    await screen.findByText("讲讲你最有挑战的项目");
+
+    const box = () => screen.getByLabelText("你的回答");
+    const partials = ["我父", "我负责", "我负责过核", "我负责过核心系统的搭建"];
+    for (const text of partials) {
+      act(() => {
+        useTranscriptStore.getState().applyEvent({ kind: "replace", text });
+      });
+      // the box must show EXACTLY the latest cumulative text, never a concatenation of past ones
+      await waitFor(() => {
+        expect(box()).toHaveValue(text);
+      });
+    }
+
+    act(() => {
+      useTranscriptStore.getState().applyEvent({ kind: "archive", text: "我负责过核心系统的搭建。" });
+    });
+    await waitFor(() => {
+      expect(box()).toHaveValue("我负责过核心系统的搭建。");
+    });
+
+    // second sentence growing on top of the committed one
+    for (const live of ["打", "把时间", "把时间从800毫秒降低到了200毫秒"]) {
+      act(() => {
+        useTranscriptStore.getState().applyEvent({ kind: "replace", text: live });
+      });
+      await waitFor(() => {
+        expect(box()).toHaveValue(`我负责过核心系统的搭建。${live}`);
+      });
+    }
+  });
+
+  it("keeps handwriting inserted mid-stream exactly where it was typed", async () => {
+    const client = fakeClient();
+    renderRoom(client);
+    await screen.findByText("讲讲你最有挑战的项目");
+
+    act(() => {
+      useTranscriptStore.getState().applyEvent({ kind: "replace", text: "我负责过核" });
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("你的回答")).toHaveValue("我负责过核");
+    });
+
+    // the candidate types between existing words while ASR keeps streaming
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "我负责过（核心）核" } });
+    act(() => {
+      useTranscriptStore.getState().applyEvent({ kind: "replace", text: "我负责过核心系统" });
+    });
+
+    // span was edited inside -> the box must NOT be duplicated; only the safe branch is allowed:
+    // either untouched or a clean span replace. Never a cumulative append of the whole text.
+    await waitFor(() => {
+      const value = (screen.getByLabelText("你的回答") as HTMLTextAreaElement).value;
+      expect(value).not.toContain("核我负责");
+      expect(value.length).toBeLessThanOrEqual("我负责过（核心）核心系统".length + 4);
+    });
+  });
+});
+
 describe("question playback", () => {
   it("synthesizes the question once", async () => {
     const client = fakeClient();

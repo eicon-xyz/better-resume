@@ -24,6 +24,7 @@ dev = [
     "fakeredis>=2.26",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
     "reportlab>=5.0.1",
     "ruff>=0.8",
 ]
@@ -50,4 +51,8 @@ ignore = ["S101"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q"
+addopts = "-q --strict-markers -m 'not docker and not real'"
+markers = [
+  "docker: needs the compose stack (excluded from the default unit run; run via verify.sh)",
+  "real: needs real vendor credentials and costs money (never in CI; run via verify.sh --layer real)",
+]

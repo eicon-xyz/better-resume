@@ -1,3 +1,8 @@
+from .paraformer_rt import (
+    DEFAULT_RT_MODEL,
+    ParaformerRealtimeAdapter,
+    derive_realtime_ws_url,
+)
 from .qwen_asr import (
     DEFAULT_ASR_MODEL,
     QwenAsrFlashAdapter,
@@ -18,6 +23,9 @@ from .xunfei_ast import (
 
 __all__ = [
     "DEFAULT_ASR_MODEL",
+    "DEFAULT_RT_MODEL",
+    "ParaformerRealtimeAdapter",
+    "derive_realtime_ws_url",
     "QwenAsrFlashAdapter",
     "build_client",
     "parse_text",

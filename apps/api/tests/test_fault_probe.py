@@ -33,6 +33,16 @@ def test_classify_response_covers_the_whole_taxonomy() -> None:
     assert fault_probe.classify_response(exc=ValueError("x")) == "unexpected"
 
 
+def test_parse_replica_link_reads_master_link_status() -> None:
+    """P1-D: the failover drill must decide "is the replica in sync?" from real INFO output."""
+    assert (
+        fault_probe.parse_replica_link("# Replication\r\nrole:slave\r\nmaster_link_status:up\r\n")
+        == "up"
+    )
+    assert fault_probe.parse_replica_link("role:slave\nmaster_link_status:down\n") == "down"
+    assert fault_probe.parse_replica_link("role:master\nconnected_slaves:0\n") == "unknown"
+
+
 def test_summarise_waves_computes_growth_from_first_to_last() -> None:
     waves = [
         {"ok": 10, "timeout": 0, "server_error": 0, "redis_keys": 100, "pg_connections": 5},

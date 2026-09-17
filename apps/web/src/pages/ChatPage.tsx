@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { describeApiError, isRetryableError } from "../api/errors";
 import type { ModelView } from "../api/types";
 import { useApi } from "../api/useApi";
-import { mergeTranscript } from "../audio/transcriptStore";
+import { replaceTranscript } from "../audio/transcriptStore";
 import { useTranscription } from "../audio/useTranscription";
 import { Button } from "../components";
 import { DEFAULT_AUTH_EPOCH, flattenHistory, useChatHistory, useChatSessions, useModels } from "../chat/queries";
@@ -36,9 +36,12 @@ export function ChatPage() {
 
   const [draft, setDraft] = useState("");
   const draftRef = useRef("");
+  // The transcript text we contributed into the box; realtime events replace this span.
+  const transcriptSpanRef = useRef("");
 
   const onTranscript = useCallback((text: string) => {
-    const merged = mergeTranscript(draftRef.current, text);
+    const merged = replaceTranscript(draftRef.current, transcriptSpanRef.current, text);
+    transcriptSpanRef.current = text;
     if (merged.text !== draftRef.current) {
       draftRef.current = merged.text;
       setDraft(merged.text);
@@ -190,7 +193,10 @@ export function ChatPage() {
           recordingError={transcription.error}
           onToggleRecording={() => {
             if (transcription.recording) transcription.stop();
-            else void transcription.start();
+            else {
+              transcriptSpanRef.current = "";
+              void transcription.start();
+            }
           }}
           onSend={(content) => {
             draftRef.current = "";
