@@ -74,6 +74,33 @@ def to_xingyun_payload(
     }
 
 
+def to_dashscope_app_payload(
+    request: ChatRequest,
+    *,
+    app_id: str,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    """The one mapping from our ChatRequest to a Model Studio application call (P3).
+
+    The application owns its prompt, so we send the caller's last user message as
+    `input.prompt` and nothing else: no system prompt, no schema hints, no invented
+    parameters (unknown keys are a 400 risk). Which app serves which scene is decided by the
+    binding row (`target_ref` = app_id), not by this payload.
+    """
+    last_user = next(
+        (message.content for message in reversed(list(request.messages)) if message.role == "user"),
+        "",
+    )
+    payload: dict[str, Any] = {
+        "input": {"prompt": last_user},
+        "parameters": {"incremental_output": True},
+        "debug": {},
+    }
+    if session_id:
+        payload["input"]["session_id"] = session_id
+    return payload
+
+
 def _harden(role: str, content: str) -> str:
     if role != "system":
         return content

@@ -66,7 +66,7 @@
 
 | 层 | 覆盖 | 触发 |
 | --- | --- | --- |
-| 单元/组件 | 后端 708 + 前端 161 | 每次 push/PR（CI） |
+| 单元/组件 | 后端 747 + 前端 173 | 每次 push/PR（CI） |
 | 契约/静态 | ruff / eslint / tsc / alembic / 契约三件套 `--check` | 同上（经 `scripts/verify.sh`） |
 | 部署面 | compose smoke / kill 实例演练 | **nightly**（每天 02:30 UTC）+ 手动 dispatch |
 | 故障/浸泡 | 5 个故障实验 / 分区 / 主从切换 / 60 分钟浸泡 | nightly（快版）/ weekly（全量 + 长浸泡）+ 手动 |
