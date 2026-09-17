@@ -12,5 +12,7 @@
 
 | P29 | **部署后浏览器还在跑上一版 bundle**：nginx 对 index.html 不发任何 Cache-Control → 浏览器启发式缓存 HTML。P28 修好并重建镜像后，用户复测仍逐字节出现旧症状（「我父我负责我负责过核…」正是旧 mergeTranscript 反复追加的签名）；且页面级测试只喂过 2 个事件，实时多 partial 从未被测到——测试缝缺口同时掩盖了它 | 部署面：index.html 发 `no-store`、内容哈希的 /assets/ 发 `public, immutable`；compose_smoke 新增两条响应头断言；补页面级回归（用用户报障原文的 partial 序列，旧代码必挂、新代码通过） | compose_smoke PASS×2；VoiceWiring 新增 2 例（前端 170 全绿）；nginx 重建后 curl -sI 实测头 |
 
+| P30 | P28 修完仍复发（用户第二轮报障「我好好，我是来…」）：**chat 的 Composer 是第三个合并层**——它持有自己的输入框状态，内部还在用 mergeTranscript；上轮只改了页面级 onTranscript，且既有测试全从 store 事件驱动，从未测过「transcript prop 逐事件变化」这条组件内部路径 | Composer 改用 replaceTranscript + 组件内 spanRef（transcript 变空/发送清空框时归零）；全仓 mergeTranscript 调用点清零 | 新增 Composer.test.tsx 3 例（红 2：增长/纠错序列、纠错时保留手写；绿后 173 全绿）；教训：**改合并语义必须清点全部调用层**，测试缝要覆盖「prop 驱动的组件内部合并」 |
+
 教训：**close() 也是一次网络等待**——所有连接参数（open/ Close/代理）都必须显式化，不能信库默认值；
 **e2e 探针的收发时序本身会撒谎**，证据工具要先于结论被校准。
