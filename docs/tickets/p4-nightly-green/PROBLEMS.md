@@ -1,4 +1,4 @@
-# P4 阶段问题台账（P35）
+# P4 阶段问题台账（P35–P39）
 
 | 编号 | 一句话 | 修法 | 测试/证据 |
 | --- | --- | --- | --- |
@@ -9,6 +9,8 @@
 | P37 | **`fault_probe.py` 的 worker-crash 实验紧跟在 failover 之后，被一个 503 打死**：故障 4 恢复原主节点后，下个实验（worker-crash）立刻登录，拿到 `503 Service Unavailable`（P17 语义：依赖还没就绪），脚本 `login.raise_for_status()` 直接抛栈、整轮演练 exit 1。**同一个坑 soak 早就踩过并修过**（源码注释：「observed after a failover: retry the login instead of aborting an hour-long soak on one 503」），但那段重试逻辑是**内联在 soak 里的**，worker-crash 用不上 | 把 soak 的内联重试抽成共享的 `login_with_retry()`（任何 ≥400 重试 5 次、每次 1s，最后仍失败才 `raise_for_status()`），`soak` 与 `worker_crash` 都调它——重复代码消失，行为对 soak 逐字不变 | 红：冷卷演练 `httpx.HTTPStatusError: Server error '503 Service Unavailable' for url '.../api/v1/auth/session'`（`var/evidence/p35/04-cold-fault-drill.log`，故障 1–4 全 PASS、5 崩）；绿：`test_login_with_retry_survives_a_stale_connection`（503,503,200 → 200）与 `test_login_with_retry_still_raises_when_the_dependency_stays_down`（503×3 → 抛且只试 3 次）→ `test_fault_probe.py` **9 passed**；冷卷复跑见 ACCEPTANCE |
 
 | P38 | **worker-crash 实验在 failover 之后立刻开跑，撞上"依赖还没就绪"的 503 窗口**：故障 4 恢复原主节点后，场景/注册表缓存仍持续回 503（P17 语义，实测两副本在恢复后 >24s 仍 503；`/healthz` 全程 200，因为它不碰 Redis），而 worker-crash 的登录+绑定场景在启动时就要用这条路径 → P37 只重试了登录，紧接着 `PUT /api/v1/scenes/chat` 又 503。**实验测的是"崩溃消费者的任务能否被接管"，不是"冷启动能不能扛"** | `fault_probe` 新增 `wait_until_the_stack_is_usable()`：在 worker-crash 真正开始前，用 `asyncio.timeout(--ready-timeout，默认 120s)` 反复「登录 + 绑定 5 个场景」，只有 503 才重试（其它错误立刻抛），超时抛 `RuntimeError("the stack still answered 503 after Ns")`——**等不到就响亮失败，不静默通过** | 红：`PUT /api/v1/scenes/chat → 503`（`var/evidence/p35/04-cold-fault-drill.log`，故障 1–4 PASS、5 崩）；绿：`test_wait_until_the_stack_is_usable_rides_out_a_settling_cache`（503,503 → 通过）与 `..._still_fails_when_it_never_recovers`（永不恢复 → RuntimeError 且消息含 503）→ `test_fault_probe.py` **11 passed**；冷卷复跑日志里可见 `== stack not usable yet (503); retrying in 2s` 后 `PASS: the crashed consumer's job was reclaimed and completed` |
+
+| P39 | **60 分钟浸泡跑完才崩在写证据上**：`verify.sh --layer soak` 的命令是 `cd apps/api && … --json var/evidence/soak-60m.json`——相对路径落在 `apps/api/var/evidence/`（不存在），而 weekly workflow 是从**仓库根**收集 `var/evidence/`。CI 里 soak 跑满 3600 秒、`error_rate: 0.0`（**通过**），然后 `FileNotFoundError` → 整个 weekly-full 失败，一小时 CI 只换来一行栈 | ① `fault_probe` 新增 `write_json()`：写前 `mkdir -p` 父目录，任何情况下不再丢数据；② `verify.sh` soak 层把 `--json` 指向仓库根的**绝对**路径并**加引号**——checkout 路径含空格（`/root/better resume`），经 `bash -c` 会被拆成两个参数（这是修的过程中自己踩到并补上的） | 红：CI run `35836425404`（60 分钟后 `FileNotFoundError: 'var/evidence/soak-60m.json'`，`error_rate: 0.0`）+ 本机拿旧代码复跑同一条命令逐字复现（`soak exit=1`）；绿：`test_write_json_creates_the_evidence_directory` + `test_soak_layer_writes_its_evidence_where_the_workflow_collects_it`（断言绝对且带引号）→ **34 passed**；本机按新命令形状实跑：`json -> /root/better resume/var/evidence/soak-60m.json`，963 B 落在仓库根 |
 
 ## 备注
 

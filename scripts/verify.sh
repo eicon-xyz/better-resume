@@ -133,7 +133,14 @@ case "$LAYER" in
     cmds+=("cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json")
     ;;
   soak)
-    cmds+=("cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json var/evidence/soak-60m.json")
+    # P39: this runs with cwd=apps/api, so a relative `var/evidence/...` landed in
+    # apps/api/var/evidence/ (which does not exist): the 60-minute soak finished, passed,
+    # and then died writing its evidence. Point --json at the repo root, where the weekly
+    # workflow collects var/evidence/ from.
+    soak_json="${VERIFY_EVIDENCE_DIR:-var/evidence}/soak-60m.json"
+    # Quoted: the checkout path can contain spaces ("/root/better resume"), and the command
+    # goes through `bash -c`, which would otherwise split the path into two arguments.
+    cmds+=("mkdir -p ${VERIFY_EVIDENCE_DIR:-var/evidence} && cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json \"$ROOT/$soak_json\"")
     ;;
   real)
     # P2-T4: budget-guarded real-machine suite — stage-closure MANDATORY (Q5).

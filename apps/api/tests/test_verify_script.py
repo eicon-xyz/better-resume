@@ -60,3 +60,20 @@ def test_all_layer_actually_runs_unit_contract_and_scripts() -> None:
     for layer in ("unit", "contract", "scripts"):
         missing = _dry_run_commands(layer) - all_commands
         assert not missing, f"--layer all skips the {layer} layer: {sorted(missing)}"
+
+
+def test_soak_layer_writes_its_evidence_where_the_workflow_collects_it() -> None:
+    """P39: the soak layer runs with cwd=apps/api, so `--json var/evidence/soak-60m.json`
+    pointed at apps/api/var/evidence/ (which does not exist). The 60-minute soak finished,
+    passed, and then died writing its evidence — an hour of CI time lost to a path.
+    """
+    commands = _dry_run_commands("soak")
+    line = next(c for c in commands if "fault_probe soak" in c)
+    raw = line.split("--json", 1)[1].strip()
+
+    # Absolute (not relative to apps/api) AND quoted — the checkout path can contain spaces.
+    assert raw.startswith('"') and raw.endswith('"'), f"--json must be quoted: {raw!r}"
+    json_path = raw.strip('"')
+    assert json_path.startswith("/"), f"--json must be absolute, got {json_path!r}"
+    assert json_path.endswith("var/evidence/soak-60m.json"), json_path
+    assert "mkdir -p var/evidence" in line
