@@ -109,7 +109,7 @@ add_web_contract() {
   cmds+=("pnpm -C apps/web check:api")
 }
 add_scripts() {
-  cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
+  cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
 }
 
 case "$LAYER" in
