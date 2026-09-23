@@ -11,7 +11,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D17），**与本文冲突时以 DECISIONS.md 为准**。
+- 决议记录在 `docs/DECISIONS.md`（D01–D18），**与本文冲突时以 DECISIONS.md 为准**。
 
 ## 技术栈
 
@@ -135,16 +135,42 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 └── .env.example                     # 变量名清单（真凭据只进 gitignored .env）
 ```
 
-## 核心协作模式：阶段提案制 + 契约三件套
+## 核心协作模式：grill → spec → implement → review → retro
 
-**流程（用户明确要求，永久生效）**：
+**流程（用户明确要求，永久生效）**：五个阶段。阶段边界处（"这块做完了"）按技能 `ask-matt` 的五问决定：
+继续 / 新会话 / handoff / 子代理 / compact——**不要在阶段中途 compact**。配置在 `docs/agents/`（`/setup-matt-pocock-skills` 生成）。
 
-1. **先提案**：新阶段写 `docs/tickets/<stage>/README.md`（范围/不做/交付物/测试与验收口径/预估/需要用户决定的问题），**等用户确认后才动工**。
-2. **红-绿 TDD 执行**：先写失败测试再实现；小步提交，提交信息说 WHAT。
-3. **交验收包**：`ACCEPTANCE.md` / `EVIDENCE.md`——可复跑命令 + 原始输出 + 数字 + **未验证项（诚实清单）** + 与提案的偏差。
-4. **由用户验收**：AI 不自行宣布完成、**不擅自合并 PR / 删分支**；难题即时记 `PROBLEMS.md`。
+| 阶段 | 怎么起 | 做什么 | 产物 |
+| --- | --- | --- | --- |
+| **1 grill** | 你敲 `/grill-with-docs` | 就一个想法逐轮拷问（`grilling` + `domain-modeling`）：事实 AI 查，决策你拍 | `CONTEXT.md` 术语、`docs/DECISIONS.md` 新决议（续编 D 号） |
+| **2 spec** | 你敲 `/to-spec` | 不采访，把已谈成的直接综合成 spec | `docs/tickets/<stage>/README.md`（= 原「阶段提案」六段） |
+| **3 implement** | 你敲 `/implement` | 驱动 `/tdd` 垂直切片（一个用例红 → 最小实现绿），常跑 typecheck/单测、收尾跑全量；结束自动调 `/code-review` | 代码 + 小步提交（提交信息说 WHAT） |
+| **4 review** | 阶段 3 自动调，或你敲 `/code-review` | 双轴**并行**评审：Standards（`CODING_STANDARDS.md`）／Spec（对照上面的 README） | 两轴发现清单（不合并、不重排） |
+| **5 retro** | 你敲 `/retro` | 读会话日志（`node ~/.dsh/tools/dsh-sessions.mjs --cwd "$PWD"`）找环境改进 | 落回 AGENTS.md / CODING_STANDARDS.md / 自动检查 |
+
+**三条闸门不可协商（阶段 2 与 5 之间）**：
+
+1. **先提案、用户点头才动工**：spec 写完**等你明确确认**才进 implement。`ready-for-agent` 在本仓库的含义是"已完整规格化、待你点头"，**不是**"可以自己开工"（`docs/agents/issue-tracker.md`）。
+2. **红-绿 TDD**：先写失败测试再实现；测试只写在事先与你确认的缝上；垂直切片，不整批铺测试。
+3. **交验收包、由你验收**：`ACCEPTANCE.md` / `<ticket>-EVIDENCE.md`——可复跑命令 + 原始输出 + 数字 + **未验证项（诚实清单）** + 与提案的偏差；AI 不自行宣布完成、**不擅自合并 PR / 删分支**；难题即时记 `PROBLEMS.md`。
+
+**上下文卫生**：grill → spec 留在**同一个不中断的会话**（spec 要的是推理原文，不是摘要）；每个 `/implement` 之间**开新会话**（票据自包含，上一个的上下文可丢）。
 
 **契约三件套（改过 REST 模型后必须一起跑）**：`export_openapi.py` → `pnpm -C apps/web gen:api` → `extract_api_index.py --check`。漏一步的症状是"本地全绿、CI 直接红"（M6 P16）。
+
+## Agent skills
+
+### Issue tracker
+
+工作项（spec + 票据）是提交进 git 的 markdown，放在 `docs/tickets/<stage>/`——本地 markdown tracker，沿用「阶段提案制」命名，不是 GitHub Issues。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+五个规范角色（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）保持默认名，在本仓库表现为票据文件顶部的 `Status:` 行。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文（single-context）：`CONTEXT.md` 在仓库根；ADR 用现有的 `docs/DECISIONS.md`（续编 D 号），不建 `docs/adr/`。见 `docs/agents/domain.md`。
 
 ## 开发规范
 
