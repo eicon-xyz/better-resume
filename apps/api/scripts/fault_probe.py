@@ -246,21 +246,61 @@ async def run_wave(
     return counts
 
 
+async def login_with_retry(
+    client: httpx.AsyncClient, *, attempts: int = 5, delay: float = 1.0
+) -> httpx.Response:
+    """P37: a fault experiment leaves brief stale connections behind, and a 503 is the
+    documented "dependency is down" answer (P17) — retry the login instead of aborting the
+    next experiment on one bad response.
+
+    The soak grew this loop first ("observed after a failover"); worker-crash runs straight
+    after the failover experiment and hit the same 503, so the loop lives here now and both
+    callers share it.
+    """
+    response = await client.post("/api/v1/auth/session", json=_session_payload())
+    for attempt in range(attempts - 1):
+        if response.status_code < 400:
+            break
+        print(f"== login attempt {attempt + 1} -> {response.status_code}; retrying in {delay:.1f}s")
+        await asyncio.sleep(delay)
+        response = await client.post("/api/v1/auth/session", json=_session_payload())
+    response.raise_for_status()
+    return response
+
+
+async def wait_until_the_stack_is_usable(
+    client: httpx.AsyncClient, *, model: str, budget_seconds: float, delay: float = 2.0
+) -> None:
+    """P38: worker-crash runs straight after the failover experiment puts the original
+    master back, and the scene/registry caches answer 503 for a while after that (P17
+    "dependency unavailable"). The experiment is about reclaiming a crashed consumer's job,
+    not about surviving a cold cache — so wait for the stack to be usable, and still fail
+    loudly if it never is.
+    """
+    try:
+        async with asyncio.timeout(budget_seconds):
+            while True:
+                try:
+                    await login_with_retry(client, attempts=2, delay=1.0)
+                    await bind_every_scene_to_the_fake(client, model)
+                    return
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 503:
+                        raise
+                    print(
+                        f"== stack not usable yet ({exc.response.status_code}); "
+                        f"retrying in {delay:.0f}s"
+                    )
+                    await asyncio.sleep(delay)
+    except TimeoutError as exc:
+        raise RuntimeError(f"the stack still answered 503 after {budget_seconds:.0f}s") from exc
+
+
 async def soak(args: argparse.Namespace) -> int:
     waves: list[dict[str, Any]] = []
     deadline = time.monotonic() + args.duration
     async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
-        # A fault drill leaves brief stale pooled connections behind (observed after a
-        # failover): retry the login instead of aborting an hour-long soak on one 503.
-        login = None
-        for attempt in range(5):
-            login = await client.post("/api/v1/auth/session", json=_session_payload())
-            if login.status_code < 400:
-                break
-            print(f"== login attempt {attempt + 1} -> {login.status_code}; retrying")
-            await asyncio.sleep(1.0)
-        assert login is not None
-        login.raise_for_status()
+        await login_with_retry(client)
         while time.monotonic() < deadline:
             started = time.monotonic()
             wave = await run_wave(client, requests=args.requests, concurrency=args.concurrency)
@@ -460,10 +500,10 @@ async def worker_crash(args: argparse.Namespace) -> int:
     through XPENDING+XCLAIM once the entry has been idle for the reclaim threshold.
     """
     async with httpx.AsyncClient(base_url=args.base, trust_env=False, timeout=60.0) as client:
-        login = await client.post("/api/v1/auth/session", json=_session_payload())
-        login.raise_for_status()
-        # Rebinding scenes needs a session: do it after the login, not before.
-        await bind_every_scene_to_the_fake(client, args.model)
+        # Rebinding scenes needs a session, and the previous experiment may still be settling.
+        await wait_until_the_stack_is_usable(
+            client, model=args.model, budget_seconds=args.ready_timeout
+        )
         session_id = (await client.post("/api/v1/interview/sessions", json={})).json()["id"]
         generated = await client.post(
             f"/api/v1/interview/sessions/{session_id}/questions",
@@ -546,6 +586,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     fault_parser.add_argument("--summary-timeout", type=float, default=180.0)
     fault_parser.add_argument("--seconds", type=float, default=20.0)
     fault_parser.add_argument("--recovery-timeout", type=float, default=30.0)
+    fault_parser.add_argument(
+        "--ready-timeout",
+        type=float,
+        default=120.0,
+        help="how long worker-crash waits for the stack to stop answering 503 (P38)",
+    )
     return parser.parse_args(argv)
 
 
