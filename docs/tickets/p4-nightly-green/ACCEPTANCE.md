@@ -121,12 +121,23 @@ ALL FAULT EXPERIMENTS PASSED (json: /tmp/v6-soak.json)
 - run **35836425404** → **failure**：前两层都过了（`--layer fault` 的 5 个故障实验 + 20 分钟浸泡全 PASS），
   **60 分钟浸泡也跑满并通过**（`error_rate: 0.0`），却死在写证据上——见 **P39**。
 - 这是 P4 合并后才拿到的结果，也是 weekly-full 第一次真正跑到最后一步；修法与证据见 `PROBLEMS.md` P39。
-- 修复后重跑：（待回填 run id + 结论）
+- **修复后重跑 run `35870043832` → success**（84 分钟，15:15Z 完成）：
+  `ALL PASS (1 commands) -- evidence: var/evidence/20260923T141531Z-soak`、`error_rate: 0.0`、
+  全文 `FAIL:` / `##[error]` 计数 **0**。
+- 关键一行（P39 要修的就是它）：
+
+```
+json -> /home/runner/work/better-resume/better-resume/var/evidence/soak-60m.json
+         └─ 落在仓库根 —— 正是 workflow 收集 var/evidence/ 的地方
+```
+
+- **artifact 核对**：下载 `weekly-evidence` 后确认里面有 `soak-60m.json`（另有 `v6-soak.json` + 两层的 `commands.txt`/`01.log`）
+  —— 产物真的被收集了，闭环。
 
 ## 5. 未验证项（诚实清单）
 
-- **nightly / weekly 的排程尚未验证**：`schedule` 只认默认分支，本分支只能 `workflow_dispatch` 手动触发；真正那次要等合并进 `main` 后的 02:30 UTC（提案 Q3 已确认接受）。
-- **weekly-full 的 60 分钟浸泡没跑**：本机只跑 `--quick`（2 分钟浸泡）。
+- **排程本身仍未验证**：`schedule` 只认默认分支，本分支只能 `workflow_dispatch` 手动触发。nightly 的第一次自然排程 = 2026-09-24 02:30 UTC；weekly-full 的下一次自然排程 = 周日 03:00 UTC。
+- ~~weekly-full 的 60 分钟浸泡没跑~~ → **已跑**（run `35870043832`，60 分钟浸泡通过且产物落盘，见 §4）。
 - **冷卷绿是本机 docker 的结果**：CI runner 同样是冷卷，但这三条演练在 CI 上尚未跑过（合并前）。
 - **P38 的 120s 窗口是实测拍出来的，不是推导的**：failover 之后 503 持续多久没做系统测量，只观察到「>24s 仍有 503」。若 CI 上超过 120s，worker-crash 仍会失败——届时是真实发现，不是静默通过。
 - 本机复跑需要 `danger-full-access`（buildx 写工作区外）；CI 无此限制。
