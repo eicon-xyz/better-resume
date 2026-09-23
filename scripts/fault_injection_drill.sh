@@ -60,6 +60,10 @@ check() { if [ "$1" -eq 0 ]; then printf 'PASS: %s\n' "$2"; else printf 'FAIL: %
 
 step "stack up (nginx + 2x api + worker + fake vendor)"
 docker compose up -d --wait postgres redis
+# P35: on a cold volume (CI) ai_models does not exist yet — seeding before the one-shot
+# migrate job dies with `relation "ai_models" does not exist`. The job is idempotent, and
+# the later `up` runs it again harmlessly.
+docker compose run --rm --build migrate
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 INSERT INTO ai_models (name, provider, base_url, model_id, api_key_env, max_tokens,
                        temperature, is_enabled, priority, extra)

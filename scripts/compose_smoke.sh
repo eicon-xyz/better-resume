@@ -11,6 +11,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
+# P35 follow-up: refuse loudly instead of dying inside `docker compose config` with 127.
+# The other two drills already guard this way; this one was the odd one out.
+if ! command -v docker >/dev/null 2>&1; then
+  echo "需要 docker：本冒烟要起 nginx + api + worker + postgres + redis（未检测到 docker 命令）" >&2
+  exit 2
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo "需要可用的 docker daemon（docker info 失败）" >&2
+  exit 2
+fi
+
 # uv is often installed into ~/.local/bin, which a fresh root shell does not have on PATH.
 find_uv() {
   if command -v uv >/dev/null 2>&1; then
@@ -53,6 +64,10 @@ check $? "docker compose config"
 
 step "postgres + redis, then seed the smoke-fake model row"
 docker compose up -d --wait postgres redis
+# P35: on a cold volume (CI) ai_models does not exist yet — seeding before the one-shot
+# migrate job dies with `relation "ai_models" does not exist`. The job is idempotent, and
+# the later `up` runs it again harmlessly.
+docker compose run --rm --build migrate
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 INSERT INTO ai_models (name, provider, base_url, model_id, api_key_env, max_tokens,
                        temperature, is_enabled, priority, extra)

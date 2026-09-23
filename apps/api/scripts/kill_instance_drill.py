@@ -42,6 +42,39 @@ def instance_of(response: httpx.Response) -> str:
     return response.headers.get("x-instance-id", "")
 
 
+def retry_after_seconds(response: httpx.Response, *, default: float = 1.0) -> float:
+    """The limiter's Retry-After is part of its contract (P17); honour it, do not guess."""
+    raw = response.headers.get("retry-after")
+    if raw is None:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return default
+
+
+async def post_answer(
+    client: httpx.AsyncClient, url: str, body: dict[str, Any], *, attempts: int = 5
+) -> httpx.Response:
+    """P36: the answer bucket is 2 rps with a 2x burst (P1-B calibration, M6 §2.7) and this
+    drill fires answers as fast as the fake vendor replies, so a 429 is expected rather than a
+    failure. Retry the same request_id (the endpoint is idempotent) after Retry-After. Any
+    other error is raised with its body — a bare `KeyError: 'next_action'` hid this for a
+    whole run and read like a server bug.
+    """
+    response = await client.post(url, json=body)
+    for _ in range(attempts - 1):
+        if response.status_code != 429:
+            break
+        delay = retry_after_seconds(response)
+        print(f"  answer rate limited (429); retrying in {delay:.2f}s")
+        await asyncio.sleep(delay)
+        response = await client.post(url, json=body)
+    if response.status_code >= 400:
+        raise RuntimeError(f"HTTP {response.status_code} from {url}: {response.text[:200]}")
+    return response
+
+
 DOCKER = shutil.which("docker") or "docker"
 
 
@@ -212,9 +245,10 @@ async def run(args: argparse.Namespace) -> int:
         submitted = 0
         while submitted < args.max_answers:
             payload = (
-                await client.post(
+                await post_answer(
+                    client,
                     f"/api/v1/interview/sessions/{session_id}/answers",
-                    json={
+                    {
                         "question_no": (
                             await client.get(f"/api/v1/interview/sessions/{session_id}/restore")
                         ).json()["flow"]["current_question_no"],
