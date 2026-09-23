@@ -268,6 +268,19 @@ async def login_with_retry(
     return response
 
 
+def write_json(path: str, payload: dict[str, Any]) -> None:
+    """P39: never lose a run to a missing directory.
+
+    An hour-long soak finished, passed, and then died writing its evidence: `verify.sh --layer
+    soak` runs with cwd=apps/api, so `--json var/evidence/soak-60m.json` pointed at
+    apps/api/var/evidence/ (which does not exist) while the weekly workflow collects
+    var/evidence/ from the repo root.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 async def wait_until_the_stack_is_usable(
     client: httpx.AsyncClient, *, model: str, budget_seconds: float, delay: float = 2.0
 ) -> None:
@@ -320,11 +333,7 @@ async def soak(args: argparse.Namespace) -> int:
     print(f"duration_s={args.duration} requests_per_wave={args.requests}")
     if args.json:
         payload = {"waves": waves, "summary": summary, "args": vars(args)}
-        await asyncio.to_thread(
-            Path(args.json).write_text,
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        await asyncio.to_thread(write_json, args.json, payload)
         print("json ->", args.json)
     return 0 if summary["error_rate"] < 0.01 else 1
 

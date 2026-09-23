@@ -7,6 +7,7 @@ wrapper, so the script's logic is exercised without a running stack.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -139,6 +140,17 @@ async def test_wait_until_the_stack_is_usable_still_fails_when_it_never_recovers
             )
 
     assert "503" in str(excinfo.value)
+
+
+def test_write_json_creates_the_evidence_directory(tmp_path: Path) -> None:
+    """P39: the probe must not lose a run to a missing directory. The 60-minute soak finished,
+    passed, and then died writing `var/evidence/soak-60m.json` because verify.sh runs the soak
+    with cwd=apps/api while the weekly workflow collects evidence from the repo root."""
+    target = tmp_path / "var" / "evidence" / "soak-60m.json"
+
+    fault_probe.write_json(str(target), {"summary": {"error_rate": 0.0}})
+
+    assert json.loads(target.read_text(encoding="utf-8"))["summary"]["error_rate"] == 0.0
 
 
 async def test_login_with_retry_survives_a_stale_connection() -> None:

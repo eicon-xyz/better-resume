@@ -118,7 +118,10 @@ ALL FAULT EXPERIMENTS PASSED (json: /tmp/v6-soak.json)
 
 ### weekly-full
 
-（待回填：run id + 结论；20 分钟浸泡 + 60 分钟浸泡，约 80–90 分钟）
+- run **35836425404** → **failure**：前两层都过了（`--layer fault` 的 5 个故障实验 + 20 分钟浸泡全 PASS），
+  **60 分钟浸泡也跑满并通过**（`error_rate: 0.0`），却死在写证据上——见 **P39**。
+- 这是 P4 合并后才拿到的结果，也是 weekly-full 第一次真正跑到最后一步；修法与证据见 `PROBLEMS.md` P39。
+- 修复后重跑：（待回填 run id + 结论）
 
 ## 5. 未验证项（诚实清单）
 
