@@ -99,7 +99,26 @@ ALL PASS (12 commands) -- evidence: var/evidence/20260923T080421Z-all
 
 ## 4. CI
 
-（待回填：nightly `workflow_dispatch` run id + 结论）
+### nightly（`workflow_dispatch`，分支 `fix/p35-cold-volume-migrate`）
+
+- run **35835316554** → **success**（job：deploy smoke + kill drill + fault drill (quick soak)）
+- 日志里的关键行——**这三个坑在 CI 上同样踩得到**，不是本机特有：
+
+```
+ALL CHECKS PASSED (edge: http://127.0.0.1:8080; ...)
+PASS: 会话在实例被 kill 后由另一实例接管，状态、分数与冻结报告全部一致
+answer rate limited (429); retrying in 1.00s      ← P36
+login attempt 1 -> 503; retrying in 1.0s          ← P37
+stack not usable yet (503); retrying in 2s        ← P38
+PASS: the crashed consumer's job was reclaimed and completed
+ALL FAULT EXPERIMENTS PASSED (json: /tmp/v6-soak.json)
+```
+
+- 全文 `FAIL:` / `##[error]` 计数 **0**。
+
+### weekly-full
+
+（待回填：run id + 结论；20 分钟浸泡 + 60 分钟浸泡，约 80–90 分钟）
 
 ## 5. 未验证项（诚实清单）
 
