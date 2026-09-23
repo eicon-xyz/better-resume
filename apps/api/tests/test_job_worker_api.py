@@ -8,6 +8,7 @@ its own NullPool engine. Only the queue, the database and the LLM gateway are sh
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -27,6 +28,18 @@ from better_resume.worker import run_once
 from .test_interview_report_api import FakeGateway, login, prepare
 
 
+def _private_jobs_stream() -> str:
+    """A stream no other test can collide with (P40).
+
+    This used to be `f"br:jobs:test:{id(settings):x}"`. CPython reuses object addresses —
+    12 freshly built Settings objects yielded only 2 distinct ids — so the "private stream
+    per test" was really one or two shared streams. A test that leaves a job behind (the
+    freeze test asserts the stream length and stops there) then hands that job to the next
+    test's worker, which reports `run_once == 1` while its own report keeps `summary: None`.
+    """
+    return f"br:jobs:test:{uuid.uuid4().hex[:8]}"
+
+
 @pytest.fixture
 def jobs_settings(settings: Settings, redis_url: str) -> Settings:
     """A private stream per test: the suite shares one Redis instance with other tests."""
@@ -34,9 +47,15 @@ def jobs_settings(settings: Settings, redis_url: str) -> Settings:
         update={
             "redis_url": redis_url,
             "jobs_enabled": True,
-            "jobs_stream": f"br:jobs:test:{id(settings):x}",
+            "jobs_stream": _private_jobs_stream(),
         }
     )
+
+
+def test_private_jobs_stream_is_unique_per_call() -> None:
+    """P40: pin the property the old address-derived name did not have. Two calls must never
+    return the same stream, or two tests end up claiming each other's jobs."""
+    assert len({_private_jobs_stream() for _ in range(64)}) == 64
 
 
 @pytest.fixture
