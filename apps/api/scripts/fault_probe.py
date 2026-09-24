@@ -7,6 +7,11 @@ Run it through \`scripts/fault_injection_drill.sh\`, or by hand:
 
     uv run python -m scripts.fault_probe soak --duration 1200
     uv run python -m scripts.fault_probe fault --scenario redis-pause --seconds 20
+
+P5 的自动 failover 走 --auto（需要 compose 的 drill profile + 应用侧哨兵变量）：
+
+    uv run python -m scripts.fault_probe fault --scenario redis-failover \
+        --auto --master-name br-master
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import subprocess
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +40,10 @@ PROBE_TIMEOUT_SECONDS = 2.0
 DOCKER = shutil.which("docker") or "docker"
 #: P1-D: the throwaway replica used by the failover drill.
 REPLICA_NAME = "br-redis-replica"
+#: P5: the sentinel-managed drill (compose `drill` profile). One sentinel is enough to ask.
+SENTINEL_SERVICE = "redis-sentinel-1"
+SENTINEL_PORT = "26379"
+DEFAULT_MASTER_NAME = "br-master"
 POSTGRES_USER = "better_resume"
 POSTGRES_DB = "better_resume"
 
@@ -65,6 +75,88 @@ def parse_replica_link(info: str) -> str:
         if key == "master_link_status":
             return value.strip() or "unknown"
     return "unknown"
+
+
+def parse_sentinel_master(output: str) -> tuple[str, int] | None:
+    """`SENTINEL get-master-addr-by-name` 的两行输出 → (host, port)；没主就是 None。
+
+    选举窗口里哨兵回的是空串或 `(nil)`：那是"还没有主"，不是"主没变"，两者不能混。
+    """
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if len(lines) < 2 or lines[0].startswith("(") or not lines[1].isdigit():
+        return None
+    return lines[0], int(lines[1])
+
+
+def sentinel_master_address(master_name: str = DEFAULT_MASTER_NAME) -> tuple[str, int] | None:
+    """问哨兵当前主是谁；哨兵不可用/还没选出主都返回 None（故障窗口里这是正常状态）。"""
+    try:
+        output = docker(
+            "compose",
+            "exec",
+            "-T",
+            SENTINEL_SERVICE,
+            "redis-cli",
+            "-p",
+            SENTINEL_PORT,
+            "sentinel",
+            "get-master-addr-by-name",
+            master_name,
+        )
+    except RuntimeError:
+        return None
+    return parse_sentinel_master(output)
+
+
+def sentinel_switch_line() -> str:
+    """哨兵自己打的 +switch-master 日志是"自动提升"最硬的证据；没有就写 none，不编。"""
+    try:
+        logs = docker("compose", "logs", "--no-log-prefix", "--tail", "200", SENTINEL_SERVICE)
+    except RuntimeError:
+        return "unavailable"
+    for line in logs.splitlines():
+        if "+switch-master" in line:
+            return line.strip()
+    return "none"
+
+
+def worker_health() -> str:
+    try:
+        return docker("inspect", "-f", "{{.State.Health.Status}}", service_container("worker"))
+    except RuntimeError as exc:
+        return f"unknown ({exc})"
+
+
+def heartbeat_on_new_master(key: str = "br:jobs:health") -> str:
+    """worker 的心跳 key 落在被提升的副本上 = 应用的写路径真的切过去了（不只是读能过）。"""
+    try:
+        return docker("compose", "exec", "-T", "redis-replica", "redis-cli", "exists", key)
+    except RuntimeError:
+        return "unknown"
+
+
+def restore_drill_topology(master_name: str = DEFAULT_MASTER_NAME) -> None:
+    """恢复动作（必须放 finally）：把原主拉回来，并让哨兵重新发现拓扑。
+
+    单机 compose 的坑：容器重建会换 IP，而哨兵记的是当初解析出来的地址，所以只把容器
+    up 回来并不够——三个哨兵各来一次 SENTINEL RESET，让它们按 compose 的主机名重新发现。
+    彻底干净的重跑仍然是整体重建：docker compose --profile drill down -v。
+    """
+    with contextlib.suppress(RuntimeError):
+        docker("compose", "up", "-d", "--wait", "redis")
+    for index in range(1, 4):
+        try_docker(
+            "compose",
+            "exec",
+            "-T",
+            f"redis-sentinel-{index}",
+            "redis-cli",
+            "-p",
+            SENTINEL_PORT,
+            "sentinel",
+            "reset",
+            master_name,
+        )
 
 
 def service_container(service: str) -> str:
@@ -109,6 +201,90 @@ def classify_response(*, status: int | None = None, exc: BaseException | None = 
     if status >= 400:
         return "client_error"
     return "ok"
+
+
+#: 只有这些结果能证明"故障真的发生了"：429/4xx 只说明应用还活着，不能当证据。
+FAULT_OUTCOMES = frozenset({"server_error", "timeout", "transport"})
+
+
+@dataclass
+class AutoFailoverWatch:
+    """P5 自动 failover 的判定器：把「何时算自愈 / 何时算超时」从轮询循环里拎出来。
+
+    口径（都落在 `verdict()` 里，**只有 recovered 算通过**）：
+
+    * `ok` 才叫自愈——探针每次都创建会话，200 = 应用真的把写请求打到了可用的主上；
+      503 / 超时 / 断连只是噪声，**不许当结束**；
+    * 计时从 **kill 那一瞬** 开始（不是从故障窗口结束），超预算算失败；
+    * 必须看到哨兵把主换掉（`elected_at`）：应用好了但主没动，是"主没真死"的假通过；
+    * 必须至少观测到一次故障：一次都没看到，说明这次 kill 没打成，不构成证据。
+    """
+
+    injected_at: float
+    budget_seconds: float
+    original_master: tuple[str, int] | None = None
+    elected_at: float | None = None
+    first_ok_at: float | None = None
+    saw_fault: bool = False
+
+    def observe_master(self, master: tuple[str, int] | None, *, now: float) -> None:
+        """哨兵报出与 kill 前不同的地址 = 提升发生（只记第一次）。"""
+        if self.elected_at is not None or master is None:
+            return
+        if self.original_master is not None and master == self.original_master:
+            return
+        self.elected_at = now
+
+    def observe_probe(self, outcome: str, *, now: float) -> None:
+        if outcome in FAULT_OUTCOMES:
+            self.saw_fault = True
+        elif outcome == "ok" and self.first_ok_at is None:
+            self.first_ok_at = now
+
+    @property
+    def recovered(self) -> bool:
+        return self.first_ok_at is not None
+
+    @property
+    def recovery_ms(self) -> float | None:
+        """kill → 首次成功（口径写清：探针自己的超时不算接管耗时，V6 教训）。"""
+        if self.first_ok_at is None:
+            return None
+        return (self.first_ok_at - self.injected_at) * 1000
+
+    @property
+    def election_ms(self) -> float | None:
+        """kill → 哨兵报出新主；没有提升就是 None。"""
+        if self.elected_at is None:
+            return None
+        return (self.elected_at - self.injected_at) * 1000
+
+    def expired(self, now: float) -> bool:
+        return not self.recovered and now - self.injected_at >= self.budget_seconds
+
+    def verdict(self) -> str:
+        """recovered / timeout / no-fault-observed / no-promotion；只有第一个算通过。"""
+        if not self.recovered:
+            return "timeout"
+        if not self.saw_fault:
+            return "no-fault-observed"
+        if self.elected_at is None:
+            return "no-promotion"
+        return "recovered"
+
+
+#: verdict → (退出码, 结论文案)。矛盾的结论必须分开说：它们指向完全不同的排查方向。
+_FAILOVER_REPORT: dict[str, tuple[int, str]] = {
+    "recovered": (0, "PASS: 主挂了之后应用自己切到了新主（没有人工 promotion）"),
+    "timeout": (1, "FAIL: 预算内一次成功都没有——自愈没发生（超时算失败，不是「慢」）"),
+    "no-promotion": (1, "FAIL: 应用恢复了，但哨兵从没提升过副本——主可能没真死，这不算证据"),
+    "no-fault-observed": (1, "FAIL: 一次故障都没观测到——这次 kill 没打成，不构成证据"),
+}
+
+
+def failover_report(verdict: str) -> tuple[int, str]:
+    """自动 failover 的结论 → 退出码 + 人话。只有 recovered 是 0。"""
+    return _FAILOVER_REPORT.get(verdict, (1, f"FAIL: 未知结论 {verdict!r}"))
 
 
 def summarise_waves(waves: list[dict[str, Any]]) -> dict[str, Any]:
@@ -485,6 +661,80 @@ async def fault(args: argparse.Namespace) -> int:
     return 0
 
 
+async def sentinel_failover(args: argparse.Namespace) -> int:
+    """P5：kill 主 → 等哨兵自己提升副本 → 应用自己切过去（全程没有人工 promotion）。
+
+    与手工版（--scenario redis-failover）的区别：不建临时副本、不 REPLICAOF NO ONE、
+    不改网络别名，只 kill 主，剩下的交给哨兵。前提是 compose 的 drill profile 已经在跑
+    （scripts/fault_injection_drill.sh --sentinel 负责 export 两个变量并起栈）。
+    """
+    master_name = args.master_name
+    counts: dict[str, int] = {}
+    notes: list[str] = []
+    async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
+        login = await login_with_retry(client)
+        # 前置状态必须在故障前就存在：否则 /auth/me 的 401 是"没 cookie"，不是"会话丢了"（P27）。
+        cookie = login.cookies.get("br_session")
+        original = sentinel_master_address(master_name)
+        if original is None:
+            print(
+                f"FAIL: 哨兵 {SENTINEL_SERVICE} 报不出 {master_name} 的主——drill profile 起了吗？"
+            )
+            return 2
+        print(f"== 哨兵当前主：{original[0]}:{original[1]}")
+
+        injected = time.monotonic()
+        watch = AutoFailoverWatch(
+            injected_at=injected,
+            budget_seconds=args.recovery_timeout,
+            original_master=original,
+        )
+        print(f"== kill 主（docker compose kill redis）；预算 {args.recovery_timeout:g}s")
+        try:
+            docker("compose", "kill", "redis")
+            while True:
+                # 先问哨兵再看应用：同一轮里"提升 + 恢复"都发生时，顺序反了会误报 no-promotion。
+                watch.observe_master(sentinel_master_address(master_name), now=time.monotonic())
+                outcome = await probe_once(client)
+                counts[outcome] = counts.get(outcome, 0) + 1
+                watch.observe_probe(outcome, now=time.monotonic())
+                if watch.recovered or watch.expired(time.monotonic()):
+                    break
+                await asyncio.sleep(0.2)
+        finally:
+            # 演练失败也要把拓扑收回来（V6 教训：恢复动作必须在 finally）。
+            restore_drill_topology(master_name)
+
+        verdict = watch.verdict()
+        code, message = failover_report(verdict)
+        print(f"fault window: {json.dumps(dict(sorted(counts.items())), ensure_ascii=False)}")
+        if watch.recovery_ms is not None:
+            print(f"recovery: kill -> 首次成功 {watch.recovery_ms:.0f} ms（从 kill 那一瞬算）")
+        if watch.election_ms is not None:
+            print(f"promotion: kill -> 哨兵报出新主 {watch.election_ms:.0f} ms")
+        promoted = sentinel_master_address(master_name)
+        notes.append(f"verdict={verdict}")
+        if promoted is None:
+            notes.append("master_after_kill=unknown")
+        else:
+            notes.append(f"master_after_kill={promoted[0]}:{promoted[1]}")
+        if cookie:
+            async with httpx.AsyncClient(base_url=args.base, trust_env=False) as old:
+                old.cookies.set("br_session", cookie)
+                try:
+                    me = await old.get("/api/v1/auth/me", timeout=PROBE_TIMEOUT_SECONDS)
+                    notes.append(f"old_session_after_failover={me.status_code}")
+                except httpx.HTTPError as exc:
+                    notes.append(f"old_session_after_failover={type(exc).__name__}")
+        notes.append(f"worker_health={worker_health()}")
+        notes.append(f"worker_heartbeat_on_new_master={heartbeat_on_new_master()}")
+        notes.append(f"sentinel_switch_log={sentinel_switch_line()}")
+        print(message)
+        for note in notes:
+            print(f"note: {note}")
+        return code
+
+
 CLAIM_SNIPPET = """
 import asyncio
 from better_resume.jobs.queue import JobQueue
@@ -594,6 +844,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     fault_parser.add_argument("--model", default="smoke-fake")
     fault_parser.add_argument("--summary-timeout", type=float, default=180.0)
     fault_parser.add_argument("--seconds", type=float, default=20.0)
+    fault_parser.add_argument(
+        "--auto",
+        action="store_true",
+        help=(
+            "redis-failover 专用：只 kill 主，等哨兵自己提升（需要 compose drill profile "
+            "与 BR_REDIS_SENTINELS/BR_REDIS_MASTER_NAME），不再人工 promotion"
+        ),
+    )
+    fault_parser.add_argument(
+        "--master-name",
+        default=DEFAULT_MASTER_NAME,
+        help="哨兵监视的主名（compose drill profile 里是 br-master）",
+    )
     fault_parser.add_argument("--recovery-timeout", type=float, default=30.0)
     fault_parser.add_argument(
         "--ready-timeout",
@@ -601,7 +864,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=120.0,
         help="how long worker-crash waits for the stack to stop answering 503 (P38)",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.command == "fault" and args.auto and args.scenario != "redis-failover":
+        # 静默忽略会让人以为跑了自动路径：直接拒绝，别留一条没人跑的分支。
+        parser.error("--auto only makes sense with --scenario redis-failover")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -610,6 +877,9 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(soak(args))
     if args.scenario == "worker-crash":
         return asyncio.run(worker_crash(args))
+    if args.scenario == "redis-failover" and args.auto:
+        # P5：走哨兵的自动提升路径（不写 --auto 仍是手工版，weekly 的既有证据不变）。
+        return asyncio.run(sentinel_failover(args))
     return asyncio.run(fault(args))
 
 

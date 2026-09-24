@@ -44,6 +44,126 @@ def test_parse_replica_link_reads_master_link_status() -> None:
     assert fault_probe.parse_replica_link("role:master\nconnected_slaves:0\n") == "unknown"
 
 
+def test_parse_sentinel_master_separates_no_master_from_a_real_one() -> None:
+    """P5：选举窗口里哨兵会回空/(nil)——那是"还没有主"，不是"主没变"，不能当成同一个地址。"""
+    assert fault_probe.parse_sentinel_master("172.28.0.5\n6379\n") == ("172.28.0.5", 6379)
+    assert fault_probe.parse_sentinel_master("172.28.0.5\r\n6379\r\n") == ("172.28.0.5", 6379)
+    assert fault_probe.parse_sentinel_master("") is None
+    assert fault_probe.parse_sentinel_master("(nil)") is None
+    assert fault_probe.parse_sentinel_master("172.28.0.5") is None
+    assert fault_probe.parse_sentinel_master("not-a-host\nnot-a-port\n") is None
+
+
+def test_watch_treats_failures_as_evidence_not_as_an_ending() -> None:
+    """V6 教训：探针不许把 503 当"结束"；只有应用真的成功才算自愈，超时算失败。"""
+    watch = fault_probe.AutoFailoverWatch(
+        injected_at=100.0, budget_seconds=30.0, original_master=("172.28.0.5", 6379)
+    )
+
+    watch.observe_probe("server_error", now=101.0)
+    watch.observe_probe("timeout", now=102.0)
+    watch.observe_probe("rate_limited", now=102.5)
+
+    assert watch.recovered is False
+    assert watch.recovery_ms is None
+    assert watch.expired(now=129.9) is False
+    assert watch.expired(now=130.0) is True
+    assert watch.verdict() == "timeout"
+
+
+def test_watch_measures_recovery_from_the_kill_and_pins_the_first_election() -> None:
+    watch = fault_probe.AutoFailoverWatch(
+        injected_at=100.0, budget_seconds=30.0, original_master=("172.28.0.5", 6379)
+    )
+
+    watch.observe_probe("server_error", now=100.3)  # 主真死了（否则会报 no-fault-observed）
+    watch.observe_master(("172.28.0.5", 6379), now=101.0)  # 还是旧主：不算提升
+    assert watch.elected_at is None
+    watch.observe_master(("172.28.0.9", 6379), now=105.5)  # 哨兵换主了
+    watch.observe_master(("172.28.0.11", 6379), now=106.0)  # 只认第一次
+    watch.observe_probe("ok", now=105.9)
+
+    assert watch.elected_at == 105.5
+    assert watch.recovered is True
+    assert watch.recovery_ms == pytest.approx((105.9 - 100.0) * 1000)
+    assert watch.verdict() == "recovered"
+
+
+def test_watch_refuses_to_pass_when_the_master_never_moved() -> None:
+    """应用成功了但哨兵没换主 = 主没真死（或指针没动）：这必须是失败，不是通过。"""
+    watch = fault_probe.AutoFailoverWatch(
+        injected_at=100.0, budget_seconds=30.0, original_master=("172.28.0.5", 6379)
+    )
+
+    watch.observe_probe("server_error", now=100.4)
+    watch.observe_probe("ok", now=101.0)
+
+    assert watch.verdict() == "no-promotion"
+    assert watch.recovery_ms == pytest.approx(1000.0)
+
+
+def test_watch_refuses_to_call_it_a_recovery_when_no_fault_was_ever_observed() -> None:
+    """一次故障都没观测到 = 这次 kill 没打成（或应用根本没走 Redis）：不能当证据。"""
+    watch = fault_probe.AutoFailoverWatch(
+        injected_at=100.0, budget_seconds=30.0, original_master=("172.28.0.5", 6379)
+    )
+
+    watch.observe_master(("172.28.0.9", 6379), now=100.1)
+    watch.observe_probe("rate_limited", now=100.2)  # 429 说明应用还活着，不算故障证据
+    watch.observe_probe("ok", now=100.3)
+
+    assert watch.verdict() == "no-fault-observed"
+
+
+def test_watch_without_a_baseline_accepts_the_first_master_it_sees() -> None:
+    """kill 之前读不到旧主（哨兵刚起）时，第一次看到的地址就算提升——但要靠 note 说清。"""
+    watch = fault_probe.AutoFailoverWatch(injected_at=0.0, budget_seconds=5.0)
+
+    watch.observe_master(("10.0.0.1", 6379), now=1.0)
+
+    assert watch.elected_at == 1.0
+
+
+@pytest.mark.parametrize(
+    ("verdict", "exit_code"),
+    [
+        ("recovered", 0),
+        ("timeout", 1),
+        ("no-promotion", 1),
+        ("no-fault-observed", 1),
+    ],
+)
+def test_only_a_recovered_verdict_passes_and_each_failure_says_why(
+    verdict: str, exit_code: int
+) -> None:
+    """假通过是这类演练最大的风险：三种没恢复好的情形都要非零退出，且文案互不相同。"""
+    code, message = fault_probe.failover_report(verdict)
+
+    assert code == exit_code
+    assert message
+
+
+def test_failover_failure_messages_are_distinguishable() -> None:
+    messages = {
+        verdict: fault_probe.failover_report(verdict)[1]
+        for verdict in ("timeout", "no-promotion", "no-fault-observed")
+    }
+
+    assert len(set(messages.values())) == 3, messages
+    assert "提升" in messages["no-promotion"]
+    assert "故障" in messages["no-fault-observed"]
+
+
+def test_auto_flag_is_only_valid_for_the_failover_scenario() -> None:
+    args = fault_probe.parse_args(["fault", "--scenario", "redis-failover", "--auto"])
+
+    assert args.auto is True
+    assert args.master_name == "br-master"
+
+    with pytest.raises(SystemExit):
+        fault_probe.parse_args(["fault", "--scenario", "redis-pause", "--auto"])
+
+
 def test_summarise_waves_computes_growth_from_first_to_last() -> None:
     waves = [
         {"ok": 10, "timeout": 0, "server_error": 0, "redis_keys": 100, "pg_connections": 5},
