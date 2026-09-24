@@ -14,7 +14,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 
 ---
 
-## 1. 决议表（D01-D17）
+## 1. 决议表（D01-D18）
 
 | # | 决议 | 内容 |
 | --- | --- | --- |
@@ -35,6 +35,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 | D15 | 语音交互范围 | 一个转写通道、两个消费方（面试答案框 + 对话输入框）、一个播放器；**砍草稿板** |
 | D16 | 简历亮点排序 | 深挖 trio：**① ai-resilience（单飞+熔断+限流，假时钟测试）② interview-engine（状态机+幂等+裁决）③ ASR 句池归并增量去重**；支撑 bullet：④ llm-gateway（多模型注册+schema 防幻觉）⑤ resume-parser（混合解析） |
 | D17 | 工程微默认 | uv / pnpm；structlog（JSON + request_id，**不引 OpenTelemetry**）；测试先行、只 mock 系统边界（LLM/时钟/Redis/讯飞）；GitHub Actions 双 job（ruff+pytest+alembic check / eslint+tsc+vitest）；**OpenAPI → TS 类型生成**（openapi-typescript，根治前端猜字段）；MIT |
+| D18 | 开发流程 | 五阶段 **grill → spec → implement → review → retro**（Matt Pocock 技能集，2026-09-23 起）：grill 逐轮拷问并即时把术语落进 `CONTEXT.md`、把决策落进本文；spec = `docs/tickets/<stage>/README.md`（即原「阶段提案」）；implement 驱动 `/tdd` 垂直切片、收尾自动 `/code-review` 双轴评审；retro 读会话日志改环境。**人工闸门不变**：spec 经用户点头才动工、验收包由用户验收、AI 不擅自合并。配置见 `docs/agents/`（本地 markdown tracker，映射 `docs/tickets/`） |
 
 ---
 
