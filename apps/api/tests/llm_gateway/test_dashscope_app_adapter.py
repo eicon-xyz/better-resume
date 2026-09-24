@@ -42,6 +42,8 @@ class FakeApp(BaseHTTPRequestHandler):
 
     frames: list[dict[str, Any]] = []
     status = 200
+    #: the real vendor reports in-band failures as an SSE frame preceded by this comment
+    frame_status = 200
     requests: list[dict[str, Any]] = []
 
     def do_POST(self) -> None:  # noqa: N802 - http.server API
@@ -62,7 +64,11 @@ class FakeApp(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         for index, frame in enumerate(type(self).frames, start=1):
-            chunk = f"id:{index}\nevent:result\n:HTTP_STATUS/200\ndata:{json.dumps(frame)}\n\n"
+            event = "error" if "code" in frame else "result"
+            chunk = (
+                f"id:{index}\nevent:{event}\n:HTTP_STATUS/{type(self).frame_status}\n"
+                f"data:{json.dumps(frame)}\n\n"
+            )
             self.wfile.write(chunk.encode())
             self.wfile.flush()
 
@@ -75,6 +81,7 @@ def server():
     FakeApp.frames = []
     FakeApp.requests = []
     FakeApp.status = 200
+    FakeApp.frame_status = 200
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeApp)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -147,6 +154,50 @@ async def test_thoughts_become_reasoning_deltas(server: str) -> None:
 
     assert [event.text for event in events if isinstance(event, ReasoningDelta)] == ["先想"]
     assert [event.text for event in events if isinstance(event, ContentDelta)] == ["答案"]
+
+
+async def test_in_band_error_frames_are_not_empty_successes(server: str) -> None:
+    """The vendor answers HTTP 200 with an `event:error` frame (seen on the real endpoint,
+    2026-09-17). Treating that as an empty answer hides a broken binding behind a blank reply."""
+    FakeApp.frame_status = 400
+    FakeApp.frames = [
+        {
+            "code": "InvalidParameter",
+            "message": (
+                "Required parameter(AppId) missing or invalid, please check the request parameters."
+            ),
+            "request_id": "req-1",
+        }
+    ]
+
+    with pytest.raises(LlmVendorError) as caught:
+        await adapter(server).complete(request())
+
+    assert "InvalidParameter" in str(caught.value)
+    assert "AppId" in str(caught.value)
+    assert caught.value.retryable is False
+    assert caught.value.status_code == 400
+
+
+async def test_in_band_server_errors_stay_retryable(server: str) -> None:
+    FakeApp.frame_status = 500
+    FakeApp.frames = [{"code": "InternalError", "message": "upstream exploded"}]
+
+    with pytest.raises(LlmVendorError) as caught:
+        await adapter(server, max_attempts=1).complete(request())
+
+    assert caught.value.retryable is True
+
+
+async def test_an_error_after_partial_text_still_fails(server: str) -> None:
+    FakeApp.frame_status = 400
+    FakeApp.frames = [
+        {"output": {"text": "半句", "finish_reason": "null"}},
+        {"code": "InvalidParameter", "message": "boom"},
+    ]
+
+    with pytest.raises(LlmVendorError):
+        await adapter(server).complete(request())
 
 
 async def test_usage_is_mapped_from_the_vendor_envelope(server: str) -> None:
