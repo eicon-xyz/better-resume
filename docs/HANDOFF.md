@@ -1,19 +1,22 @@
-# 交接文档（better-resume · P1 阶段收口）
+# 交接文档（better-resume · P5 阶段收口）
 
 > 写给下一个窗口/接手的人：先读这一页与仓库根 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
-> 再读 `docs/tickets/p1-post-v/README.md`（当前阶段票据与进度）。
-> 最后更新：2026-09-17（P1+P2 完成、浏览器手测第 3 轮通过、**用户已正式验收**；PR 流程进行中）。
+> 再读当前阶段票据 `docs/tickets/p5-auto-failover/README.md`。
+> 最后更新：**2026-09-28**（P3/P4/P39/P40 已合并进 main；P5+P6 在 PR 流程中）。
 
 ## 1. 一句话状态
 
-**M0–M6、V 阶段已合并进 main**（V = PR #7）；**P1（实时 ASR/真模型容量/阿里 API 补验/生产演练）与 P2（测试自动化 T1–T6）全部落地**，
-分支 `p1/realtime-asr`（tip 见 `git log`，已全部推送；工作区干净）。**浏览器手测已通过（3 轮，修掉 P28/P29/P30）**，
-**用户已于 2026-09-17 正式验收 P1+P2**（ACCEPTANCE §7 已回填）→ **PR #8 已开**（`p1/realtime-asr` → `main`）。
-CI 首跑暴露 3 个只有干净 checkout/CI 才看得见的缺陷（**P31–P33**：本地 `--layer all` 漏 contract 层、fixture 断言不
-hermetic、全仓格式），已逐条红-绿修完并复跑：`verify.sh --layer all`（**12 条命令**）全绿 —— 后端 **747** /
-前端 **173** / contract **9/9** / 脚本 **23**（证据 `var/evidence/20260917T142720Z-all`）。
-等 CI 双 job 绿 → 用户点头 → 合并。`.env` 默认 `paraformer-rt`（边说边出字）。
-真机花费 ~185 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
+**M0–M6、V、P1、P2、P3、P4 全部已合并进 main**（最新 `4ef9f55`，CI 绿）。
+**当前在 PR 流程中的是 P5 + P6**：
+
+- **PR #15（P5，Redis 自动 failover）**：一个缝（`redis_client.py`）收掉 8 处 `from_url`，主挂了应用自己切到新主。
+  冷卷演练 `bash scripts/fault_injection_drill.sh --sentinel` → `verdict=recovered`、哨兵日志 `+switch-master` 为证。
+  收口：后端 **831** / `verify.sh --layer all` **12 条命令全绿**。
+- **PR #16（P6，简历条目）**：5 条 × 一行（60–90 字），详细版降级为 `interview-notes.md`（面试稿）。
+
+**P4（守护网修复 P35–P38、P39、P40）已合并**——`nightly` 与 `weekly-full` 从「上线起从没绿过」变成
+**真跑绿**（nightly `35835316554`、weekly `35870043832`）。
+真机花费 ~191 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
 
 ## 2. 仓库与流程约定
 
@@ -198,7 +201,12 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
   （PR `p3/dashscope-evidence`）。
 - ~~真实浏览器手测（P1-A）~~ **已完成**（第 3 轮通过，顺带修出 P28/P29/P30）。仍待：浏览器矩阵（Safari/Firefox/蓝牙）、>30s 长说的实时表现。
 - **供应商 429**：P1 阶段 177 次真调用一次未触发；退避/重试路径仍是纸面推演。
-- **>24 并发 / 自动 Redis failover / 多可用区 / 真实 LB 抖动**：未测；应用是单 `BR_REDIS_URL`，自动切换需改代码。
+- ~~自动 Redis failover~~ → **P5 已实现并演练通过**（PR #15）。但**单机 compose 上的哨兵 ≠ 生产级高可用**：
+  三个哨兵同一台宿主、同一个 Docker 守护进程，宿主一挂全挂；也没做多可用区与脑裂治理。
+  另一个**已探明的限制**：compose 的单机内嵌 DNS 在容器退出后不再解析服务名，哨兵会进 TILT 而拒绝 failover——
+  所以演练用 `docker compose pause redis`（主不可达）而非杀容器（主容器消失），后者在本仓库无法验证
+  （连败 5 次的记录见 `docs/tickets/p5-auto-failover/PROBLEMS.md` P41）。
+- **>24 并发 / 真实 LB 抖动**：未测。
 - 浏览器矩阵（Safari/Firefox/蓝牙）延续未验证；长音频最长只验到 13.1s。
 
 ## 9. 交接动作清单
