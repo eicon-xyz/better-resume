@@ -23,9 +23,9 @@ from collections.abc import Awaitable, Callable
 from importlib import import_module
 from typing import Any, TypeVar
 
-import redis.asyncio as aioredis
 import structlog
 
+from ..redis_client import RedisSource, redis_client
 from .clock import Clock, SystemClock
 from .errors import AiInvalid, AiOverloaded, AiResilienceError, FailureKind, wrap
 from .metrics import ResilienceMetrics
@@ -88,7 +88,7 @@ class RedisFlight:
 
     def __init__(
         self,
-        redis_url: str,
+        redis_source: RedisSource,
         *,
         lease_seconds: float = 30.0,
         wait_seconds: float = 10.0,
@@ -96,7 +96,7 @@ class RedisFlight:
         clock: Clock | None = None,
         metrics: ResilienceMetrics | None = None,
     ) -> None:
-        self._client = aioredis.from_url(redis_url, decode_responses=True)
+        self._client = redis_client(redis_source, decode_responses=True)
         self._lease_ms = max(1, int(lease_seconds * 1000))
         self._wait_seconds = wait_seconds
         self._poll_seconds = poll_seconds

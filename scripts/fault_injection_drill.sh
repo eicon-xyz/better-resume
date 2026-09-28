@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # V6: soak the stack, then break infrastructure on purpose and record what the client saw.
 #
-#   bash scripts/fault_injection_drill.sh [--quick]
+#   bash scripts/fault_injection_drill.sh [--quick]             # 5 个故障实验 + 浸泡
+#   bash scripts/fault_injection_drill.sh --sentinel [--quick]  # P5：哨兵自动 failover
 #
 # Preconditions: docker (reachable daemon) and uv. Exit code 2 means "cannot run"; the drill
 # refuses to pretend it ran. Every experiment prints its own evidence:
@@ -11,9 +12,47 @@
 #   redis-failover : replica promoted while the master is down -> worker must survive (P1-D)
 #   worker-crash   : a consumer dies holding a job -> XPENDING+XCLAIM must reclaim it
 #   soak           : sampled waves over 20 min (--quick: 2 min) -> growth of keys/connections/memory
+#
+# --sentinel 是 P5 的自动 failover：起 compose 的 drill profile（主 + 副本 + 3 哨兵），应用
+# 显式走哨兵（BR_REDIS_SENTINELS / BR_REDIS_MASTER_NAME），只 kill 主，**不人工 promotion**。
+# 收尾动作挂在 EXIT trap（= finally）：原主拉回来 + 三个哨兵 SENTINEL RESET。单机 compose 上
+# 容器重建会换 IP 而哨兵记着旧地址，所以彻底干净的重跑是 down -v（用法里也写了）。
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# 只用 bash 内建 echo：--help 必须在 docker/uv 检查之前就能工作，连 cat 都不能依赖。
+usage() {
+  echo '用法:'
+  echo '  bash scripts/fault_injection_drill.sh [--quick]             # 5 个故障实验 + 浸泡'
+  echo '  bash scripts/fault_injection_drill.sh --sentinel [--quick]  # P5：哨兵自动 failover'
+  echo ''
+  echo '选项:'
+  echo '  --quick      浸泡从 20 分钟缩到 2 分钟（sentinel 模式忽略它）'
+  echo '  --sentinel   只跑 P5 的自动 failover：docker compose --profile drill 起主 + 副本 + 3 哨兵，'
+  echo '               应用走哨兵（脚本自己 export BR_REDIS_SENTINELS / BR_REDIS_MASTER_NAME），'
+  echo '               kill 主之后等哨兵自己提升，并从 kill 那一瞬量应用的首次成功'
+  echo '  -h, --help   显示本帮助（不需要 docker / uv）'
+  echo ''
+  echo '退出码: 0 通过 / 1 实验失败 / 2 跑不起来（缺 docker 或 uv）'
+  echo ''
+  echo '恢复拓扑: 单机 compose 上 redis 容器重建会换 IP，而哨兵仍记着旧目标；本脚本收尾会把原主'
+  echo '          拉回来并让三个哨兵 SENTINEL RESET。要彻底干净地重跑：'
+  echo '              docker compose --profile drill down -v'
+}
+
+QUICK=0
+MODE="full"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quick) QUICK=1 ;;
+    --sentinel) MODE="sentinel" ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "需要 docker：本演练要起栈、暂停/重启 Redis、kill worker" >&2
@@ -48,7 +87,7 @@ export NGINX_PORT="${NGINX_PORT:-8080}"
 export BR_SMOKE_KEY="${BR_SMOKE_KEY:-smoke-fake-key}"
 BASE="http://127.0.0.1:${NGINX_PORT}"
 SOAK_SECONDS=1200
-if [ "${1:-}" = "--quick" ]; then
+if [ "$QUICK" = 1 ]; then
   SOAK_SECONDS=120
 fi
 
@@ -57,6 +96,53 @@ POSTGRES_DB="${POSTGRES_DB:-better_resume}"
 FAILED=0
 step() { printf '\n== %s\n' "$1"; }
 check() { if [ "$1" -eq 0 ]; then printf 'PASS: %s\n' "$2"; else printf 'FAIL: %s\n' "$2"; FAILED=1; fi; }
+
+# 探针统一从 apps/api 跑（uv 工程在那里）；用子 shell，避免在脚本里 cd 来 cd 去。
+run_probe() { ( cd "$REPO_ROOT/apps/api" && uv run python -m scripts.fault_probe "$@" ); }
+
+# P5：哨兵自动 failover。应用侧必须显式拿到哨兵地址与主名——compose 无法按 profile 改 env。
+run_sentinel_mode() {
+  export BR_REDIS_SENTINELS="redis://redis-sentinel-1:26379,redis://redis-sentinel-2:26379,redis://redis-sentinel-3:26379"
+  export BR_REDIS_MASTER_NAME="${BR_REDIS_MASTER_NAME:-br-master}"
+  local recovery_timeout="${SENTINEL_RECOVERY_TIMEOUT:-90}"
+
+  # 恢复动作挂 EXIT（= finally）：不管演练在哪一步挂掉，原主都要拉回来、哨兵都要重新发现。
+  restore() {
+    printf '\n== 收尾：原主拉回来 + 哨兵重新发现拓扑\n'
+    docker compose up -d --wait redis || true
+    for index in 1 2 3; do
+      docker compose exec -T "redis-sentinel-${index}" \
+        redis-cli -p 26379 sentinel reset "$BR_REDIS_MASTER_NAME" >/dev/null 2>&1 || true
+    done
+    printf '注意：单机 compose 上 redis 容器重建会换 IP，哨兵可能仍记着旧目标。\n'
+    printf '      要彻底干净地重跑：docker compose --profile drill down -v，然后再跑本命令。\n'
+  }
+  trap restore EXIT
+
+  step "sentinel 模式：drill profile 起栈（主 + 副本 + 3 哨兵），应用显式走哨兵"
+  printf 'BR_REDIS_SENTINELS=%s\nBR_REDIS_MASTER_NAME=%s\n' "$BR_REDIS_SENTINELS" "$BR_REDIS_MASTER_NAME"
+  local up_rc=0
+  docker compose --profile drill up -d --build --wait --scale api=2 || up_rc=$?
+  check "$up_rc" "docker compose --profile drill up -d --build --wait --scale api=2"
+  if [ "$up_rc" -ne 0 ]; then
+    printf '\n栈没起来，后面的实验没有意义（收尾动作仍会执行）。\n'
+    return 1
+  fi
+
+  step "fault: redis-failover --auto（kill 主 → 哨兵自己提升 → 应用自愈）"
+  local probe_rc=0
+  run_probe fault --base "$BASE" --scenario redis-failover --auto \
+    --master-name "$BR_REDIS_MASTER_NAME" --recovery-timeout "$recovery_timeout" || probe_rc=$?
+  check "$probe_rc" "自动 failover：无人干预的提升 + 从 kill 起算的恢复 + worker 存活"
+
+  printf '\n（sentinel 模式只跑这一个实验；另外四个故障实验与浸泡在默认模式下跑。）\n'
+  return "$FAILED"
+}
+
+if [ "$MODE" = "sentinel" ]; then
+  run_sentinel_mode
+  exit "$?"
+fi
 
 step "stack up (nginx + 2x api + worker + fake vendor)"
 docker compose up -d --wait postgres redis
@@ -75,9 +161,6 @@ ON CONFLICT (name) DO UPDATE
 SQL
 docker compose --profile smoke up -d --build --wait --scale api=2
 check $? "docker compose up --wait --scale api=2"
-
-cd apps/api
-run_probe() { uv run python -m scripts.fault_probe "$@"; }
 
 step "fault 1/5: redis-pause (20s)"
 run_probe fault --base "$BASE" --scenario redis-pause --seconds 20

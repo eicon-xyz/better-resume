@@ -29,6 +29,33 @@ def test_env_vars_override_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.session_cookie_name == "session_from_env"
 
 
+def test_sentinel_vars_default_to_the_single_url_shape() -> None:
+    """P5：不配哨兵时行为与今天完全一致（单 URL）。"""
+    settings = Settings(_env_file=None)
+
+    assert settings.redis_sentinels == ""
+    assert settings.redis_master_name == ""
+
+
+def test_sentinel_vars_are_read_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BR_REDIS_SENTINELS", "redis://sentinel-a:26379,redis://sentinel-b:26379")
+    monkeypatch.setenv("BR_REDIS_MASTER_NAME", "br-master")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.redis_sentinels == "redis://sentinel-a:26379,redis://sentinel-b:26379"
+    assert settings.redis_master_name == "br-master"
+
+
+def test_half_configured_sentinel_is_rejected() -> None:
+    """只配一半 = 静默退回单 URL，切换时没人救得回来：启动即报错，并点名变量。"""
+    with pytest.raises(ValidationError, match="BR_REDIS_MASTER_NAME"):
+        Settings(_env_file=None, redis_sentinels="redis://sentinel-a:26379")
+
+    with pytest.raises(ValidationError, match="BR_REDIS_SENTINELS"):
+        Settings(_env_file=None, redis_master_name="br-master")
+
+
 def test_invalid_database_url_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, database_url="mysql://user@localhost/db")

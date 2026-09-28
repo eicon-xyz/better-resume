@@ -29,6 +29,7 @@ from .llm_gateway import (
     SceneResolver,
     XingyunGatewayFactory,
 )
+from .redis_client import RedisTopology, redis_client
 from .settings import Settings, get_settings
 
 logger = structlog.get_logger("better_resume.worker")
@@ -98,7 +99,7 @@ async def beat(client: aioredis.Redis, *, key: str, consumer: str, ttl_seconds: 
 
 async def check_health(settings: Settings) -> bool:
     """Used by the container health check: `python -m better_resume.worker --health`."""
-    client = aioredis.from_url(settings.redis_url, decode_responses=True)
+    client = redis_client(RedisTopology.from_settings(settings), decode_responses=True)
     try:
         return bool(await client.exists(heartbeat_key(settings)))
     except Exception:  # noqa: BLE001 - an unreachable Redis is an unhealthy worker
@@ -139,13 +140,13 @@ async def run_once(
 async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> None:
     runtime = build_worker_runtime(settings)
     queue = JobQueue(
-        settings.redis_url,
+        RedisTopology.from_settings(settings),
         stream=settings.jobs_stream,
         max_attempts=settings.jobs_max_attempts,
     )
     stopping = stop or asyncio.Event()
     consumer = f"worker-{id(settings) & 0xFFFF:x}"
-    health = aioredis.from_url(settings.redis_url, decode_responses=True)
+    health = redis_client(RedisTopology.from_settings(settings), decode_responses=True)
     key = heartbeat_key(settings)
     logger.info("worker_started", stream=settings.jobs_stream, consumer=consumer)
     failures = 0

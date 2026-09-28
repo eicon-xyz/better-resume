@@ -14,10 +14,10 @@ import secrets
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
-import redis.asyncio as aioredis
 import structlog
 
 from ..ai_resilience import Clock, SystemClock
+from ..redis_client import RedisSource, redis_client
 
 logger = structlog.get_logger("better_resume.interview_engine.locks")
 
@@ -84,14 +84,14 @@ class RedisQuestionLockRegistry:
 
     def __init__(
         self,
-        redis_url: str,
+        redis_source: RedisSource,
         *,
         ttl_seconds: float = 30.0,
         wait_seconds: float = 10.0,
         poll_seconds: float = 0.05,
         clock: Clock | None = None,
     ) -> None:
-        self._client = aioredis.from_url(redis_url, decode_responses=True)
+        self._client = redis_client(redis_source, decode_responses=True)
         self._ttl_ms = max(1, int(ttl_seconds * 1000))
         self._wait_seconds = wait_seconds
         self._poll_seconds = poll_seconds

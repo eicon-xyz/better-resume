@@ -12,6 +12,12 @@ x-api-environment: &api-environment
   BR_LOG_LEVEL: ${BR_LOG_LEVEL:-INFO}
   BR_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-better_resume}:${POSTGRES_PASSWORD:-better_resume}@postgres:5432/${POSTGRES_DB:-better_resume}
   BR_REDIS_URL: redis://redis:6379/0
+  # P5：Redis 自动 failover。默认留空 = 单 URL（上面的 BR_REDIS_URL，行为与今天一致）；
+  # 演练时由 shell 传入哨兵地址 + 主名，应用改走 Sentinel（服务在 drill profile 里）：
+  #   BR_REDIS_SENTINELS=redis://redis-sentinel-1:26379,redis://redis-sentinel-2:26379,redis://redis-sentinel-3:26379 \
+  #   BR_REDIS_MASTER_NAME=br-master docker compose --profile drill up -d
+  BR_REDIS_SENTINELS: ${BR_REDIS_SENTINELS:-}
+  BR_REDIS_MASTER_NAME: ${BR_REDIS_MASTER_NAME:-}
   BR_SESSION_COOKIE_SECURE: ${BR_SESSION_COOKIE_SECURE:-false}
   BR_SSE_HEARTBEAT_SECONDS: ${BR_SSE_HEARTBEAT_SECONDS:-15}
   # M6: several api containers share locks, hot state and the job stream through Redis.
@@ -32,6 +38,41 @@ x-api-environment: &api-environment
   BR_MEDIA__ASR_REALTIME_MODEL: ${BR_MEDIA__ASR_REALTIME_MODEL:-paraformer-realtime-v2}
   # Only the smoke profile needs this: it switches on the fake vendor model row.
   BR_SMOKE_KEY: ${BR_SMOKE_KEY:-}
+
+# P5 演练拓扑的哨兵配置：三个哨兵共用同一份（quorum=2 才有真选举）。
+# 哨兵启动后会重写自己的配置文件，所以只读挂载会起不来——先落到容器内可写路径再 exec。
+x-sentinel-config: &sentinel-config |
+  port 26379
+  dir /tmp
+  # P41：哨兵必须按 IP 工作，而 compose 的单机 DNS 只在容器存活时解析服务名。
+  # 因此演练用 pause 冻结主（名字仍可解析、IP 不变），而不是 kill 容器——
+  # kill 会让 DNS 失效，哨兵反复 "Failed to resolve hostname" 并进入 TILT，永不 failover。
+  sentinel resolve-hostnames yes
+  sentinel monitor br-master redis 6379 2
+  sentinel down-after-milliseconds br-master 15000
+  sentinel failover-timeout br-master 30000
+  sentinel parallel-syncs br-master 1
+
+x-sentinel: &sentinel
+  profiles: ["drill"]
+  image: ${BR_LIBRARY_PREFIX:-}redis:7-alpine
+  environment:
+    SENTINEL_CONF: *sentinel-config
+  command:
+    [
+      "sh",
+      "-c",
+      "printf '%s' \"$$SENTINEL_CONF\" > /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf",
+    ]
+  depends_on:
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 5s
 
 x-api-build: &api-build
   context: ./apps/api
@@ -66,6 +107,46 @@ services:
       timeout: 3s
       retries: 12
       start_period: 3s
+
+  # P5：主库的副本。默认不启；演练时哨兵从这里选一个提升为主。
+  redis-replica:
+    profiles: ["drill"]
+    image: ${BR_LIBRARY_PREFIX:-}redis:7-alpine
+    command: ["redis-server", "--replicaof", "redis", "6379", "--save", "", "--appendonly", "no"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # P5：第二个副本。单副本的哨兵拓扑在主挂时选不出候选人——主挂的瞬间唯一的副本
+  # 复制也断了，超过 down-after 窗口就被哨兵判为不健康（实测两次都在这一步停住）。
+  # Sentinel 要能自愈，主挂时必须仍有至少一个「哨兵看得见」的副本。
+  redis-replica-2:
+    profiles: ["drill"]
+    image: ${BR_LIBRARY_PREFIX:-}redis:7-alpine
+    command: ["redis-server", "--replicaof", "redis", "6379", "--save", "", "--appendonly", "no"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # P5：三个哨兵（同一份配置，见文件顶部的 x-sentinel）。
+  redis-sentinel-1:
+    <<: *sentinel
+  redis-sentinel-2:
+    <<: *sentinel
+  redis-sentinel-3:
+    <<: *sentinel
 
   # One-shot migration job: api/worker only start once the schema is at head. Without it a
   # fresh volume starts against an empty database (found the hard way in the T5 smoke).

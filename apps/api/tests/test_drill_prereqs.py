@@ -67,6 +67,45 @@ def test_scripts_find_uv_even_when_the_shell_path_lacks_it() -> None:
         assert "export PATH" in body, script.name
 
 
+def run_fault_script(*args: str, path: str | None = None) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    if path is not None:
+        env["PATH"] = path
+    return subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
+        [BASH, str(FAULT), *args], capture_output=True, text=True, env=env, timeout=60, check=False
+    )
+
+
+def test_help_lists_the_sentinel_switch_before_any_prerequisite_check() -> None:
+    """P5：--help 必须在 docker/uv 检查之前返回——没 docker 的机器上也要能看懂新开关。"""
+    result = run_fault_script("--help", path="/nonexistent")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--sentinel" in result.stdout
+    assert "BR_REDIS_SENTINELS" in result.stdout
+    # 恢复拓扑的坑要写在用法里，别只活在某个人的记忆里。
+    assert "down -v" in result.stdout
+
+
+def test_an_unknown_option_is_refused_with_the_usage() -> None:
+    result = run_fault_script("--nope", path="/nonexistent")
+
+    assert result.returncode == 2
+    assert "--sentinel" in (result.stdout + result.stderr)
+
+
+def test_sentinel_mode_wires_the_app_to_the_sentinels_and_restores_on_exit() -> None:
+    """P5：应用走哨兵必须显式 export 两个变量；恢复动作挂 EXIT（finally 语义）。"""
+    body = FAULT.read_text(encoding="utf-8")
+
+    assert 'BR_REDIS_SENTINELS="redis://redis-sentinel-1:26379' in body
+    assert "BR_REDIS_MASTER_NAME" in body
+    assert "--profile drill" in body
+    assert "--scenario redis-failover" in body and "--auto" in body
+    assert "trap restore EXIT" in body
+    assert "sentinel reset" in body
+
+
 def test_drill_probe_uses_a_short_window_and_reports_attempts() -> None:
     # The first post-kill request can be held by the dead upstream; with a 5s client
     # timeout that wait was reported as "kill -> recovery 5.4s", which measured the probe
