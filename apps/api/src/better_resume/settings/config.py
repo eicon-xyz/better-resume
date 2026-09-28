@@ -11,7 +11,7 @@ import socket
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "ci", "production"]
@@ -117,6 +117,10 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://better_resume:better_resume@localhost:5432/better_resume"
     )
     redis_url: str = "redis://localhost:6379/0"
+    # P5：Redis 自动 failover。两个变量都留空 = 用上面的单 URL（本地/CI 行为不变）；
+    # 都填 = 经 Sentinel 取主（逗号分隔的 sentinel 地址）。只填一个是配置事故，启动即拒。
+    redis_sentinels: str = ""
+    redis_master_name: str = ""
 
     session_cookie_name: str = "br_session"
     session_ttl_seconds: int = 60 * 60 * 24 * 30  # D11: 30 天滑动过期
@@ -191,6 +195,19 @@ class Settings(BaseSettings):
         if not value.startswith(("redis://", "rediss://", "unix://")):
             raise ValueError("redis_url must use the redis:// scheme")
         return value
+
+    @model_validator(mode="after")
+    def _validate_sentinel_pair(self) -> Settings:
+        """Fail loudly instead of silently degrading to a single URL nobody can fail over."""
+        has_sentinels = bool(self.redis_sentinels.strip())
+        has_master_name = bool(self.redis_master_name.strip())
+        if has_sentinels != has_master_name:
+            missing = "BR_REDIS_MASTER_NAME" if has_sentinels else "BR_REDIS_SENTINELS"
+            raise ValueError(
+                "BR_REDIS_SENTINELS and BR_REDIS_MASTER_NAME must be set together "
+                f"({missing} is missing)"
+            )
+        return self
 
 
 @functools.lru_cache(maxsize=1)

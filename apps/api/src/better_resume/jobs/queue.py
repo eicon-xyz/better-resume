@@ -17,6 +17,8 @@ from typing import Any
 import redis.asyncio as aioredis
 import structlog
 
+from ..redis_client import RedisSource, redis_client
+
 logger = structlog.get_logger("better_resume.jobs")
 
 STATUS_QUEUED = "queued"
@@ -38,7 +40,7 @@ class Job:
 class JobQueue:
     def __init__(
         self,
-        redis_url: str,
+        redis_source: RedisSource,
         *,
         stream: str = "br:jobs",
         group: str = "br:workers",
@@ -47,12 +49,12 @@ class JobQueue:
         status_ttl_seconds: int = 3600,
         socket_timeout_seconds: float = 15.0,
     ) -> None:
+        self._socket_timeout_seconds = socket_timeout_seconds
         # redis-py 8 has a 5s default socket timeout, which truncates blocking reads for
         # no good reason; keep it explicit and comfortably above our block window.
-        self._client = aioredis.from_url(
-            redis_url, decode_responses=True, socket_timeout=socket_timeout_seconds
+        self._client = redis_client(
+            redis_source, decode_responses=True, socket_timeout=socket_timeout_seconds
         )
-        self._socket_timeout_seconds = socket_timeout_seconds
         self.stream = stream
         self.group = group
         self.dead_letter_stream = dead_letter_stream or f"{stream}:dead"

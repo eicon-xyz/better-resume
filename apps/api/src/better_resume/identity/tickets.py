@@ -8,8 +8,7 @@ import time
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
-import redis.asyncio as aioredis
-
+from ..redis_client import RedisSource, redis_client
 from .models import Principal
 
 #: Atomic take-and-delete: two sockets racing with the same ticket cannot both win.
@@ -62,8 +61,8 @@ class InMemoryWsTicketStore:
 
 
 class RedisWsTicketStore:
-    def __init__(self, redis_url: str) -> None:
-        self._client = aioredis.from_url(redis_url, decode_responses=True)
+    def __init__(self, redis_source: RedisSource) -> None:
+        self._client = redis_client(redis_source, decode_responses=True)
 
     @staticmethod
     def _key(ticket: str) -> str:

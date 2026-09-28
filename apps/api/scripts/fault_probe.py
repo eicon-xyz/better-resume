@@ -128,11 +128,18 @@ def worker_health() -> str:
 
 
 def heartbeat_on_new_master(key: str = "br:jobs:health") -> str:
-    """worker 的心跳 key 落在被提升的副本上 = 应用的写路径真的切过去了（不只是读能过）。"""
-    try:
-        return docker("compose", "exec", "-T", "redis-replica", "redis-cli", "exists", key)
-    except RuntimeError:
-        return "unknown"
+    """worker 的心跳 key 落在被提升的副本上 = 应用的写路径真的切过去了（不只是读能过）。
+
+    P41：drill 拓扑有两个副本，哨兵提升哪个不确定——只看 redis-replica 会把「提升了
+    replica-2」误报成 0，那是探针说谎。取两个副本里的最大值。
+    """
+    seen: list[int] = []
+    for service in ("redis-replica", "redis-replica-2"):
+        try:
+            seen.append(int(docker("compose", "exec", "-T", service, "redis-cli", "exists", key)))
+        except RuntimeError:
+            continue
+    return str(max(seen)) if seen else "unknown"
 
 
 def restore_drill_topology(master_name: str = DEFAULT_MASTER_NAME) -> None:
@@ -142,6 +149,10 @@ def restore_drill_topology(master_name: str = DEFAULT_MASTER_NAME) -> None:
     up 回来并不够——三个哨兵各来一次 SENTINEL RESET，让它们按 compose 的主机名重新发现。
     彻底干净的重跑仍然是整体重建：docker compose --profile drill down -v。
     """
+    # P41：注入方式是 pause，`up` 唤不醒一个被冻结的容器——必须先解冻，否则演练结束后
+    # 主会永远停在冻结态（恢复动作必须覆盖注入方式，V6 教训）。
+    with contextlib.suppress(RuntimeError):
+        docker("compose", "unpause", "redis")
     with contextlib.suppress(RuntimeError):
         docker("compose", "up", "-d", "--wait", "redis")
     for index in range(1, 4):
@@ -689,9 +700,15 @@ async def sentinel_failover(args: argparse.Namespace) -> int:
             budget_seconds=args.recovery_timeout,
             original_master=original,
         )
-        print(f"== kill 主（docker compose kill redis）；预算 {args.recovery_timeout:g}s")
+        print(f"== 冻结主（docker compose pause redis）；预算 {args.recovery_timeout:g}s")
         try:
-            docker("compose", "kill", "redis")
+            # P41：这个演练要的是「主不可达」，而**不是**「主容器消失」。
+            # `docker compose kill redis` 会让容器 Exited，compose 的内嵌 DNS 随之不再解析
+            # `redis`——哨兵每 5 秒报一次 "Failed to resolve hostname 'redis'" 并进入 TILT，
+            # 而 TILT 期间哨兵拒绝执行任何 failover（实测连跑三轮都是这个死法）。
+            # pause 冻结进程：名字仍可解析、IP 不变、连接全部超时——哨兵能正常判 sdown →
+            # odown → 提升副本，应用自己切过去。这也正是仓库既有的 redis-pause 故障语义。
+            docker("compose", "pause", "redis")
             while True:
                 # 先问哨兵再看应用：同一轮里"提升 + 恢复"都发生时，顺序反了会误报 no-promotion。
                 watch.observe_master(sentinel_master_address(master_name), now=time.monotonic())

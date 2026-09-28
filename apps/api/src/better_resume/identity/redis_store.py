@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 import redis.asyncio as redis
 
+from ..redis_client import RedisSource, redis_client
 from .models import Principal, SessionRecord
 from .store import SessionBackendUnavailable, new_session_id
 
@@ -16,13 +17,13 @@ class RedisSessionStore:
 
     def __init__(
         self,
-        redis_url: str,
+        redis_source: RedisSource,
         *,
         client: redis.Redis | None = None,
         key_prefix: str = "session:",
         clock: Callable[[], float] = time.time,
     ) -> None:
-        self._redis = client or redis.Redis.from_url(redis_url, decode_responses=True)
+        self._redis = client or redis_client(redis_source, decode_responses=True)
         self._key_prefix = key_prefix
         self._clock = clock
 

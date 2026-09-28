@@ -89,6 +89,38 @@ def test_worker_health_is_a_redis_heartbeat(compose: dict[str, Any]) -> None:
     assert "better_resume.worker" in command
 
 
+def test_the_sentinel_topology_lives_behind_the_drill_profile(compose: dict[str, Any]) -> None:
+    """P5：哨兵默认不启（普通 up 与今天一致），演练时才 --profile drill 一起拉起。"""
+    for name in ("redis-replica", "redis-sentinel-1", "redis-sentinel-2", "redis-sentinel-3"):
+        assert compose["services"][name]["profiles"] == ["drill"], name
+    # 单主库不在任何 profile 里：默认栈照旧。
+    assert "profiles" not in compose["services"]["redis"]
+
+
+def test_the_app_only_uses_sentinels_when_the_drill_passes_them_in(
+    compose: dict[str, Any],
+) -> None:
+    """默认留空 = 单 URL；compose 只负责把 shell 里的变量透传进容器，不自己开哨兵模式。"""
+    for name in ("api", "worker"):
+        environment = compose["services"][name]["environment"]
+        assert environment["BR_REDIS_SENTINELS"] == "${BR_REDIS_SENTINELS:-}"
+        assert environment["BR_REDIS_MASTER_NAME"] == "${BR_REDIS_MASTER_NAME:-}"
+
+
+def test_the_sentinels_watch_the_compose_master_and_its_replica(compose: dict[str, Any]) -> None:
+    service = compose["services"]["redis-sentinel-1"]
+    # quorum=2 才有真选举；compose 服务名是主机名，不解析就起不来（Redis 7 默认 off）。
+    config = service["environment"]["SENTINEL_CONF"]
+    assert "sentinel monitor br-master redis 6379 2" in config
+    assert "resolve-hostnames yes" in config
+    # 哨兵会重写自己的配置文件：只读挂载起不来，所以先把配置落盘到容器内可写路径再 exec。
+    command = " ".join(service["command"])
+    assert "$$SENTINEL_CONF" in command  # compose 的 $$ = 字面 $，交给容器里的 shell 展开
+    assert command.index("$$SENTINEL_CONF") < command.index("exec redis-sentinel")
+    replica = " ".join(compose["services"]["redis-replica"]["command"])
+    assert "replicaof redis 6379" in replica
+
+
 def test_nginx_waits_for_a_healthy_api_and_owns_the_front_port(compose: dict[str, Any]) -> None:
     nginx = compose["services"]["nginx"]
     assert nginx["depends_on"]["api"]["condition"] == "service_healthy"

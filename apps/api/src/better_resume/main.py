@@ -59,6 +59,7 @@ from .llm_gateway import (
 )
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
 from .observability import InstanceIdMiddleware, RequestIdMiddleware, configure_logging
+from .redis_client import RedisTopology
 from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
 
@@ -74,7 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.transcription_registry = ChannelRegistry()
     app.state.hot_state = build_hot_state(settings)
     app.state.job_queue = JobQueue(
-        settings.redis_url,
+        RedisTopology.from_settings(settings),
         stream=settings.jobs_stream,
         max_attempts=settings.jobs_max_attempts,
     )
@@ -104,7 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         resilience = DistributedAiResilience(
             resilience,
             RedisFlight(
-                settings.redis_url,
+                RedisTopology.from_settings(settings),
                 lease_seconds=settings.resilience.flight_lease_seconds,
                 wait_seconds=settings.resilience.flight_wait_seconds,
                 poll_seconds=settings.resilience.flight_poll_seconds,
@@ -168,7 +169,7 @@ def _build_question_locks(settings: Settings) -> object:
     """Process-local locks by default; Redis when running multiple instances."""
     if settings.lock_backend == "redis":
         return RedisQuestionLockRegistry(
-            settings.redis_url,
+            RedisTopology.from_settings(settings),
             ttl_seconds=settings.lock_ttl_seconds,
             wait_seconds=settings.lock_wait_seconds,
         )

@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
-import redis.asyncio as aioredis
 import structlog
+
+from ..redis_client import RedisSource, RedisTopology, redis_client
+from ..settings import Settings
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .restore_service import RestoreView
@@ -80,8 +82,8 @@ class InMemoryHotState:
 
 
 class RedisHotState:
-    def __init__(self, redis_url: str, *, ttl_seconds: int = 600) -> None:
-        self._client = aioredis.from_url(redis_url, decode_responses=True)
+    def __init__(self, redis_source: RedisSource, *, ttl_seconds: int = 600) -> None:
+        self._client = redis_client(redis_source, decode_responses=True)
         self._ttl = max(1, ttl_seconds)
 
     async def get(self, *, user_id: str, session_id: str) -> RestoreView | None:
@@ -121,10 +123,10 @@ class RedisHotState:
         await self._client.aclose()
 
 
-def build_hot_state(settings: object) -> HotStateStore:
+def build_hot_state(settings: Settings) -> HotStateStore:
     """memory by default (single process), Redis once there is more than one instance."""
-    backend = getattr(settings, "hot_state_backend", "memory")
-    ttl = int(getattr(settings, "hot_state_ttl_seconds", 600))
+    backend = settings.hot_state_backend
+    ttl = int(settings.hot_state_ttl_seconds)
     if backend == "redis":
-        return RedisHotState(settings.redis_url, ttl_seconds=ttl)
+        return RedisHotState(RedisTopology.from_settings(settings), ttl_seconds=ttl)
     return InMemoryHotState()
