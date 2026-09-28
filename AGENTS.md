@@ -82,6 +82,12 @@ export BR_SMOKE_KEY=smoke-fake-key BR_SSE_HEARTBEAT_SECONDS=1
 docker compose up -d --build --wait --scale api=2
 docker compose --profile smoke down -v   # 停栈
 
+# P5 演练拓扑：Redis 哨兵 ×3 + 副本 ×1（默认不启，只在 drill profile）
+#   应用要走哨兵必须同时给两个变量——compose 无法按 profile 改 env：
+BR_REDIS_SENTINELS=redis://redis-sentinel-1:26379,redis://redis-sentinel-2:26379,redis://redis-sentinel-3:26379 \
+  BR_REDIS_MASTER_NAME=br-master docker compose --profile drill up -d
+docker compose --profile drill down -v   # 恢复拓扑必须整体重建：redis 容器换了 IP，哨兵仍记着旧目标
+
 # 验收脚本（会自己起栈）
 bash scripts/compose_smoke.sh            # 部署面：REST/SSE/WS/非 root/双实例轮询/worker 心跳
 bash scripts/kill_instance_drill.sh      # kill 正在服务的实例，状态/报告一致
