@@ -13,7 +13,8 @@
 1. 业务异常 → 明确状态码：404（归属）/409（状态冲突）/422（非法转移）/503（熔断、未配置）/504（超时）；
    绝不把供应商异常当 500。
 2. 每个响应带 `X-Request-Id` 与 `X-Instance-Id`（后者是 kill-instance drill 的证据）。
-3. 限流 fail-open：中间件自身出错不能变成 500。
+3. 限流 fail-open 的**准确含义**：共享后端（Redis）不可用 → 降级到进程内桶（D19），既不放行也不 503；
+   中间件自身出错也不能变成 500。判定来源写在响应头 `X-RateLimit-Scope: shared|instance` 上。
 4. `/healthz` 免鉴权、免限流；业务端点挂在 `/api/v1`。
 5. 场景解析只发生在 HTTP 层（`gateway_for`），服务层只接收 gateway。
 
@@ -27,7 +28,8 @@
 
 ## 测试地图
 
-`tests/test_*_api.py`、`tests/test_ratelimit_http.py`、`tests/test_scene_routing.py`、`tests/test_instance_header.py`。
+`tests/test_*_api.py`、`tests/test_ratelimit_http.py`（429 头/body、白名单、身份隔离、scope 头）、
+`tests/test_scene_routing.py`、`tests/test_instance_header.py`。
 
 ## 常见变更配方
 

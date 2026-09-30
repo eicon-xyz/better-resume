@@ -11,7 +11,7 @@
 | 会话消息、seq、历史分页 | `skills/modules/conversation/SKILL.md`, `conversation/` | 消息唯一归属在 conversation；seq 在事务里分配；归属失败一律 404 | `tests/test_conversation_store.py`, `tests/test_chat_api.py` |
 | 模型注册表、供应商调用、结构化输出 | `skills/modules/llm_gateway/SKILL.md`, `llm_gateway/` | 两个 adapter 走同一契约；schema 强校验；**禁止别名回退**（M5 P0） | `tests/llm_gateway/`, `tests/test_adapter_contract.py` |
 | 场景绑定、换供应商 | `llm_gateway/{scenes,binding_store,resolver}.py`, `http/scenes.py` | 服务层不感知供应商；绑定改完失效缓存；密钥不在 DB | `tests/llm_gateway/test_scene_*.py`, `tests/test_scene_routing.py` |
-| 单飞 / 熔断 / 舱壁 / 超时 / 限流 | `skills/modules/ai_resilience/SKILL.md`, `ai_resilience/` | 四条链路只调 `run(stage, key, fn)`；只有一个重试 owner；Redis 单飞先查结果再抢 owner（M6 P2） | `tests/ai_resilience/`, `tests/test_distributed_flight.py` |
+| 单飞 / 熔断 / 舱壁 / 超时 / 限流 | `skills/modules/ai_resilience/SKILL.md`, `ai_resilience/` | 四条链路只调 `run(stage, key, fn)`；只有一个重试 owner；Redis 单飞先查结果再抢 owner（M6 P2）；限流桶后端由 `BR_RATE_LIMIT__BACKEND` 选，共享后端挂了降级到进程内桶（D19） | `tests/ai_resilience/`, `tests/test_distributed_flight.py` |
 | 面试状态机、答题、追问、报告 | `skills/modules/interview_engine/SKILL.md`, `interview_engine/` | 两层状态机是唯一写入口；幂等靠 `(session_id, request_id)`；题级锁保证可重答 | `tests/interview_engine/`, `tests/test_interview_*_api.py` |
 | 简历解析 | `skills/modules/resume_parser/SKILL.md`, `resume_parser/` | **不走 LLM**；扫描件/坏文件给带 code 的明确错误；fixture 用代码生成（M4 P7） | `tests/resume_parser/` |
 | 转写与 TTS | `skills/modules/media/SKILL.md`, `media/` | 句池归并是纯函数；协议细节不出 adapter；一个通道两个消费方 | `tests/media/`, `tests/test_media_ws.py` |
