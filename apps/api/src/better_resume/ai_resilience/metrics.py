@@ -20,6 +20,8 @@ class ResilienceMetrics:
     overflow_rejected: int = 0
     timeouts: int = 0
     rate_limited: int = 0
+    #: Calls served by the fallback bucket because the shared store was unavailable (D19).
+    rate_limit_degraded: int = 0
     in_flight: int = 0
     queued: int = 0
     peak_in_flight: int = 0

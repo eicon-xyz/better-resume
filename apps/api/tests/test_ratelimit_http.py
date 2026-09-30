@@ -74,11 +74,14 @@ def test_read_bucket_blocks_then_refills_on_the_clock(
     assert ok.status_code in (200, 401)
     assert ok.headers["X-RateLimit-Bucket"] == "read"
     assert ok.headers["X-RateLimit-Remaining"] == "0"
+    # P7/D19：memory 后端下配额只在本副本判定，客户端必须能看出来
+    assert ok.headers["X-RateLimit-Scope"] == "instance"
 
     blocked = tight_client.get("/api/v1/models")
     assert blocked.status_code == 429
     assert blocked.headers["Retry-After"] == "1"
     assert blocked.headers["X-RateLimit-Bucket"] == "read"
+    assert blocked.headers["X-RateLimit-Scope"] == "instance"
     body = blocked.json()
     assert body["bucket"] == "read"
     assert body["retry_after"] == 1
