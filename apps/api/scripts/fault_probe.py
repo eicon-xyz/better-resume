@@ -420,6 +420,41 @@ async def probe_once(client: httpx.AsyncClient, *, create_session: bool = True) 
     return classify_response(status=response.status_code)
 
 
+#: 一个受限端点，不需要任何业务状态：限流器在路由之前就做决定。
+_RATE_PROBE_PATH = "/api/v1/interview/sessions/probe-missing/answers"
+#: 它落在共享（供应商成本）桶里，所以响应头能说明这一票是谁判的：
+#: Redis（shared）还是本副本（instance）。
+_RATE_SCOPE_HEADER = "x-ratelimit-scope"
+
+
+async def rate_limit_scope(client: httpx.AsyncClient) -> tuple[int | None, str | None]:
+    """打一次受限端点 → (状态码, X-RateLimit-Scope)。"""
+    try:
+        response = await client.post(_RATE_PROBE_PATH, json={}, timeout=PROBE_TIMEOUT_SECONDS)
+    except httpx.HTTPError:
+        return None, None
+    return response.status_code, response.headers.get(_RATE_SCOPE_HEADER)
+
+
+async def wait_for_scope(
+    client: httpx.AsyncClient, want: str, *, budget: float
+) -> tuple[int | None, str | None, float]:
+    """轮询受限端点，直到 scope 头等于 want（或预算耗尽）。
+
+    必须轮询：限流器失败后要待满冷却窗口才会再碰 Redis——只问一次会把「还在窗口里」
+    读成「Redis 回来了也没恢复」。
+    """
+    started = time.monotonic()
+    status: int | None = None
+    scope: str | None = None
+    while True:
+        status, scope = await rate_limit_scope(client)
+        waited = time.monotonic() - started
+        if scope == want or waited >= budget:
+            return status, scope, waited
+        await asyncio.sleep(0.5)
+
+
 async def run_wave(
     client: httpx.AsyncClient, *, requests: int, concurrency: int, logins: int = 2
 ) -> dict[str, int]:
@@ -530,6 +565,11 @@ async def fault(args: argparse.Namespace) -> int:
     redis_ct = ""
     network = ""
     notes: list[str] = []
+    # P7/D19 观测位：共享桶在故障前 / 中 / 后分别是谁判的
+    scope_before: str | None = None
+    status_during: int | None = None
+    scope_during: str | None = None
+    scope_after: str | None = None
     async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
         if args.scenario == "redis-pause":
             print(f"== pausing redis for {args.seconds}s (docker pause)")
@@ -556,6 +596,9 @@ async def fault(args: argparse.Namespace) -> int:
             # (correct) reason "no cookie" and hides the question we are actually asking.
             login = await client.post("/api/v1/auth/session", json=_session_payload())
             login.raise_for_status()
+            # 先等共享桶就位：上一个实验可能刚把限流器打进降级冷却窗口（默认 30s）。
+            _, scope_before, waited = await wait_for_scope(client, "shared", budget=40.0)
+            print(f"== shared bucket before the cut: scope={scope_before} (waited {waited:.1f}s)")
             print(f"== cutting the api<->redis path for {args.seconds}s (network disconnect)")
             injected = time.monotonic()
             docker("network", "disconnect", network, redis_ct)
@@ -608,6 +651,7 @@ async def fault(args: argparse.Namespace) -> int:
 
         health_ok = 0
         auth_sampled = False
+        rate_sampled = False
         try:
             while time.monotonic() - injected < args.seconds:
                 outcome = await probe_once(client)
@@ -615,6 +659,14 @@ async def fault(args: argparse.Namespace) -> int:
                 if args.scenario == "redis-partition":
                     health = await client.get("/healthz", timeout=PROBE_TIMEOUT_SECONDS)
                     health_ok += 1 if health.status_code == 200 else 0
+                    if not rate_sampled:
+                        rate_sampled = True
+                        # 认证路径自己也依赖 Redis：分区期间带 cookie 的请求会先超时/503（P1-D 的
+                        # 语义），根本走不到限流器的判定。所以降级要在**认证之前**观测：匿名请求
+                        # （IP 身份）不碰会话存储，401 之前那一步就是限流 middleware 的决定。
+                        async with httpx.AsyncClient(base_url=args.base, trust_env=False) as anon:
+                            status_during, scope_during = await rate_limit_scope(anon)
+                        notes.append(f"ratelimit_during_partition={status_during}/{scope_during}")
                     if not auth_sampled:
                         auth_sampled = True
                         try:
@@ -659,6 +711,14 @@ async def fault(args: argparse.Namespace) -> int:
             docker("compose", "up", "-d", "--wait", "redis")
             notes.append("topology_restored=true")
 
+        if args.scenario == "redis-partition":
+            # 恢复后限流器要待满冷却窗口才回共享桶（D19）：这里是「等它回去」，不是「问一次」。
+            # 必须留在 async with 里——client 一旦关闭，探针自己就会先崩（实际踩过）。
+            _, scope_after, waited = await wait_for_scope(
+                client, "shared", budget=max(45.0, args.recovery_timeout)
+            )
+            notes.append(f"ratelimit_after_recovery={scope_after} waited={waited:.1f}s")
+
     total = sum(counts.values())
     print(f"fault window: {json.dumps(dict(sorted(counts.items())), ensure_ascii=False)}")
     if recovered_at is None:
@@ -669,6 +729,21 @@ async def fault(args: argparse.Namespace) -> int:
     print(f"total={total} ok_during_fault={counts.get('ok', 0)}")
     for note in notes:
         print(f"note: {note}")
+    if args.scenario == "redis-partition":
+        # P7/D19 的验收条件：共享 → 降级（不是 5xx、也不是放行）→ 回到共享
+        if scope_before != "shared":
+            print(f"FAIL: 故障前共享桶没就位（scope={scope_before!r}）")
+            return 1
+        if status_during is None or status_during >= 500:
+            print(f"FAIL: 分区期间受限端点回了 {status_during}（要的是 < 500：降级而不是 5xx）")
+            return 1
+        if scope_during != "instance":
+            print(f"FAIL: 限流器没有降级到本副本桶（scope={scope_during!r}）")
+            return 1
+        if scope_after != "shared":
+            print(f"FAIL: 恢复后没有回到共享桶（scope={scope_after!r}）")
+            return 1
+        print("PASS: shared -> instance（降级、无 5xx）-> shared")
     return 0
 
 
