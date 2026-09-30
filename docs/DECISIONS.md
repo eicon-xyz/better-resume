@@ -14,7 +14,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 
 ---
 
-## 1. 决议表（D01-D18）
+## 1. 决议表（D01-D19）
 
 | # | 决议 | 内容 |
 | --- | --- | --- |
@@ -36,6 +36,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 | D16 | 简历亮点排序 | 深挖 trio：**① ai-resilience（单飞+熔断+限流，假时钟测试）② interview-engine（状态机+幂等+裁决）③ ASR 句池归并增量去重**；支撑 bullet：④ llm-gateway（多模型注册+schema 防幻觉）⑤ resume-parser（混合解析） |
 | D17 | 工程微默认 | uv / pnpm；structlog（JSON + request_id，**不引 OpenTelemetry**）；测试先行、只 mock 系统边界（LLM/时钟/Redis/讯飞）；GitHub Actions 双 job（ruff+pytest+alembic check / eslint+tsc+vitest）；**OpenAPI → TS 类型生成**（openapi-typescript，根治前端猜字段）；MIT |
 | D18 | 开发流程 | 五阶段 **grill → spec → implement → review → retro**（Matt Pocock 技能集，2026-09-23 起）：grill 逐轮拷问并即时把术语落进 `CONTEXT.md`、把决策落进本文；spec = `docs/tickets/<stage>/README.md`（即原「阶段提案」）；implement 驱动 `/tdd` 垂直切片、收尾自动 `/code-review` 双轴评审；retro 读会话日志改环境。**人工闸门不变**：spec 经用户点头才动工、验收包由用户验收、AI 不擅自合并。配置见 `docs/agents/`（本地 markdown tracker，映射 `docs/tickets/`） |
+| D19 | 分布式限流与降级语义 | 限流状态迁到 Redis（Lua 令牌桶，单次 `eval` 原子；键 `br:rl:{bucket}:{identity}`，TTL 兜底过期），**N 副本共享同一份对外配额**。只共享供应商成本桶（`AI_CALL/ANSWER/HEAVY`）——它们限的是对外配额；`GENERAL/READ` 留在进程内：它们限的是「我们自己的容量」，副本变多容量也变多，按副本限才是对的（P7）。时间基线用**应用侧注入的 wall-clock**（`SystemClock` 是 monotonic，跨进程不可比；Lua 只做算术，负 elapsed 钳 0）。**降级语义**：Redis 不可用时退回进程内桶（配额暂时 ×N，即迁移前的语义），并显式可观测——`ratelimit_degraded` 日志 + `/resilience/stats` 计数 + 响应头 `X-RateLimit-Scope: shared\|instance`，外加 30s 冷却窗口（窗口内不再尝试 Redis）与 50ms 单次超时；**不 fail-closed**（限流不是正确性，Redis 抖动不该升级成全站 503），**不按快照拒绝**（跨副本快照本就不准，只会更严不会更准）。对外语义不变：`X-Instance-Id`、429 映射、白名单、身份哈希照旧 |
 
 ---
 

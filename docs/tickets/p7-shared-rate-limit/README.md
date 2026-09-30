@@ -156,6 +156,7 @@ return { allowed, tostring(retry), tostring(math.floor(tokens + 1e-9)) }  -- Lua
 | `scripts/resilience_smoke.py` | `await check(...)` |
 | `scripts/compose_smoke.sh` / `scripts/kill_instance_drill.sh` | 新增断言：跨副本共享配额（见 §7） |
 | `docs/tickets/p7-shared-rate-limit/` | `ACCEPTANCE.md` + `EVIDENCE.md` +（若有）`PROBLEMS.md` |
+| 收口时检查 | 其它文档里的「D01–D18」范围引用：`AGENTS.md`、`docs/agents/domain.md`、`docs/HANDOFF.md` 已在本票改；**`docs/ARCHITECTURE-MAP.md` 在 `docs/architecture-map` 分支上**，若它先合入，本票合入时要一并把它的范围改成 D01–D19 |
 
 ## 7. 测试与验收口径
 
@@ -220,13 +221,16 @@ cd apps/api && uv run python -m scripts.fault_probe fault --scenario redis-parti
 - 演练：冷卷 compose 两轮（`compose_smoke` + `kill_instance_drill`）≈ 10–15 分钟；`fault_probe redis-partition` 1 分钟。
 - **真机调用：0 次**（不花钱）。
 
-## 10. 需要你决定的问题
+## 10. 需要你决定的问题（2026-09-30 已全部拍板）
 
-- **Q1｜降级语义**：选 **C**（推荐：降级到进程内桶 + 显式可观测 + 冷却窗口），还是 **C'**（花钱桶 fail-closed 429 / 其余 fail-open），或 B（全 fail-closed）？——这决定 D19 的正文与 SKILL 不变量。
-- **Q2｜共享范围**：只共享 `AI_CALL/ANSWER/HEAVY`（推荐）还是五个桶全共享？
-- **Q3｜配额收紧**：接受迁移后单身份 `AI_CALL` 从 4/s(burst 8) 收紧到 2/s(burst 4)（并把 §2.7 的"4× 余量"改写）？还是同时把 `ai_call_per_second` 提到 4.0 以保持今天的总并发？**推荐前者**——否则等于把"×N 放大"合法化。
-- **Q4｜时间基线**：确认用 ① 应用侧 wall-clock 注入（可假时钟测，容忍毫秒级 skew），而不是 ② Redis `TIME`？
-- **Q5｜演练与排程**：`nightly` 里加不加"限流降级"实验（Redis 分区下断言降级而非 5xx）？还是只留在 `fault` 层与验收轮跑一次？
+- ~~Q1｜降级语义~~ → **已确认：C**——Redis 不可用时退回进程内桶（配额暂时 ×N = 迁移前的语义），
+  配合显式可观测（`ratelimit_degraded` 日志 + `/resilience/stats` 计数 + `X-RateLimit-Scope: instance`）
+  与 30s 冷却窗口；**不 fail-closed、不按快照拒绝**。
+- ~~Q2｜共享范围~~ → **已确认：只共享 `AI_CALL/ANSWER/HEAVY`**（`shared_buckets` 默认值即此）；`GENERAL/READ` 留在进程内。
+- ~~Q3｜配额收紧~~ → **已确认：接受收紧**（单身份 `AI_CALL` 2 副本下 4/s(burst 8) → 2/s(burst 4)），
+  并同步改写 `docs/perf/M6-capacity.md` §2.7 的「4× 余量」表述。**不**上调 `ai_call_per_second`。
+- ~~Q4｜时间基线~~ → **已确认：① 应用侧注入 wall-clock**（新增 `WallClock.now_ms()` 缝；Lua 只做算术，负 elapsed 钳 0）。
+- ~~Q5｜演练与排程~~ → **已确认：加**——`nightly` 增加「限流降级」实验（Redis 分区下断言降级而非 5xx）。
 
 ## 11. 诚实清单（本提案自身的未验证项）
 

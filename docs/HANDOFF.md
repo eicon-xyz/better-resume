@@ -237,7 +237,7 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
 ```
 AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律（接手先读）
 docs/HANDOFF.md                         ← 本文档
-docs/DECISIONS.md                       17 项技术决议（冲突以它为准）
+docs/DECISIONS.md                       技术决议 D01–D19（冲突以它为准）
 docs/tickets/p1-post-v/                 P1 阶段：README + ACCEPTANCE + PROBLEMS(P24–P33) + 4 份 EVIDENCE
 docs/tickets/p2-test-automation/        P2 阶段：README（T1–T6 全落地）+ coverage-report-round1.md
 docs/MANUAL-TESTING.md                  人工测试统一入口（结果记录在第 3 节回填表）
