@@ -73,7 +73,10 @@ soak:
 real:
   all: (T4) budget-guarded real-machine suite; refuses until implemented
 scripts:
-  api: cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py
+  api: cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py
+  all: bash -n scripts/*.sh
+  all: python -c "ast.parse" over apps/api/scripts + scripts (syntax sweep)
+  all: cd apps/api && uv run python scripts/verify_audit_evidence.py --strict
 all:
   = unit + contract + scripts
 MAP
@@ -110,6 +113,16 @@ add_web_contract() {
 }
 add_scripts() {
   cmds+=("cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py")
+  # The drill scripts above are tested by pytest; the shell scripts next to them were not
+  # (retro 2026-10-06: a proof script that always exited 0 shipped through a green CI).
+  cmds+=("for f in scripts/*.sh; do bash -n \"\$f\" || exit 1; done; echo 'shell syntax ok'")
+  # Both script dirs, SyntaxWarning as an error. (A glob from apps/api cannot see the repo
+  # scripts: ../scripts resolves to apps/scripts, so the first cut of this line checked
+  # nothing at the root level.)
+  cmds+=("uv run --project apps/api python scripts/check_scripts.py")
+  # --strict: a citation the evidence block cannot corroborate is not evidence; this is
+  # the repo's own claim-checker (docs/audit/units/*.json), so it gates rather than advises.
+  cmds+=("uv run --project apps/api python scripts/verify_audit_evidence.py --strict")
 }
 
 case "$LAYER" in

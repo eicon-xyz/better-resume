@@ -61,6 +61,11 @@ jobs:
       - name: Deep-module coverage floors (via verify.sh)
         working-directory: ${{ github.workspace }}
         run: bash scripts/verify.sh --layer coverage --scope api
+      # Retro 2026-10-06: this layer was self-tested but never invoked, so new shell scripts
+      # skipped syntax checks and the audit-citation gate rode on nobody running it.
+      - name: Scripts & audit-citation checks (via verify.sh)
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/verify.sh --layer scripts
 
   frontend:
     name: frontend (eslint + tsc + vitest)
