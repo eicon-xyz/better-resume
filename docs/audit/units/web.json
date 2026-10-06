@@ -1,0 +1,249 @@
+{
+  "unit": "web",
+  "title": "web（前端：api 契约层 / 音频与转写 / chat / interview / stream）",
+  "scope": [
+    "apps/web/src/api/**",
+    "apps/web/src/audio/**",
+    "apps/web/src/chat/**",
+    "apps/web/src/interview/**",
+    "apps/web/src/pages/**",
+    "apps/web/src/stream/**"
+  ],
+  "one_sentence": "把后端能力变成可交互的界面：上传简历、面试问答、语音转写、报告雷达图。最重要的三件事是「请求层是唯一的网络缝」「转写文本绝不覆盖手写」「乐观 UI 与服务端历史不打架」。第一件正在被绕过（3 处手写 fetch/XHR 各自映射错误），第二件被实现三遍（三个调用点各自维护 span），第三件靠字符串内容相等来判定。",
+  "knowledge": "「一次失败长什么样」的知识（状态码 → ApiErrorKind → 用户文案）与「转写文本如何进入输入框」的知识（span 合并规则）。前者被 3 处实现瓜分，后者被 3 个页面各写一遍。",
+  "passes": [
+    {
+      "dim": "D7 接口注释含实现细节",
+      "note": "audio/player.ts 的模块 docstring 讲清了「为什么需要一个播放器、为什么要 primeFromGesture、为什么不能留 blob」；api/sse.ts 的 parseSseBuffer docstring 解释了心跳帧被丢弃与 rest 的用途——都是调用者该知道的。"
+    },
+    {
+      "dim": "W6 符合周围约定",
+      "note": "前后端一致的命名（Chrome/TS 常规）、纯函数抽离（parseSseBuffer / mergeHistory / buildRadar / validateResumeFile 都是可单测的纯函数），与仓库「只 mock 系统边界、假时钟测时序」的约定一致（renderer/player/socket 全部注入 setTimer/WebSocketImpl）。"
+    },
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "mergeTranscript / replaceTranscript / parseSseBuffer / radarPoint 这些多返回值函数全部返回具名对象（{text, notice} / {events, rest} / {x, y}），没有位置数组或 Pair 约定。"
+    },
+    {
+      "dim": "S2 拆开后接口更简单还是更复杂",
+      "note": "stream/renderer.ts 把「网络突发 → 打字机节奏」独立成模块，接口只有 push/flush/done/stop/pending，比把定时器塞进 hook 更简单；且它挡住了旧实现的一个真实 bug（取消后仍写进新消息）。这一处拆分是对的。"
+    },
+    {
+      "dim": "R11 重复（限本层）",
+      "note": "radar.ts 的几何计算（radarPoint/buildRadar/ringPolygon）是纯函数且只有 RadarChart 一个消费者，没有重复实现；audio/pcm.ts 的采样转换是单点实现。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "web-01",
+      "dim": "R12 通用专用混合体",
+      "signals": [
+        "通用专用混合体",
+        "重复"
+      ],
+      "severity": "高",
+      "title": "「转写文本怎么进输入框」的合并协议被三个页面各实现一遍，函数只做了一半，span 状态由每个调用点自己记",
+      "where": [
+        "apps/web/src/audio/transcriptStore.ts:53-69",
+        "apps/web/src/pages/chat/Composer.tsx:42-52",
+        "apps/web/src/pages/ChatPage.tsx:42-49",
+        "apps/web/src/pages/InterviewRoomPage.tsx:39-44"
+      ],
+      "evidence": "transcriptStore.ts:53  export function replaceTranscript(\n54    value: string,\n55    previous: string,\n56    next: string,\n57  ): { text: string; notice: boolean } {\n\nComposer.tsx:48      const mergedValue = replaceTranscript(valueRef.current, spanRef.current, transcript);\n49      spanRef.current = transcript;\n50      setNotice(mergedValue.notice);\n51      if (mergedValue.text !== valueRef.current) update(mergedValue.text);\n\nChatPage.tsx:43      const merged = replaceTranscript(draftRef.current, transcriptSpanRef.current, text);\n44      transcriptSpanRef.current = text;\n45      if (merged.text !== draftRef.current) {",
+      "why": "replaceTranscript 只完成了「用上一段 span 替换这一段」这条纯逻辑的一半——「上一段 span 是什么、什么时候清零」这另一半（即协议本身）被复制到三个调用点，各自维护 spanRef/transcriptSpanRef，各自决定何时重置：ChatPage 靠 onTranscript 闭包、InterviewRoomPage 在 start() 前手动清、Composer 在 transcript 变空时清。AGENTS.md 自己记着这个教训（P28/P30：改合并语义必须 grep 全部调用点，三层各漏过一次），而现在依然是三份实现。任何合并规则的调整（例如「用户手动删掉了转写里的一个字」）都要在三处同步，且没有测试能同时覆盖三处的分歧。",
+      "fix": "把「值与 span」做成一个模块：`useTranscriptMerge({value, onValueChange, transcript})`（配音/面试间/Composer 共用），span 生命周期封在 hook 内部；三个调用点各自只声明「我的输入框值在哪」。"
+    },
+    {
+      "id": "web-02",
+      "dim": "R9 透传变量",
+      "signals": [
+        "透传变量",
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "authEpoch 从 chat/queries.ts 穿到 interview/queries.ts 再穿到 useChatStream，全部调用点都传同一个常量 \"local\"",
+      "where": [
+        "apps/web/src/chat/queries.ts:13",
+        "apps/web/src/chat/queries.ts:26",
+        "apps/web/src/pages/ChatPage.tsx:30-32",
+        "apps/web/src/interview/queries.ts:20",
+        "apps/web/src/chat/useChatStream.ts:20"
+      ],
+      "evidence": "13  export const DEFAULT_AUTH_EPOCH = \"local\";\n...\n26    authEpoch: string = DEFAULT_AUTH_EPOCH,\n...\n30      queryKey: chatKeys.sessions(authEpoch),\n\napps/web/src/pages/ChatPage.tsx:30    const sessionsQuery = useChatSessions(api, DEFAULT_AUTH_EPOCH, session.isAuthenticated);\napps/web/src/pages/ChatPage.tsx:31    const modelsQuery = useModels(api, DEFAULT_AUTH_EPOCH, session.isAuthenticated);\napps/web/src/pages/ChatPage.tsx:32    const historyQuery = useChatHistory(api, sessionId, DEFAULT_AUTH_EPOCH);\n\napps/web/src/interview/queries.ts:20    authEpoch: string = DEFAULT_AUTH_EPOCH,\n\napps/web/src/chat/useChatStream.ts:17  export interface UseChatStreamOptions {\napps/web/src/chat/useChatStream.ts:18    client: ApiClient;\napps/web/src/chat/useChatStream.ts:19    sessionId: string | null;\napps/web/src/chat/useChatStream.ts:20    authEpoch?: string;\napps/web/src/chat/useChatStream.ts:21    onSessionCreated?: (sessionId: string) => void;",
+      "why": "仓库里没有任何地方产生第二个 epoch 值：所有调用点传的都是那个常量，useChatStream 的 authEpoch 选项从来没有被真正传入过。代价却真实存在：5 个 query 工厂、6 个 hook 签名、1 个 hook 选项都多一个参数，query key 里永远嵌着一个恒定的 \"local\"，读 key 的人得去追它是什么。这正是「暴露了一个本来可以自动算出来的参数」——登录态变化时 TanStack Query 本该由 queryClient 统一处理（或由 useSession 的 state 推导），不需要每个读取点转发一次。",
+      "fix": "删掉 authEpoch 参数与 query key 里的这段前缀；若真需要「换账号即作废缓存」，由登录/登出动作调用 queryClient.clear() 表达，这是它的本职。"
+    },
+    {
+      "id": "web-03",
+      "dim": "R3 浅模块",
+      "signals": [
+        "浅模块",
+        "透传方法"
+      ],
+      "severity": "高",
+      "title": "client.request 被放在公开接口里，零调用者——它不是唯一缝，而是给外部留的任意路径取数洞",
+      "where": [
+        "apps/web/src/api/client.ts:47-49",
+        "apps/web/src/api/client.ts:115-139"
+      ],
+      "evidence": "client.ts:47  export interface ApiClient {\n48    readonly baseUrl: string;\n49    request<T>(path: string, options?: RequestOptions): Promise<T>;\n\nclient.ts:115    async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {\n\n（全仓库 grep `.request<` / `client.request`：除定义处外 0 个调用者）",
+      "why": "接口承诺了 25 个能力，其中一个是「你可以拿任意路径换任意类型回来」。它没有类型约束（T 由调用方断言）、没有 query key 归属、也不进仓库既有的 OpenAPI 生成契约——任何人绕开 24 个具名方法用它取数，就能拿到与 schema.d.ts 无关的「看起来对」的对象，而评审时不会有任何信号。删除测试问「删掉它调用方会不会变复杂」：不会，因为没人用；但留着它，接口的宽度就不再等于能力的宽度。",
+      "fix": "把 request 从 ApiClient 接口上摘掉（实现内部保留即可），需要新端点就走「后端 OpenAPI → gen:api → 具名方法」这条既有路径。"
+    },
+    {
+      "id": "web-04",
+      "dim": "R16 难以选取名称",
+      "signals": [
+        "难以选取名称",
+        "难以描述",
+        "重复"
+      ],
+      "severity": "高",
+      "title": "消息身份有三个名字（key / clientMessageId / seq），且都缺服务端 id，逼出「用回答内容相等来去重」的规则",
+      "where": [
+        "apps/web/src/chat/store.ts:5-15",
+        "apps/web/src/chat/selectors.ts:6-17",
+        "apps/web/src/chat/selectors.ts:32-42"
+      ],
+      "evidence": "store.ts:5  export interface ChatMessage {\n6    /** Stable local key: client_message_id for user turns, request id for assistant drafts. */\n7    key: string;\n8    role: \"user\" | \"assistant\";\n...\n13    clientMessageId: string | null;\n14    seq: number | null;\n15  }\n\nselectors.ts:8    key: view.client_message_id ?? `server:${view.seq}`,\n...\n40      if (message.role === \"assistant\" && !message.streaming && serverAssistantContent.has(message.content)) {\n41        return false; // draft already replayed from history",
+      "why": "一个消息需要三个字段才说得清「你是谁」，而接口注释必须花一句话解释 key 是按角色取不同来源——「难以描述」直接命中。缺的那一项是关键：后端 ChatMessageView 明明有全局主键 id，本地消息却不带它，于是 selectors.ts:32-42 只能用「assistant 回答的文本内容是否与历史里某条完全相同」来判定草稿是否已落库。同一句回答出现两次（连续两次「你好」「你好！有什么可以帮你的吗？」是完全可能的重放），第二次会静默消失。命名起不出来不是命名问题，是身份定义没定下来。",
+      "fix": "让 ChatMessage 带上服务端 id（appendUser/startAssistant 时先为空，落库后由 merge 填），去重改为按 id；key 只留一个含义（渲染 key），不再按角色换来源。"
+    },
+    {
+      "id": "web-05",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "SSE 事件名与载荷形状在前端再写一遍（switch 五个分支 + default 静默丢弃），与后端 _encode 靠人脑同步",
+      "where": [
+        "apps/web/src/api/sse.ts:100-112",
+        "apps/web/src/api/sse.ts:74-97"
+      ],
+      "evidence": "74  function dispatch(event: SseEvent, handlers: ChatStreamHandlers): void {\n75    handlers.onRawFrame?.(event);\n76  \n77    if (event.event === \"error\") {\n78      const payload = jsonOrNull(event.data);\n79      handlers.onError?.(\n80        new ApiError(typeof payload?.message === \"string\" ? payload.message : \"stream error\", {\n81          kind: \"server\",\n82          detail: payload,\n83        }),\n84      );\n85      return;\n86    }\n87  \n88    if (event.event === \"done\") {\n89      const payload = jsonOrNull(event.data);\n90      handlers.onDone?.({ finish_reason: (payload?.finish_reason as string | null) ?? null });\n91      return;\n92    }\n93  \n94    const payload = jsonOrNull(event.data);\n95    if (payload === null) {\n96      return; // dirty frame: skip, keep the stream alive\n97    }\n98    const text = typeof payload.text === \"string\" ? payload.text : \"\";\n99  \n100    switch (event.event) {\n101      case \"content\":\n102        handlers.onContent?.(text);\n103        break;\n104      case \"reasoning\":\n105        handlers.onReasoning?.(text);\n106        break;\n107      case \"meta\":\n108        handlers.onMeta?.(payload);\n109        break;\n110      default:\n111        break;\n112    }",
+      "why": "live 通道的线上契约（event 名 + data 形状）不在生成物里：schema.d.ts 由 OpenAPI 生成，而 SSE 帧不在 OpenAPI 里，于是前端手抄一份。两端的兜底都选了沉默——后端把未知事件降级成 meta，前端 default 直接丢。开发时新增一种事件（例如「工具调用」「引用」）会出现：后端自信地发，前端安静地不显示，没有任何测试或日志会指出契约没对齐（后端 http/chat.py:225 的 unexpected 分支同理）。",
+      "fix": "把事件名/载荷定义成生成契约的一部分（例如后端导出 SSE 事件 schema 给 openapi-typescript 之外的生成脚本，或至少让前端 default 分支 logger.warn 出未知 event 名）。"
+    },
+    {
+      "id": "web-06",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "「失败 → ApiError」的映射在 3 处各写一遍，其中 api/client.ts:225 的 fetchTtsAudio 还绕过了超时与统一路径",
+      "where": [
+        "apps/web/src/api/client.ts:223-228",
+        "apps/web/src/api/client.ts:275-298",
+        "apps/web/src/api/sse.ts:136-143"
+      ],
+      "evidence": "client.ts:225      const response = await fetch(url, { credentials: \"include\", signal: options.signal });\n226      if (!response.ok) throw await fromResponse(response);\n\nclient.ts:285      let detail: unknown = body;\n286      try {\n287        detail = JSON.parse(body) as unknown;\n...\n296          { kind: kindForStatus(xhr.status), status: xhr.status, detail },\n\nsse.ts:137      handlers.onError?.(await fromResponse(response));",
+      "why": "「响应不是 2xx 时怎么变成 ApiError」的正确做法（取 detail.detail、带 x-request-id、解析 Retry-After）只有 fromResponse 一份，但三个调用点各走了不同路：fetchTtsAudio 只调 fromResponse 却丢掉了 client.request 的超时与 onError 上报，上传路径（XHR）则手工重放了 kindForStatus + JSON 解析 + detail 提取。任何错误语义的改动（例如后端新增一个字段）都要改三处，而漏掉的那处只会在音频播放失败时才被发现。",
+      "fix": "抽一个 `apiErrorFrom(status, headers, rawText)` 供三处共用（XHR/SSE/fetch 都只是「拿到 status + headers + 文本」的差异），并让 fetchTtsAudio 走同一套（或明确注释它为什么可以没有超时）。"
+    },
+    {
+      "id": "web-07",
+      "dim": "W3 错误靠定义规避",
+      "signals": [
+        "连体方法"
+      ],
+      "severity": "中",
+      "title": "答题幂等键 request_id 每次调用现生成，真正的幂等靠一个 250ms 只在前端存在的时间窗兜底",
+      "where": [
+        "apps/web/src/interview/useInterviewRoom.ts:9",
+        "apps/web/src/interview/useInterviewRoom.ts:67-71",
+        "apps/web/src/interview/useInterviewRoom.ts:76-80"
+      ],
+      "evidence": "useInterviewRoom.ts:9  const DOUBLE_SUBMIT_WINDOW_MS = 250;\n\n67      // Two guards: an in-flight request and a 250ms window (double click / double Enter).\n68      const now = Date.now();\n69      if (inFlight.current || now - lastSubmitAt.current < DOUBLE_SUBMIT_WINDOW_MS) return false;\n...\n79          request_id: newRequestId(),",
+      "why": "后端把幂等做在 (session_id, request_id) 上，也就是「同一个 request_id 重复提交会被识别」——这是定义层面的规避，本来可以覆盖「网络超时但其实服务端成功了」这类最危险的重放。但前端每次点击都 newRequestId()，于是服务端幂等永远用不上，前端只好再补一个 250ms 时间窗和一个 inFlight 标志：超时 30 秒后用户重试，答案会被评两次、记两遍分（前端的两个 guard 都早已放过）。前端的补丁是「加 if」，后端的定义本来是「消除 if」。",
+      "fix": "把 request_id 的生成时机从「发送时」提到「这次作答开始时」（或直接由答案文本派生稳定 id），重试复用同一个 id；250ms 窗降级为纯 UX 防抖，不再是正确性保障。"
+    },
+    {
+      "id": "web-08",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露",
+        "浅模块"
+      ],
+      "severity": "中",
+      "title": "ApiClient 接口 25 个成员平铺：端点的形状知识散在接口、工厂、URL 字符串三处，每加一个端点都在长宽",
+      "where": [
+        "apps/web/src/api/client.ts:47-94",
+        "apps/web/src/api/client.ts:141-236"
+      ],
+      "evidence": "client.ts:51    createChatSession(body?: ChatSessionCreateRequest): Promise<ChatSessionView>;\n...\n93    logout(): Promise<void>;\n94  }\n\nclient.ts:145    createChatSession: (body: ChatSessionCreateRequest = { title: \"\" }) =>\n146      request<ChatSessionView>(\"/api/v1/chat/sessions\", { method: \"POST\", body }),\n...\n235    logout: () => request<void>(\"/api/v1/auth/session\", { method: \"DELETE\" }),",
+      "why": "接口声明一遍（类型签名）、实现再写一遍（URL + method + body 形状），两者之间没有共同来源——类型签名只保证「有这么个方法」，不保证实现打的是哪个路径。25 个成员里混了四类关注点（chat / interview / scene / auth+media），要写一个页面得先读完整个接口才知道有哪些能力（即「用常见功能还得先了解罕见功能」）。同时它也是「多类症」的变体：每个端点一个方法，方法数量跟着后端路由数量线性增长，而 client.ts 的注释自称「the single network seam」——缝变宽之后就不再是缝了。",
+      "fix": "按资源分组成命名空间（chat / interview / media / auth），或直接由生成的 OpenAPI 类型驱动 URL 表（paths 里已经有路径字面量，可以让实现从类型推导而不是手抄）。"
+    },
+    {
+      "id": "web-09",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "DIMENSION_LABELS / FALLBACK_DIMENSION_KEYS 是后端维度表的副本，buildReportViewModel 还重算了后端已算过的东西",
+      "where": [
+        "apps/web/src/interview/radar.ts:21-28",
+        "apps/api/src/better_resume/interview_engine/report_service.py:28-33",
+        "apps/web/src/interview/radar.ts:102-139"
+      ],
+      "evidence": "radar.ts:21  const DIMENSION_LABELS: Record<string, string> = {\n22    accuracy: \"准确性\",\n23    depth: \"深度\",\n24    coverage: \"要点覆盖\",\n25    completeness: \"完成度\",\n26  };\n28  export const FALLBACK_DIMENSION_KEYS = [\"accuracy\", \"depth\", \"coverage\", \"completeness\"] as const;\n\nreport_service.py:28  DIMENSION_LABELS = {\n29      \"accuracy\": \"准确性\",\n30      \"depth\": \"深度\",\n31      \"coverage\": \"要点覆盖\",\n32      \"completeness\": \"完成度\",\n33  }",
+      "why": "同一份知识（四个维度的 key 与中文名）存在两个权威副本，字面量逐字相同。前端这份只在「后端没给 dimensions」时才用，也就是正常路径下永远不生效——这正是信息泄露最坏的形态：平时不显形，等后端改维度名（加第五个维度或改中文标签）时前端会安静地退回旧清单，报告上出现一个后端根本没有的轴。附带地，buildReportViewModel 还把「估计值/缺失」等判断在前端重算（overallEstimated/dimensionsEstimated/summaryMissing），报告的含义被两处定义。",
+      "fix": "维度清单与标签只由后端提供（dimensions 为空时前端显示「暂无维度数据」而不是编四个轴）；若必须兜底，把清单放进生成物（gen 脚本从后端常量导出）而不是手抄。"
+    },
+    {
+      "id": "web-10",
+      "dim": "W2 消除特殊情况",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "简历 10MB 上限在前后端各写一份（不同模块、不同字面量位置），且后端是「先整包读进内存再校验」——约束没有在定义上生效",
+      "where": [
+        "apps/web/src/interview/useResumeUpload.ts:9",
+        "apps/api/src/better_resume/http/interview.py:41",
+        "apps/api/src/better_resume/http/interview.py:137-142"
+      ],
+      "evidence": "useResumeUpload.ts:9  export const MAX_RESUME_BYTES = 10 * 1024 * 1024;\n38    if (file.size > MAX_RESUME_BYTES) return \"文件过大（上限 10MB）\";\n\ninterview.py:41  MAX_RESUME_BYTES = 10 * 1024 * 1024\n137      content = await file.read()\n138      if len(content) > MAX_RESUME_BYTES:\n139          raise HTTPException(\n140              status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,\n141              detail=\"简历文件过大（上限 10MB）\",",
+      "why": "「多大算太大」是同一个设计决策，两边各定义一次，改一个忘一个就会出现「前端放行、后端 413」或反之。更实质的是约束的实现方式：后端把整个文件读进内存（137 行）之后才在 138 行比较大小，10MB 上限拦不住 500MB 的请求首先占用的内存——上限想表达的是「别把大文件读进来」，而代码位置让这个意图失效（约束应该定义在读取阶段：分块读并在超过上限时立即 413）。前端那份只有「用户友好」的作用，却成了事实上的第一道闸门。",
+      "fix": "后端改成流式读取并在超限时短路（或让反代/框架层限长）；前端文案从生成的契约里取上限值，别手抄常量。"
+    },
+    {
+      "id": "web-11",
+      "dim": "R13 注释重复了代码",
+      "signals": [
+        "注释重复了代码",
+        "重复"
+      ],
+      "severity": "低",
+      "title": "transcriptStore.mergeTranscript 是上一代合并规则的遗留实现，生产代码无调用者（只有它自己的测试在用）",
+      "where": [
+        "apps/web/src/audio/transcriptStore.ts:33-43",
+        "apps/web/src/audio/transcriptStore.test.ts:53-81"
+      ],
+      "evidence": "33  export function mergeTranscript(local: string, merged: string): { text: string; notice: boolean } {\n34    if (merged.length === 0) return { text: local, notice: false };\n35    if (local.length === 0 || merged.startsWith(local)) return { text: merged, notice: false };\n36    // The same run arriving again (or the candidate edited around it): already in the box.\n37    if (local.includes(merged)) return { text: local, notice: false };\n38    // A batch vendor answers once per press with a whole utterance, so a transcript that is\n39    // not an evolution of what is in the box is new text: append it and never clobber the\n40    // candidate's own words (M4's rule dropped it, which made every press after the first\n41    // look like a no-op).\n42    return { text: `${local}${merged}`, notice: true };\n43  }\n\napps/web/src/audio/transcriptStore.test.ts:53  describe(\"mergeTranscript\", () => {\napps/web/src/audio/transcriptStore.test.ts:54    it(\"adopts the transcript when the box is empty or a prefix\", () => {\napps/web/src/audio/transcriptStore.test.ts:55      expect(mergeTranscript(\"\", \"你好世界\")).toEqual({ text: \"你好世界\", notice: false });\napps/web/src/audio/transcriptStore.test.ts:56      expect(mergeTranscript(\"你好\", \"你好世界\")).toEqual({ text: \"你好世界\", notice: false });\napps/web/src/audio/transcriptStore.test.ts:57    });\napps/web/src/audio/transcriptStore.test.ts:58  \napps/web/src/audio/transcriptStore.test.ts:59    it(\"appends a new utterance instead of dropping it (batch ASR presses)\", () => {\napps/web/src/audio/transcriptStore.test.ts:60      expect(mergeTranscript(\"第一句。\", \"第二句。\")).toEqual({\napps/web/src/audio/transcriptStore.test.ts:61        text: \"第一句。第二句。\",\napps/web/src/audio/transcriptStore.test.ts:62        notice: true,\napps/web/src/audio/transcriptStore.test.ts:63      });\napps/web/src/audio/transcriptStore.test.ts:64    });\napps/web/src/audio/transcriptStore.test.ts:65  \napps/web/src/audio/transcriptStore.test.ts:66    it(\"never clobbers text the candidate typed\", () => {\napps/web/src/audio/transcriptStore.test.ts:67      expect(mergeTranscript(\"我负责了\", \"完全不同的话\").text).toBe(\"我负责了完全不同的话\");\napps/web/src/audio/transcriptStore.test.ts:68      expect(mergeTranscript(\"手写\", \"转写\").text).toContain(\"手写\");\napps/web/src/audio/transcriptStore.test.ts:69    });\napps/web/src/audio/transcriptStore.test.ts:70  \napps/web/src/audio/transcriptStore.test.ts:71    it(\"does not append the same run twice\", () => {\napps/web/src/audio/transcriptStore.test.ts:72      expect(mergeTranscript(\"你好世界\", \"你好世界\")).toEqual({ text: \"你好世界\", notice: false });\napps/web/src/audio/transcriptStore.test.ts:73      expect(mergeTranscript(\"你好世界！\", \"你好世界\")).toEqual({\napps/web/src/audio/transcriptStore.test.ts:74        text: \"你好世界！\",\napps/web/src/audio/transcriptStore.test.ts:75        notice: false,\napps/web/src/audio/transcriptStore.test.ts:76      });\napps/web/src/audio/transcriptStore.test.ts:77    });\napps/web/src/audio/transcriptStore.test.ts:78  \napps/web/src/audio/transcriptStore.test.ts:79    it(\"does nothing when there is no transcript\", () => {\napps/web/src/audio/transcriptStore.test.ts:80      expect(mergeTranscript(\"手写内容\", \"\")).toEqual({ text: \"手写内容\", notice: false });\napps/web/src/audio/transcriptStore.test.ts:81    });",
+      "why": "P28 之后真实路径（三个页面的 onTranscript）全部走 replaceTranscript，mergeTranscript 只剩测试在维持它的存在；它的注释还在解释一个已经被取代的规则（M4 的批量语义）。删掉它，读者不损失任何信息，反而少一个「到底哪个是现行规则」的岔路——而这正是 AGENTS.md 记录过三次踩坑的那块语义。",
+      "fix": "删掉 mergeTranscript 与其 describe 块；「绝不覆盖手写」这条不变量改由 replaceTranscript 的测试表达（已经有：transcriptStore.test.ts:84 起的 P28 用例）。"
+    },
+    {
+      "id": "web-12",
+      "dim": "R10 连体方法",
+      "signals": [
+        "连体方法",
+        "重复"
+      ],
+      "severity": "低",
+      "title": "useTranscription 订阅整个 store 后无差别回调 onTranscript，自己分不清「转写变了」与「状态变了」",
+      "where": [
+        "apps/web/src/audio/useTranscription.ts:52-60",
+        "apps/web/src/audio/transcriptStore.ts:79-97"
+      ],
+      "evidence": "useTranscription.ts:52  useEffect(\n53    () =>\n54      useTranscriptStore.subscribe((state) => {\n55        setStatus(state.status);\n56        setError(state.error);\n57        onTranscript?.(transcriptText(state));\n58      }),\n59    [onTranscript],\n60  );",
+      "why": "订阅的是整个 store：drop 计数变化、status 变化、error 清空都会触发一次「转写文本」回调，每个调用页面于是各自承担「这次回调的 text 和上次一样、要不要 setState」的判断（ChatPage:45 与 InterviewRoomPage:43 都写了 `!== 上一次` 的比较）。hook 的接口（{recording,status,error,supported,start,stop}）故意不含文本，把「文本从哪来」的交界留在了外面——于是两个关注点（状态机 / 文本流）在每个调用点被重新拼一遍。",
+      "fix": "让 store 暴露文本选择器（subscribeWithSelector / 或让 hook 同时返回 text），把「只在文本变化时通知」的判断收进 hook；调用点不再手写比较。"
+    }
+  ]
+}

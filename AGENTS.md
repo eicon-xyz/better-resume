@@ -33,6 +33,8 @@
 ## 环境准备（本机陷阱，踩过的别再踩）
 
 - `uv` 在 `~/.local/bin`：新 shell 先 `export PATH="$HOME/.local/bin:$PATH"`。
+- 子智能体等沙箱里 `uv` 默认写工作区外的 `/root/.cache/uv` → 权限拒绝；先 `export UV_CACHE_DIR='/root/better resume/.cache/uv'`。
+  症状：`uv run pytest` 报 cache 错，而 `./.venv/bin/python -m pytest` 照跑（曾让 `test_real_layer` 两例假红）。
 - pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped（不是失败）：
 
   ```bash
@@ -65,6 +67,9 @@
 bash scripts/verify.sh --list
 bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts
 bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱）
+
+# 变异证明：断言「这段测试真的钉住了这段实现」——基线绿 → 变异红 → 恢复绿，脚本真看退出码
+bash scripts/verify_mutation.sh --test "..." --file <path> --find "<锚点>" --replace "<变异>"
 
 # 后端全量测试（778 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
@@ -134,11 +139,13 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 │   ├── src/pages/ + scenes/         # 页面（面试间/聊天/报告/设置）与查询
 │   └── src/stream/                  # SSE 渲染
 ├── docs/                            # HANDOFF.md、DECISIONS.md、tickets/（m0..m6、v1-verification、p1-post-v）、perf/
+│   └── audit/                       # 模块设计审计：MODULE-AUDIT.html（渲染产物）/ units/*.json（数据）/ FIXES.md（修复台账）
 ├── skills/                          # repo-map + modules/<模块>/SKILL.md + api-index（生成）
-├── scripts/                         # compose_smoke.sh / kill_instance_drill.sh / fault_injection_drill.sh
+├── scripts/                         # verify.sh（单一入口）+ compose_smoke.sh / *_drill.sh + 审计与变异工具（build_module_audit.py / verify_audit_evidence.py / verify_mutation.sh）
 ├── deploy/nginx.conf                # upstream 变量 + resolver（--scale 生效的关键，M6 P12）
 ├── compose.yaml                     # 部署最终形态（api/worker/postgres/redis/nginx/migrate/fake-llm）
-└── .env.example                     # 变量名清单（真凭据只进 gitignored .env）
+├── .env.example                     # 变量名清单（真凭据只进 gitignored .env）
+└── .githooks/pre-commit             # 可选提交前检查（shell 语法 + 暂存 Python 的 ruff）
 ```
 
 ## 核心协作模式：grill → spec → implement → review → retro
@@ -200,6 +207,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - 改了前端必跑 `pnpm -C apps/web test --run` + eslint + tsc；改了 REST 模型必跑**契约三件套**。
 - 动了部署面（compose/nginx/worker）跑 `bash scripts/compose_smoke.sh`；动了韧性/分布式跑 `kill_instance_drill.sh`。
 - 新阶段/票据/验收包放 `docs/tickets/<stage>/`；`docs/HANDOFF.md` 在阶段收口时同步更新；`skills/` 索引用生成脚本刷新，不手改。
+- 可选：启用仓库内 git hooks（提交前跑 shell 语法 + 暂存 Python 的 ruff）——`git config core.hooksPath .githooks`，跳过用 `--no-verify`。
 - 真机凭据只进 `.env`；任何密钥/令牌不得出现在代码、测试、票据、日志摘录里。
 
 ## AI 智能体须知（关键上下文）
@@ -215,4 +223,5 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - **前端转写合并历史上存在三层**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect，P28/P30 各漏过一层）：
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
 - **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**（P29：不发头=浏览器启发式缓存 HTML，部署后还在跑旧 bundle；compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
+- **harness 事实**：run_code 里内联 `python3 - <<EOF` 长文本易被转义弄坏 → 先 `write` 成文件再跑；`run_code` 的 `timeoutMs` 上限 120000，等待更久要分多次 `wait_agent`。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
