@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# 可选的提交前检查。启用：git config core.hooksPath .githooks（跳过：git commit --no-verify）。
+# 两件快事：shell 语法 + 暂存 Python 的 ruff；ruff 不在就跳过，不阻塞没装 ruff 的机器。
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+fail=0
+
+# 1) shell 语法：逐个文件跑——bash -n 只检查第一个参数，一次传多个等于漏检。
+for script in scripts/*.sh; do
+  [ -e "$script" ] || continue
+  if ! bash -n "$script"; then
+    echo "pre-commit: shell 语法错误：$script" >&2
+    fail=1
+  fi
+done
+
+# 2) 暂存 Python 的 ruff。仓库的 ruff 配置在 apps/api（根 scripts/*.py 只做语法检查，见 verify.sh 的 scripts 层），
+#    所以只对 apps/api 下的暂存文件跑，避免用默认配置误报。
+RUFF="apps/api/.venv/bin/ruff"
+staged=()
+while IFS= read -r path; do
+  [ -n "$path" ] && staged+=("$path")
+done < <(git diff --cached --name-only --diff-filter=ACM -- "apps/api" | grep -E "\.py$" || true)
+
+if [ ! -x "$RUFF" ]; then
+  echo "pre-commit: 跳过 ruff（未找到 $RUFF）"
+elif [ "${#staged[@]}" -eq 0 ]; then
+  :
+elif ! "$RUFF" format --check "${staged[@]}" || ! "$RUFF" check "${staged[@]}"; then
+  echo "pre-commit: ruff 未通过（ruff format / ruff check）——修好再提交，或用 git commit --no-verify 跳过" >&2
+  fail=1
+fi
+
+exit "$fail"
