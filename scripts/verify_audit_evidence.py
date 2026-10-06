@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Verify that every audit issue's cited file:line actually contains its evidence.
+"""Check the audit data in docs/audit/units/*.json at two levels.
 
-Usage: python3 scripts/verify_audit_evidence.py [--strict] [--json OUT] [unit ...]
+Usage:
+  python3 scripts/verify_audit_evidence.py [--structural] [--strict] [--json OUT] [--units DIR] [unit ...]
 
-Exploratory mode (default): exit 1 only when a claim is unverifiable.
-Gate mode (--strict): exit 1 also when any claim is only partially corroborated -
-a citation you cannot check is not evidence.
+Levels:
+  (always)      structural: every issue has its required fields, and every "where" citation
+                parses and points at a line range that exists in that file. Stable under code
+                drift, so this is the level CI runs.
+  (default)     corroboration report: does each cited window still contain a line quoted in the
+                issue evidence? Exploratory - unverifiable claims fail, partial ones do not.
+  (--strict)    corroboration gate: a partially corroborated claim fails too. Line numbers move
+                whenever the code moves, so this belongs to an audit/fix close-out, not to CI.
 
+Why the split (D22): a workspace refactor that only shifts lines must not turn CI red, but the
+audit data must still be checked for rot at the level that is stable. Run --strict by hand when
+you touch docs/audit/ or the files it cites.
 """
 from __future__ import annotations
 
@@ -18,12 +27,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UNITS = ROOT / "docs" / "audit" / "units"
 WHERE_RE = re.compile(r"^(?P<path>[^\s:]+):(?P<start>\d+)(?:-(?P<end>\d+))?$")
+#: "12" | "12-18" | "12-18,30-31" - the shapes actually used in units/*.json.
+LINE_SPEC_RE = re.compile(r"^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
+#: Fields every issue must carry, whatever the audit was about.
+STRUCTURAL_FIELDS = ("id", "dim", "severity", "title", "where", "why", "fix")
 
 # Evidence blocks are annotated in three shapes; strip the annotation, keep the code:
 #   "123: code", "123  code", "123|  code", "path/to/file.py:123  code".
 EVIDENCE_PREFIX = re.compile(
     r"^\s*(?:[\w./()\u4e00-\u9fff -]+?\.(?:py|ts|tsx|md|yaml|yml|json|sh|sql))?(?::)?\d+\s*[:|]?\s+"
 )
+
 
 def norm(text: str) -> str:
     return re.sub(r"\s+", "", text)
@@ -34,6 +48,61 @@ def file_lines(rel: str) -> list[str] | None:
     if not path.is_file():
         return None
     return path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def citation_spans(where: str) -> list[tuple[str, int, int]] | None:
+    """`path:12-18,30` -> [(path, 12, 18), (path, 30, 30)]; None when unparseable."""
+    if ":" not in where:
+        return None
+    rel, spec = where.rsplit(":", 1)
+    spec = spec.strip()
+    if not rel or not LINE_SPEC_RE.match(spec):
+        return None
+    spans: list[tuple[str, int, int]] = []
+    for part in spec.split(","):
+        if "-" in part:
+            start_text, _, end_text = part.partition("-")
+            start, end = int(start_text), int(end_text)
+        else:
+            start = end = int(part)
+        spans.append((rel.strip(), start, end))
+    return spans
+
+
+def check_structure(data: dict, unit_name: str) -> tuple[list[str], int, int]:
+    """Structure-only check: fields present, citations parse, cited ranges exist.
+
+    Returns (problems, issue_count, citation_count).
+    """
+    problems: list[str] = []
+    issues = data.get("issues")
+    if not isinstance(issues, list) or not issues:
+        return [f"{unit_name}: no issues[] list"], 0, 0
+    citations = 0
+    for issue in issues:
+        if not isinstance(issue, dict):
+            problems.append(f"{unit_name}: an issue is not an object")
+            continue
+        iid = str(issue.get("id") or "<no id>")
+        for field in STRUCTURAL_FIELDS:
+            if not issue.get(field):
+                problems.append(f"{unit_name}/{iid}: missing {field}")
+        for where in issue.get("where") or []:
+            spans = citation_spans(str(where))
+            if spans is None:
+                problems.append(f"{unit_name}/{iid}: unparseable where {where!r}")
+                continue
+            citations += len(spans)
+            for rel, start, end in spans:
+                lines = file_lines(rel)
+                if lines is None:
+                    problems.append(f"{unit_name}/{iid}: missing file {rel}")
+                    continue
+                if start < 1 or end < start or end > len(lines):
+                    problems.append(
+                        f"{unit_name}/{iid}: {rel}:{start}-{end} outside 1..{len(lines)}"
+                    )
+    return problems, len(issues), citations
 
 
 def check_issue(issue: dict) -> tuple[str, list[str]]:
@@ -58,7 +127,7 @@ def check_issue(issue: dict) -> tuple[str, list[str]]:
                 )
             )
     if not cited:
-        return "skip", ["no file:line in where"]
+        return "skip", ["no plain file:line in where (comma lists are checked structurally)"]
     if not evidence_lines:
         return "skip", ["no evidence text"]
 
@@ -82,15 +151,11 @@ def check_issue(issue: dict) -> tuple[str, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: [--strict] [--json OUT] [unit ...].
-
-    Default is exploratory: only unverifiable claims fail. --strict is the gate mode:
-    a claim whose citations are not all corroborated by its evidence block ("partial")
-    fails too, because a citation you cannot check is not evidence.
-    """
+    """CLI: [--structural] [--strict] [--json OUT] [--units DIR] [unit ...]."""
     args = list(sys.argv[1:] if argv is None else argv)
     strict = "--strict" in args
-    args = [arg for arg in args if arg != "--strict"]
+    structural = "--structural" in args
+    args = [arg for arg in args if arg not in ("--strict", "--structural")]
     json_out: str | None = None
     if "--json" in args:
         index = args.index("--json")
@@ -113,8 +178,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     wanted = set(args)
 
-    failures = partial = ok = 0
+    problems: list[str] = []
     records: list[dict[str, object]] = []
+    failures = partial = ok = 0
+    units_checked = issues_seen = citations_seen = 0
     for path in sorted(units_dir.glob("*.json")):
         if path.stem == "EXAMPLE":
             continue
@@ -127,6 +194,13 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if not isinstance(data, dict):
             continue  # not an audit unit file (a scratch JSON can sit in the same dir)
+        units_checked += 1
+        unit_problems, issue_count, citation_count = check_structure(data, path.stem)
+        problems.extend(unit_problems)
+        issues_seen += issue_count
+        citations_seen += citation_count
+        if structural:
+            continue
         for issue in data.get("issues", []):
             status, details = check_issue(issue)
             records.append({"unit": path.stem, "id": issue.get("id"), "status": status})
@@ -142,6 +216,18 @@ def main(argv: list[str] | None = None) -> int:
             for detail in details:
                 print(f"        {detail}")
 
+    if problems:
+        for problem in problems:
+            print(f"STRUCT {problem}")
+        print(f"\n{len(problems)} structural problem(s) in {units_checked} unit(s)")
+        return 1
+
+    if structural:
+        print(
+            f"structure ok: {units_checked} units / {issues_seen} issues / {citations_seen} citations"
+        )
+        return 0
+
     if json_out:
         Path(json_out).write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n")
         print(f"wrote {json_out}")
@@ -152,11 +238,12 @@ def main(argv: list[str] | None = None) -> int:
     if strict and partial:
         print(
             f"STRICT: {partial} claim(s) cite a place their own evidence block does not",
-            " corroborate. Tighten the evidence or fix the citation.",
+            " corroborate (usually line drift). Re-anchor the citation or refresh the evidence.",
             file=sys.stderr,
         )
         return 1
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

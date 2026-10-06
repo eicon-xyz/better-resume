@@ -120,9 +120,11 @@ add_scripts() {
   # scripts: ../scripts resolves to apps/scripts, so the first cut of this line checked
   # nothing at the root level.)
   cmds+=("uv run --project apps/api python scripts/check_scripts.py")
-  # --strict: a citation the evidence block cannot corroborate is not evidence; this is
-  # the repo's own claim-checker (docs/audit/units/*.json), so it gates rather than advises.
-  cmds+=("uv run --project apps/api python scripts/verify_audit_evidence.py --strict")
+  # Audit data, CI level (D22): fields present + every citation points at a range that exists.
+  # This level is stable under code drift. The byte-level check (--strict) deliberately stays a
+  # manual close-out step: a pure line shift must not turn CI red (measured: 3 inserted lines
+  # moved 4 citations to partial and --strict exits 1, --structural exits 0).
+  cmds+=("uv run --project apps/api python scripts/verify_audit_evidence.py --structural")
 }
 
 case "$LAYER" in
