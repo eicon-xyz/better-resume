@@ -11,7 +11,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D19），**与本文冲突时以 DECISIONS.md 为准**。
+- 决议记录在 `docs/DECISIONS.md`（D01–D22），术语表在 `GLOSSARY.md`，**与本文冲突时以 DECISIONS.md 为准**。
 
 ## 技术栈
 
@@ -71,7 +71,7 @@ bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱�
 # 变异证明：断言「这段测试真的钉住了这段实现」——基线绿 → 变异红 → 恢复绿，脚本真看退出码
 bash scripts/verify_mutation.sh --test "..." --file <path> --find "<锚点>" --replace "<变异>"
 
-# 后端全量测试（778 例；不导出 BR_* 会静默 skip）
+# 后端全量测试（863 例；不导出 BR_* 会静默 skip）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
 # 前端测试（175 例）——必须从仓库根跑
@@ -140,6 +140,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 │   └── src/stream/                  # SSE 渲染
 ├── docs/                            # HANDOFF.md、DECISIONS.md、tickets/（m0..m6、v1-verification、p1-post-v）、perf/
 │   └── audit/                       # 模块设计审计：MODULE-AUDIT.html（渲染产物）/ units/*.json（数据）/ FIXES.md（修复台账）
+├── GLOSSARY.md                      # 领域词汇表（单上下文；产品域 + 工程过程词，D21）
 ├── skills/                          # repo-map + modules/<模块>/SKILL.md + api-index（生成）
 ├── scripts/                         # verify.sh（单一入口）+ compose_smoke.sh / *_drill.sh + 审计与变异工具（build_module_audit.py / verify_audit_evidence.py / verify_mutation.sh）
 ├── deploy/nginx.conf                # upstream 变量 + resolver（--scale 生效的关键，M6 P12）
@@ -155,7 +156,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 
 | 阶段 | 怎么起 | 做什么 | 产物 |
 | --- | --- | --- | --- |
-| **1 grill** | 你敲 `/grill-with-docs` | 就一个想法逐轮拷问（`grilling` + `domain-modeling`）：事实 AI 查，决策你拍 | `CONTEXT.md` 术语、`docs/DECISIONS.md` 新决议（续编 D 号） |
+| **1 grill** | 你敲 `/grill-with-docs` | 就一个想法逐轮拷问（`grilling` + `domain-modeling`）：事实 AI 查，决策你拍 | `GLOSSARY.md` 术语、`docs/DECISIONS.md` 新决议（续编 D 号） |
 | **2 spec** | 你敲 `/to-spec` | 不采访，把已谈成的直接综合成 spec | `docs/tickets/<stage>/README.md`（= 原「阶段提案」六段） |
 | **3 implement** | 你敲 `/implement` | 驱动 `/tdd` 垂直切片（一个用例红 → 最小实现绿），常跑 typecheck/单测、收尾跑全量；结束自动调 `/code-review` | 代码 + 小步提交（提交信息说 WHAT） |
 | **4 review** | 阶段 3 自动调，或你敲 `/code-review` | 双轴**并行**评审：Standards（`CODING_STANDARDS.md`）／Spec（对照上面的 README） | 两轴发现清单（不合并、不重排） |
@@ -183,7 +184,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 
 ### Domain docs
 
-单上下文（single-context）：`CONTEXT.md` 在仓库根；ADR 用现有的 `docs/DECISIONS.md`（续编 D 号），不建 `docs/adr/`。见 `docs/agents/domain.md`。
+单上下文（single-context）：`GLOSSARY.md` 在仓库根（术语表，D21）；ADR 用现有的 `docs/DECISIONS.md`（续编 D 号），不建 `docs/adr/`。见 `docs/agents/domain.md`。
 
 ## 开发规范
 
@@ -212,7 +213,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 
 ## AI 智能体须知（关键上下文）
 
-- **开工顺序**：先读 `docs/HANDOFF.md`（状态/怎么跑/坑），再按 `skills/repo-map/SKILL.md` 路由到对应模块的 `SKILL.md`；跨窗口断点在 `~/.dsh/session-memory/better resume.md`（仓库外）。
+- **开工顺序**：先读 `GLOSSARY.md`（术语）与 `docs/HANDOFF.md`（状态/怎么跑/坑），再按 `skills/repo-map/SKILL.md` 路由到对应模块的 `SKILL.md`；跨窗口断点在 `~/.dsh/session-memory/better resume.md`（仓库外）。
 - **版本差异**：Python 3.12（`asyncio.TimeoutError` 即 `TimeoutError`）；websockets ≥14 把 `extra_headers` 改名 `additional_headers` 且新增 `proxy` 参数——写适配器要兼容两种签名（见 `media/adapters/paraformer_rt.py:open_connection` 的写法）。
 - **供应商语义**：百炼批量 ASR（qwen-audio-3.0-asr-flash）= 整段一次返回；实时（paraformer-realtime-v2）= WS 增量，`result-generated.sentence.sentence_end` 区分 live/完结；二者共用同一 workspace 域名与 key。
 - **worker/Redis**：队列兼容 Redis 6.0 下限（无 `XAUTOCLAIM`，M6 P7）；worker 不允许死于依赖抖动——
@@ -223,5 +224,6 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - **前端转写合并历史上存在三层**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect，P28/P30 各漏过一层）：
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
 - **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**（P29：不发头=浏览器启发式缓存 HTML，部署后还在跑旧 bundle；compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
+- **派活约定**：用子智能体做审计/评审/并行修复时的操作约定见 `docs/agents/subagents.md`（共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
 - **harness 事实**：run_code 里内联 `python3 - <<EOF` 长文本易被转义弄坏 → 先 `write` 成文件再跑；`run_code` 的 `timeoutMs` 上限 120000，等待更久要分多次 `wait_agent`。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
