@@ -1,0 +1,265 @@
+{
+  "unit": "llm_gateway",
+  "title": "llm_gateway（场景绑定 + 模型注册 + 三个供应商适配器 + 结构化输出）",
+  "scope": [
+    "apps/api/src/better_resume/llm_gateway/**",
+    "apps/api/tests/llm_gateway/**",
+    "apps/api/tests/test_adapter_contract.py",
+    "apps/api/tests/test_scene_routing.py"
+  ],
+  "one_sentence": "它是全项目唯一的模型调用缝（LlmGateway.complete/stream），把「业务场景 → 绑定行 → 适配器（openai_compat / 星云 / 百炼应用）→ HTTP+SSE」这条链藏在两个方法后面；最重要的三件事是场景可运行时切换、结构化输出在网关内强校验、缺凭证时给出可执行的 503 提示。问题在于这三件事的实现知识在每个适配器/工厂里各抄了一遍，且 SSE 帧与 usage 的供应商形状溢出到了 chat/http 层。",
+  "knowledge": "本模块独占的知识是「一次模型调用的完整往返」：ChatRequest/ChatResult 值对象、三个供应商的 SSE 帧解析与 payload 形状、场景绑定行（scene→adapter+target_ref）的读取与 TTL 缓存、模型注册表的 TTL 缓存与 api_key_env 间接寻址、结构化输出（JSON→Pydantic→LlmSchemaError）。其中「SSE 帧怎么读」「重试/退避/超时预算」「凭证是否齐备」「usage 字段叫什么」这四份知识在本模块内被复制了 2~3 份，usage 字段名还越出模块被 chat/http 再实现一次（LG-01/02/04/07/13）。",
+  "passes": [
+    {
+      "dim": "D1 一句话",
+      "note": "protocols.py 的 seam 说明（complete/stream 两个方法）与 scenes.py 的「场景=业务步骤、绑定行决定谁来实现」把模块职责一句话讲清了，LlmScene 每个成员还带输入/输出注释。"
+    },
+    {
+      "dim": "D2 设计两次",
+      "note": "scenes.py:1-6 明确记录了与旧项目「enum+config+resolver 三元组 + alias 猜测」的对比并选择显式绑定；scene_mapping.py:5-8 记录了拒绝旧项目 sugest/total_score 式 alias fallback——两份文档都留下了方案比较的痕迹。"
+    },
+    {
+      "dim": "D4 更少通用方法覆盖专用方法",
+      "note": "三个适配器都只实现 complete/stream 两个通用方法，场景差异被推到 scene_mapping 的 payload 映射里，没有为 chat/评分/追问各加一个专用方法。"
+    },
+    {
+      "dim": "W4 注释只写难理解的内容",
+      "note": "抽查的注释都在讲 why：openai_compat.py:127-128 解释 stream_usage 为何按模型行 opt-in、245-251 解释 NO_PROXY 兜底、dashscope_app.py:241-243 解释为什么 200+error 帧必须抛错——不是复述代码。"
+    },
+    {
+      "dim": "C1 改动让设计变好一点",
+      "note": "P3 新增百炼应用是「新 AdapterKind + 新工厂 + 契约套件加一个 harness」，没有留下兼容层或注释掉的旧实现（残留问题见 LG-09/LG-12 的多态 target_ref 与硬编码默认）。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "LG-01",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "高",
+      "title": "SSE 帧解析 + 重试/退避 + 客户端参数在三个适配器里各写一份（同一份知识三份实现）",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:191-220",
+        "apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:188-221",
+        "apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:215-269",
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:137-151",
+        "apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:128-144"
+      ],
+      "evidence": "35  _BODY_PREVIEW = 500\n...\n47          max_attempts: int = 3,\n48          backoff_base_seconds: float = 0.5,\n...\n137      async def _retrying(self, attempt: Callable[[], Awaitable[T]]) -> T:\n138          last: LlmError | None = None\n139          for attempt_index in range(1, self._max_attempts + 1):\n140              try:\n141                  return await attempt()\n142              except (httpx.TimeoutException, httpx.TransportError) as exc:\n143                  last = LlmTimeoutError(str(exc) or exc.__class__.__name__)\n144              except LlmError as exc:\n145                  if not exc.retryable:\n146                      raise\n147                  last = exc\n148              if attempt_index < self._max_attempts:\n149                  await self._sleep(self._backoff(attempt_index))\n150          assert last is not None\n151          raise last\n...\n191      async def _events(self, response: httpx.Response) -> AsyncIterator[StreamEvent]:\n192          finish_reason: str | None = None\n193          async for raw_line in response.aiter_lines():\n194              line = raw_line.strip()\n195              if not line or line.startswith(\":\"):\n196                  continue  # heartbeat / blank keep-alive frame\n197              if not line.startswith(\"data:\"):\n198                  continue\n199              data = line[len(\"data:\") :].strip()\n200              if data == \"[DONE]\":\n201                  break\n\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:37  _BODY_PREVIEW = 500\n...\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:53          max_attempts: int = 3,\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:54          backoff_base_seconds: float = 0.5,\n...\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:128      async def _retrying(self, attempt: Callable[[], Awaitable[T]]) -> T:\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:129          last: LlmError | None = None\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:130          for attempt_index in range(1, self._max_attempts + 1):\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:131              try:\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:132                  return await attempt()\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:133              except LlmError as exc:\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:134                  last = exc\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:135                  if not exc.retryable or attempt_index == self._max_attempts:\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:136                      raise\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:137                  logger.warning(\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:138                      \"xingyun_retrying\",\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:139                      attempt=attempt_index,\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:140                      scene=self._scene.value,\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:141                      error=str(exc),\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:142                  )\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:143                  await self._backoff(attempt_index)\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:144          raise last or LlmTimeoutError(\"xingyun call failed\")\n...\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:188      async def _events(self, response: httpx.Response) -> AsyncIterator[StreamEvent]:\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:189          finish_reason: str | None = None\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:190          async for raw_line in response.aiter_lines():\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:191              line = raw_line.strip()\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:192              if not line or line.startswith(\":\"):\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:193                  continue\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:194              if not line.startswith(\"data:\"):\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:195                  continue\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:196              data = line[len(\"data:\") :].strip()\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:197              if data in (\"[DONE]\", \"\"):\napps/api/src/better_resume/llm_gateway/adapters/xingyun.py:198                  break\n\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:39  _BODY_PREVIEW = 500\n...\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:81          max_attempts: int = 3,\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:82          backoff_base_seconds: float = 0.5,\n...\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:151      async def _backoff(self, attempt: int) -> None:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:152          await self._sleep(self._backoff_base * (2 ** (attempt - 1)))\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:153  \napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:154      async def _retrying(self, attempt: Callable[[], Awaitable[T]]) -> T:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:155          last: LlmError | None = None\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:156          for attempt_index in range(1, self._max_attempts + 1):\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:157              try:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:158                  return await attempt()\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:159              except LlmError as exc:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:160                  last = exc\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:161                  if not exc.retryable or attempt_index == self._max_attempts:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:162                      raise\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:163                  logger.warning(\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:164                      \"dashscope_app_retrying\",\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:165                      attempt=attempt_index,\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:166                      scene=self._scene.value,\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:167                      error=str(exc),\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:168                  )\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:169                  await self._backoff(attempt_index)\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:170          raise last or LlmTimeoutError(\"dashscope app call failed\")\n...\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:215      async def _events(self, response: httpx.Response) -> AsyncIterator[StreamEvent]:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:216          finish_reason: str | None = None\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:217          reported_status: int | None = None\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:218          async for raw_line in response.aiter_lines():\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:219              line = raw_line.strip()\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:220              if not line:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:221                  continue\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:222              if line.startswith(\":\"):\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:223                  # The vendor reports the effective status as a comment line before each frame.\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:224                  frame_status = _STATUS_COMMENT.match(line)\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:225                  if frame_status:\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:226                      reported_status = int(frame_status.group(1))\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:227                  continue\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:228              if not line.startswith(\"data:\"):\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:229                  continue\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:230              data = line[len(\"data:\") :].strip()\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:231              if data in (\"[DONE]\", \"\"):\napps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:232                  break",
+      "why": "「OpenAI 兼容 SSE 怎么读」（data: 前缀、[DONE]、心跳/脏帧、finish_reason 归并）被抄了三遍；同样被抄的还有 _retrying/_backoff（openai_compat.py:137-151、xingyun.py:128-144、dashscope_app.py:154-170）、_BODY_PREVIEW=500（三处各一行）以及 4 个构造参数默认值（max_attempts=3 / backoff_base_seconds=0.5 / timeout_seconds=60.0 / schema_retries=1 各三份）。维护者要修一个帧处理缺陷（例如多行 data: 或断流重连）必须改三处并保证三份不漂移；事实上已经漂了：openai 把 httpx.TransportError 归成 LlmTimeoutError，另两个把 httpx.HTTPError 归成 LlmVendorError(status_code=0)，只有 dashscope 解析 `:HTTP_STATUS` 注释行。",
+      "fix": "抽一个共享内核（SSE 行读取 + 重试/退避 + 客户端构建），适配器只提供「payload 构造」与「帧→StreamEvent 映射」两个回调；默认重试参数收进一处配置对象。"
+    },
+    {
+      "id": "LG-02",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "重复",
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "适配器自带一套 timeout/重试预算，与 settings 和 ai_resilience 的 Stage 策略并存，且生产调用点从不传这些参数",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:47-55",
+        "apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:53-57",
+        "apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:81-93",
+        "apps/api/src/better_resume/settings/config.py:27-31",
+        "apps/api/src/better_resume/ai_resilience/policy.py:74-78"
+      ],
+      "evidence": "openai_compat.py\n47:         max_attempts: int = 3,\n48:         backoff_base_seconds: float = 0.5,\n49:         timeout_seconds: float = 60.0,\n50:         schema_retries: int = 1,\n55:         self._client = client or _build_client(timeout_seconds)\nsettings/config.py\n27:     chat_timeout_seconds: float = 180.0\n28:     extraction_timeout_seconds: float = 60.0\n29:     evaluation_timeout_seconds: float = 20.0\n30:     followup_timeout_seconds: float = 20.0\nai_resilience/policy.py\n76:                 timeout=resilience.chat_timeout_seconds,",
+      "why": "一次答案评估/追问调用的真实预算是 ai_resilience 的 Stage 超时（evaluation/followup 各 20s），而适配器内置的 socket 超时固定 60s——内层超时永远不会先触发，却仍是一份没人配置、没人测过的第二预算；重试同理：适配器自己重试 3 次（退避 0.5s 起，指数增长）叠在 ai_resilience 的重试之上，调用方（工厂构造）没有任何地方能改，settings 里也没有对应变量（grep timeout_seconds 只有三处定义、零处传参）。运维想调「一次 LLM 最多花多久」得在两个模块各改一遍，且改错一个不报错。",
+      "fix": "把 timeout/重试收进 ai_resilience 的 Stage policy（或 settings），适配器只接收一个 Policy 对象；socket 超时应由该 policy 推导，不再各自写默认值。"
+    },
+    {
+      "id": "LG-03",
+      "dim": "R12 通用专用混合体",
+      "signals": [
+        "通用专用混合体",
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "通用 ChatRequest 里挂着一个星云形状的透传袋，百炼适配器把它的 workflow_id 当 session_id 用",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/models.py:17-22",
+        "apps/api/src/better_resume/llm_gateway/models.py:68",
+        "apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:146-149"
+      ],
+      "evidence": "models.py\n17: class VendorContext(BaseModel):\n18:     \"\"\"Passthrough for the Xingyun workflow adapter vs local orchestration.\"\"\"\n19: \n20:     vendor: str\n21:     workflow_id: str | None = None\n22:     params: dict[str, Any] = Field(default_factory=dict)\n68:     vendor_ctx: VendorContext | None = None\ndashscope_app.py\n146:     def _payload(self, req: ChatRequest) -> dict[str, Any]:\n147:         inspect_for_injection(req.messages, scene=self._scene, flow_id=self._app_id)\n148:         session_id = req.vendor_ctx.workflow_id if req.vendor_ctx is not None else None\n149:         return to_dashscope_app_payload(req, app_id=self._app_id, session_id=session_id)",
+      "why": "ChatRequest 是三个适配器共用的厂商中立请求对象，却带了一个以星云命名的字段袋；百炼适配器只能把它当通用槽位，于是同一个 `workflow_id` 在一个适配器里是「工作流 id」、在另一个里是「会话 id」——字段名与语义脱钩，第四个适配器要接会话就得再造一个约定。业务调用方（chat/service.py:202 直接 vendor_ctx=None）想用百炼的会话续接也无从表达，只能由适配器作者猜。",
+      "fix": "把供应商专属状态移出 ChatRequest：要么给适配器构造参数（本来就 per binding），要么定义领域语义字段（如 `session_key: str | None`）由各适配器自行映射。"
+    },
+    {
+      "id": "LG-04",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露",
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "供应商原始 usage JSON 穿透 VendorMeta.extra，chat 与 http 两层各自再解析/再发布这份形状",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/models.py:94-96",
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:217-218",
+        "apps/api/src/better_resume/chat/service.py:239-247",
+        "apps/api/src/better_resume/http/chat.py:219-220"
+      ],
+      "evidence": "models.py\n94: class VendorMeta(BaseModel):\n95:     model: str | None = None\n96:     extra: dict[str, Any] = Field(default_factory=dict)\nopenai_compat.py\n217:             if usage := chunk.get(\"usage\"):\n218:                 yield VendorMeta(model=chunk.get(\"model\"), extra={\"usage\": usage})\nchat/service.py（chat 模块）\n239: def _usage_from(event: VendorMeta) -> TokenUsage | None:\n240:     raw = event.extra.get(\"usage\") or {}\n243:     return TokenUsage(\n244:         prompt_tokens=raw.get(\"prompt_tokens\"),\n245:         completion_tokens=raw.get(\"completion_tokens\"),\n246:         total_tokens=raw.get(\"total_tokens\"),\nhttp/chat.py\n219:     if isinstance(event, VendorMeta):\n220:         return _frame(\"meta\", {\"model\": event.model, **event.extra})",
+      "why": "网关本该是「供应商形状的终点」：TokenUsage 已经存在，流式路径却把原始 usage dict 塞进 extra 让它出境。代价有三层：(1) chat 模块必须知道 OpenAI 的 usage 字段名并自己重写一份映射——它只映射 3 个字段，reasoning_tokens 悄悄丢了；(2) http/chat.py:220 直接把 extra 展开进 SSE 帧，任何适配器往 extra 里加一个键都会静默变成对外契约（这个帧不受 openapi 生成的契约约束）；(3) 星云/百炼两个适配器又各自把同一份 raw 重新解释一遍（xingyun.py:152-155 直接 TokenUsage(**raw)，dashscope_app.py:48-67 专门写 _usage_from_frame）。",
+      "fix": "让流式事件携带已归一化的 TokenUsage（如 UsageReported(usage=...)），extra 只留给真正无法归一化的诊断字段且不对外序列化。"
+    },
+    {
+      "id": "LG-05",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "结构化输出校验有两份实现：scene_mapping.validate_structured 与 OpenAICompatAdapter._validate",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/scene_mapping.py:27-36",
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:230-242"
+      ],
+      "evidence": "scene_mapping.py\n27: def validate_structured(schema: type[Any], content: str) -> Any:\n28:     \"\"\"Parse JSON and validate it against the schema; anything else is a schema error.\"\"\"\n29:     try:\n30:         payload = json.loads(content)\n31:     except json.JSONDecodeError as exc:\n32:         raise LlmSchemaError(f\"response is not valid JSON: {exc}\") from exc\n33:     try:\n34:         return schema.model_validate(payload)\nopenai_compat.py\n230:     @staticmethod\n231:     def _validate(schema: type[Any], content: str) -> Any:\n232:         try:\n233:             payload = json.loads(content)\n234:         except json.JSONDecodeError as exc:\n235:             raise LlmSchemaError(f\"response is not valid JSON: {exc}\") from exc\n237:         from pydantic import ValidationError",
+      "why": "「JSON→Pydantic→LlmSchemaError」这份知识写在两处，连错误文案都逐字相同；星云/百炼走 scene_mapping，openai 走自己的静态方法。任何改进（加 JSON 提取、把 ValidationError.errors() 结构化、统一文案）都要改两遍，漏一处就出现两种结构化输出失败体验；另外 openai 版把 `from pydantic import ValidationError` 塞在函数体里（237 行），而该模块顶部完全可以用——说明这段是从别处搬来的。",
+      "fix": "删掉 _validate，openai 适配器直接调用 validate_structured（并把它从 xingyun 专属模块挪到中性位置，如 schema.py）。"
+    },
+    {
+      "id": "LG-06",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [],
+      "severity": "中",
+      "title": "GatewayFactory 协议只声明两个方法，resolver 却按私约动态取用 credential_hint / build_for_model；协议声明同步、实现是 async",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/resolver.py:69-75",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:91-96",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:48-56",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:176-182"
+      ],
+      "evidence": "resolver.py\n69: @runtime_checkable\n70: class GatewayFactory(Protocol):\n71:     \"\"\"One per adapter kind: knows if it *can* run a binding and how to build the gateway.\"\"\"\n73:     def is_configured(self, binding: SceneBinding) -> bool: ...\n75:     async def build(self, binding: SceneBinding) -> LlmGateway: ...\n91:     async def is_configured(self, binding: SceneBinding) -> bool:\n179:         builder = getattr(factory, \"build_for_model\", None)\n48: async def _call(factory: GatewayFactory, name: str, binding: SceneBinding) -> object | None:\n49:     \"\"\"Factories may answer sync (vendor adapter) or async (registry lookup): accept both.\"\"\"\n50:     method = getattr(factory, name, None)",
+      "why": "写新工厂的人只读 Protocol 会实现 is_configured/build，然后发现 503 提示退化成「credentials are missing」（credential_hint 没实现）、模型选择器直接报「this build has no openai-compatible provider」（build_for_model 没实现）——这两条契约只存在于 resolver 的 getattr 调用里。更糟的是协议第 73 行声明 is_configured 同步，唯一的真实实现（OpenAiCompatFactory，91 行）是 async：读者与类型检查器拿到的是错的调用约定，全靠 _call 的 inspect.isawaitable 和 resolve_model 的 getattr 兜着。",
+      "fix": "把 credential_hint 与 build_for_model 提升为协议成员（is_configured 统一 async），并在 docstring 写明每个钩子的前置条件与缺省语义。"
+    },
+    {
+      "id": "LG-07",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "「凭证是否齐备 / 缺哪个环境变量」在三个工厂里各写一遍，表达方式还各不相同",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41",
+        "apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:25-29",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:91-106"
+      ],
+      "evidence": "xingyun_factory.py\n30:     def is_configured(self, binding: SceneBinding) -> bool:\n31:         api_key, api_secret = self.credentials\n32:         return bool(api_key and api_secret and binding.target_ref)\n34:     def credential_hint(self, binding: SceneBinding) -> str | None:\n35:         api_key, api_secret = self.credentials\n36:         missing = [\n37:             name\n38:             for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))\n39:             if not value\n40:         ]\n41:         return \" and \".join(missing) if missing else None\ndashscope_app_factory.py\n25:     def is_configured(self, binding: SceneBinding) -> bool:\n26:         return bool(self._api_key and binding.target_ref)\n28:     def credential_hint(self, binding: SceneBinding) -> str | None:\n29:         return None if self._api_key else API_KEY_ENV",
+      "why": "同一个问题（这个绑定的凭证在不在、缺哪个变量）有三个实现：bool、空格/and 拼接的变量名、以及 resolver 里 OpenAiCompatFactory 的「resolve 模型行再查 environ」。三处对 target_ref 的判定也不完全同构（resolver 版本靠 resolve 抛错兜）。新增第四个 adapter kind 就是抄第四遍；更现实的风险是 is_configured 与 credential_hint 会漂移——一处说配置好了、另一处说缺变量，调用方（resolver.resolve 只信前者、把后者当提示）无法发现矛盾。",
+      "fix": "把「校验 + 缺什么」合并成一个方法（返回 Ok | Missing(names)），协议只暴露这一处判定；工厂只声明自己需要哪些环境变量名。"
+    },
+    {
+      "id": "LG-08",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "同为新建 httpx 客户端，另两个适配器显式 trust_env=False，openai_compat 只在异常分支兜底",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:252-257",
+        "apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:67",
+        "apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:93"
+      ],
+      "evidence": "openai_compat.py\n252:     timeout = httpx.Timeout(timeout_seconds)\n253:     try:\n254:         return httpx.AsyncClient(timeout=timeout)\n255:     except (httpx.InvalidURL, ValueError):\n256:         logger.warning(\"llm_client_proxy_env_ignored\", reason=\"malformed NO_PROXY\")\n257:         return httpx.AsyncClient(timeout=timeout, trust_env=False)\nxingyun.py\n67:         self._client = client or httpx.AsyncClient(timeout=timeout_seconds, trust_env=False)\ndashscope_app.py\n93:         self._client = client or httpx.AsyncClient(timeout=timeout_seconds, trust_env=False)",
+      "why": "AGENTS §开发规范写着「新建 httpx/ws 客户端一律显式兜底（trust_env=False / proxy=None，P20）」，同层另两个适配器与 media 的 qwen_asr 都照做了，唯独主链路（DeepSeek，全部场景的出厂默认绑定）只在 httpx 因畸形 NO_PROXY 抛异常时才关掉环境代理。容器/本机只要 HTTP(S)_PROXY 存在且 NO_PROXY 合法，这个客户端就会走代理——正是 P20 记录的坑；而两个分支造出的客户端行为不同（一个信任环境、一个不信任），排障时很难解释。",
+      "fix": "默认分支也传 trust_env=False（保留异常兜底），或三个适配器统一走一个 build_client 工具函数。"
+    },
+    {
+      "id": "LG-09",
+      "dim": "R15 模糊的名称",
+      "signals": [
+        "模糊的名称",
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "target_ref 是随 adapter 变语义的多态字符串（模型名 / 工作流 id / 应用 id），绑定校验只检查它非空",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/binding_store.py:20-25",
+        "apps/api/src/better_resume/llm_gateway/binding_orm.py:17-19",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:236-241",
+        "apps/api/src/better_resume/llm_gateway/xingyun_factory.py:53-55",
+        "apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40-42"
+      ],
+      "evidence": "20  @dataclass(frozen=True, slots=True)\n21  class SceneBinding:\n22      scene: LlmScene\n23      adapter: AdapterKind\n24      target_ref: str\n25  \n\napps/api/src/better_resume/llm_gateway/binding_orm.py:17  class SceneBindingRow(Base):\napps/api/src/better_resume/llm_gateway/binding_orm.py:18      \"\"\"One row per scene; target_ref is a model name (openai_compat), a flow id (xingyun)\napps/api/src/better_resume/llm_gateway/binding_orm.py:19      or a Model Studio application id (dashscope_app).\"\"\"\n\napps/api/src/better_resume/llm_gateway/resolver.py:236                      target_ref=binding.target_ref,\napps/api/src/better_resume/llm_gateway/resolver.py:237                      configured=bool(factory) and await is_configured(factory, binding),\napps/api/src/better_resume/llm_gateway/resolver.py:238                      is_default=(\napps/api/src/better_resume/llm_gateway/resolver.py:239                          binding.adapter is DEFAULT_ADAPTER\napps/api/src/better_resume/llm_gateway/resolver.py:240                          and binding.target_ref == DEFAULT_TARGET_REF\napps/api/src/better_resume/llm_gateway/resolver.py:241                      ),\n\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:40          ]\n...\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:49          if not binding.target_ref:\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:50              raise LlmConfigError(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:51                  f\"scene {binding.scene.value!r} has no xingyun flow_id (target_ref)\"\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:52              )\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:53          return XingyunWorkflowAdapter(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:54              scene=binding.scene,\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:55              flow_id=binding.target_ref,\n\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40          return DashScopeAppAdapter(\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:41              scene=binding.scene,\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:42              app_id=binding.target_ref,\n\napps/api/src/better_resume/http/scenes.py:17  class SceneViewResponse(BaseModel):\napps/api/src/better_resume/http/scenes.py:18      scene: str\napps/api/src/better_resume/http/scenes.py:19      label: str\napps/api/src/better_resume/http/scenes.py:20      adapter: str\napps/api/src/better_resume/http/scenes.py:21      target_ref: str\napps/api/src/better_resume/http/scenes.py:22      configured: bool\napps/api/src/better_resume/http/scenes.py:23      is_default: bool\napps/api/src/better_resume/http/scenes.py:24  \napps/api/src/better_resume/http/scenes.py:25  \napps/api/src/better_resume/http/scenes.py:26  class SceneUpdateRequest(BaseModel):\napps/api/src/better_resume/http/scenes.py:27      adapter: Literal[\"openai_compat\", \"xingyun\", \"dashscope_app\"]\napps/api/src/better_resume/http/scenes.py:28      target_ref: str = Field(min_length=1, max_length=128)",
+      "why": "一个字段三种含义，唯一的说明在 ORM 类的 docstring 里：读 SceneBinding.target_ref 的人必须先知道 adapter 才能解释它；写绑定的人（PUT /scenes 只做 min_length=1 校验）可以填任何字符串，错误要等真正调用供应商才暴露（星云的 flow_id 与百炼的 app_id 长得都像普通字符串）。SceneView.target_ref 还是对外契约字段，前端只能原样展示。",
+      "fix": "让绑定携带强类型目标（ModelRef / FlowId / AppId 子类型，或 adapter+target 组成 tagged union），至少把校验下移到工厂的 validate(binding)。"
+    },
+    {
+      "id": "LG-10",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "SceneResolver.loads 是仅供测试断言的公开属性（生产对象上挂着缓存计数器）",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/resolver.py:141-146",
+        "apps/api/tests/llm_gateway/test_scene_resolver.py:100-109",
+        "apps/api/tests/llm_gateway/test_scene_binding_propagation.py:92"
+      ],
+      "evidence": "resolver.py\n141:         self._loads = 0\n143:     @property\n144:     def loads(self) -> int:\n145:         \"\"\"How many times bindings were read from the database (cache assertions).\"\"\"\n146:         return self._loads\ntest_scene_resolver.py\n103:     await resolver.binding_for(LlmScene.CHAT)\n104:     await resolver.binding_for(LlmScene.CHAT)\n105:     assert resolver.loads == 1\n107:     resolver.invalidate(LlmScene.CHAT)\n108:     await resolver.binding_for(LlmScene.CHAT)\n109:     assert resolver.loads == 2",
+      "why": "docstring 自己承认用途是「cache assertions」：接口上多了一个调用者不需要、只为测试存在的计数器，还要求在热路径（每次 binding_for）自增写状态。AGENTS §开发规范/TDD 纪律明确要求「断言走公开行为或 fake 协作对象的入参捕获，不加测试专用属性」——这里完全可以注入一个计数用的 fake session_factory。它同时向读者暗示 loads 是有意义的运行时指标，而实际没有任何可观测/导出在用它。",
+      "fix": "删掉 _loads/loads，测试改注入计数用的 session_factory（或断言第二次 binding_for 不再触发数据库往返）。"
+    },
+    {
+      "id": "LG-11",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "中",
+      "title": "适配器构造器把「缺凭证」报成 LlmSchemaError（结构化输出错误），HTTP 层只把 LlmConfigError 映射成 503",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:59-60",
+        "apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:87-88",
+        "apps/api/src/better_resume/llm_gateway/errors.py:46-50",
+        "apps/api/src/better_resume/http/gateway.py:27-31"
+      ],
+      "evidence": "xingyun.py\n59:         if not (api_key and api_secret and flow_id):\n60:             raise LlmSchemaError(\"xingyun adapter needs api_key, api_secret and flow_id\")\ndashscope_app.py\n87:         if not (app_id and api_key):\n88:             raise LlmSchemaError(\"dashscope app adapter needs app_id and api_key\")\nerrors.py\n46: class LlmSchemaError(LlmError):\n47:     \"\"\"Structured output never satisfied the caller's Pydantic schema.\"\"\"\nhttp/gateway.py\n27:     except LlmConfigError as exc:\n30:             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)",
+      "why": "错误类型是调用方唯一的分类手段，这里却用「结构化输出没满足 schema」的类型表达「配置缺失」。三个工厂目前都会先检查，所以这条分支只会在新工厂/新直接使用者踩到时才响——响的时候是 502（main.py 的 LlmError→_bad_gateway）而不是 P17 要求的 503+点名缺失变量；更糟的是若有人针对 LlmSchemaError 做「重试一次模型」的补偿逻辑，会去重试一个永远不会成功的构造失败。",
+      "fix": "构造器缺配置抛 LlmConfigError（或让适配器不接收空凭证、由工厂/类型系统保证），并删掉这条错配的防御分支。"
+    },
+    {
+      "id": "LG-12",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "「出厂默认绑定是 openai_compat/deepseek-flash」在 resolver 常量与迁移种子里各写一份，is_default 靠字符串相等判断",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/resolver.py:28-30",
+        "apps/api/src/better_resume/llm_gateway/resolver.py:236-241",
+        "apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29"
+      ],
+      "evidence": "28  #: What every scene runs on out of the box (mirrors the M5-T1 migration seed).\n29  DEFAULT_ADAPTER = AdapterKind.OPENAI_COMPAT\n30  DEFAULT_TARGET_REF = \"deepseek-flash\"\n...\n238                      is_default=(\n239                          binding.adapter is DEFAULT_ADAPTER\n240                          and binding.target_ref == DEFAULT_TARGET_REF\n241                      ),\n\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21  #: Default bindings keep M4 behaviour exactly: every scene runs on the local OpenAI-compatible\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:22  #: adapter until someone flips a row (that is the whole point of M5).\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23  DEFAULT_BINDINGS = [\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:24      (\"chat\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:25      (\"question_extraction\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:26      (\"answer_evaluation\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:27      (\"follow_up\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:28      (\"report_summary\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:29  ]",
+      "why": "「出厂默认」这份知识同时活在迁移脚本（真正决定数据库内容）与一个 Python 常量（只用来渲染 is_default 标志）里，注释自己写着 mirrors。改默认模型（换账号、换更便宜的模型）时若只改种子，所有场景的 is_default 会永久显示 false——一个会撒谎的对外契约字段；反之只改常量则标志与真实种子不符。场景清单本身也在两处（LlmScene 枚举 + DEFAULT_BINDINGS）。",
+      "fix": "把「默认值」只留一处：解析时回读种子表，或把默认做成配置，resolver 不再自持常量。"
+    },
+    {
+      "id": "LG-13",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "「什么算可重试」有两套 FailureKind 枚举，ai_resilience 还要 import 网关异常并反推 retryable",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/errors.py:8-22",
+        "apps/api/src/better_resume/ai_resilience/errors.py:17-20",
+        "apps/api/src/better_resume/ai_resilience/errors.py:60-68"
+      ],
+      "evidence": "llm_gateway/errors.py\n8: class FailureKind(StrEnum):\n9:     RETRYABLE = \"retryable\"\n10:     NON_RETRYABLE = \"non_retryable\"\n11:     VENDOR = \"vendor\"\n20:     @property\n21:     def retryable(self) -> bool:\n22:         return self.kind is FailureKind.RETRYABLE\nai_resilience/errors.py（ai_resilience 模块）\n17: class FailureKind(StrEnum):\n18:     TIMEOUT = \"timeout\"\n19:     OVERLOADED = \"overloaded\"\n20:     UNAVAILABLE = \"unavailable\"\n60: def classify(exc: BaseException) -> FailureKind:\n64:     if isinstance(exc, (TimeoutError, LlmTimeoutError)):\n65:         return FailureKind.TIMEOUT\n66:     if isinstance(exc, LlmError):\n67:         return FailureKind.UNAVAILABLE if exc.retryable else FailureKind.INVALID",
+      "why": "重试判定是同一份知识的两份编码：网关用 retryable/non_retryable/vendor 三值，韧性层用 timeout/overloaded/unavailable/invalid 四值，桥接靠 ai_resilience 反向 import llm_gateway 并读一个属性。LlmVendorError 的 `status_code >= 500 or == 429` 与 AiOverloaded/AiUnavailable 说的是同一件事；chat 模块还持有第三份引用（chat/service.py:253 直接比较 FailureKind.RETRYABLE 决定错误文案）。调整分类（例如不再重试 429）必须同时改网关与韧性层，漏改的后果是两处结论不一致：一处重试、一处熔断。",
+      "fix": "只保留一套失败分类（放 ai_resilience 或中立的 errors 模块），网关抛带分类的异常即可，不需要自己的 retryable 属性；chat 层改用韧性层包装后的错误表达文案。"
+    }
+  ]
+}

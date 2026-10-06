@@ -1,0 +1,271 @@
+{
+  "unit": "ai_resilience",
+  "title": "ai_resilience（单飞 / 熔断 / 舱壁 / 超时 / 限流 / 分布式单飞）",
+  "scope": [
+    "apps/api/src/better_resume/ai_resilience/**",
+    "apps/api/tests/ai_resilience/**",
+    "apps/api/tests/test_distributed_flight.py"
+  ],
+  "one_sentence": "把「一次供应商调用」的六道保险（进程内单飞 → 熔断 → 舱壁 → 截止时间 → 限流桶，外加可选的 Redis 跨实例单飞）收进一个 run(stage, key, fn)；最重要的三件事是：闸的固定顺序、失败分类（谁算供应商不健康、什么能负缓存）、以及流的预算从开口算到最后一帧——但第三件事只写在私有方法里，包装层还得靠摸内层私有属性才拿得到策略。",
+  "knowledge": "「一次调用的韧性状态机」：FailureKind 四分类与谁可重试/可负缓存（errors.py）、熔断的滑窗与半开许可（breaker.py）、流的一次性预算与扇出（timeout.py + stream.py）、token bucket 的补充算术（ratelimit.py）。这份知识在本模块内被复制了三份：bucket 算术同时用 Python 和 Lua 写（ratelimit.py ↔ redis_buckets.py）、FailureKind→异常类映射写了两遍（errors._BY_KIND ↔ distributed 内联 dict）、stage→policy 映射写了三处（StagePolicies 字段 + for_stage 内联 dict + StagePolicy.stage 字段）；熔断/单飞的默认数值还与 settings 各存一份。",
+  "passes": [
+    {
+      "dim": "D1 一句话",
+      "note": "protocols.py:1 与 resilient.py:1-7 用一句话说清了「一个 run() 后面是固定顺序的闸」，且 interview_engine/chat/media 四条链路都只调 run（grep 调用点一致，无裸调）。"
+    },
+    {
+      "dim": "D2 设计两次",
+      "note": "三处 docstring 明确记录了与旧项目方案的比较取舍：singleflight.py:1「shrunk from 8 model classes + 6 Lua scripts to one class」、distributed.py:7「deliberately ~1/10 of the old project's Lua suite」、timeout.py:3-5「asyncio.wait_for / asyncio.timeout are deliberately not used」。"
+    },
+    {
+      "dim": "D4 更少通用方法覆盖专用方法",
+      "note": "五个 stage 共用同一个 run()，没有为 chat/tts 单开方法；差异全部收在 StagePolicy 数据里（policy.py），调用点不需要分支。"
+    },
+    {
+      "dim": "D7 接口注释含实现细节",
+      "note": "协议接口注释只有 key 的格式约定（protocols.py:15-19），没有把熔断窗口、舱壁槽位等实现细节写进接口；实现细节留在各自模块 docstring。"
+    },
+    {
+      "dim": "W1 命名精确+一致",
+      "note": "Flight/FlightState/Bucket/BucketScope/Bulkhead/slot/take 在本模块与 http/ratelimit.py 的用法一致；唯一宽泛的 key 有格式约定兜底（protocols.py:18）。"
+    },
+    {
+      "dim": "R1 删除测试",
+      "note": "删掉 ResilientAiResilience / SingleFlight / BreakerRegistry，四个 stage 的调用者就得各自重拼单飞+熔断+舱壁+截止时间——接口（一个 run）比实现小得多，不是透传层。"
+    },
+    {
+      "dim": "C1 改动让设计变好一点",
+      "note": "singleflight.py:1 与 distributed.py:7 的注释表明相对旧项目是收缩（8 个模型类 + 6 个 Lua 脚本 → 1 个类 / 1 个 Lua 取令牌），M1 的 passthrough 已被真实实现替换，没有留兼容层。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "ai-01",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "DistributedAiResilience 靠摸内层私有 _policies 拿 stage 策略，且把内层声明成 Any",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/distributed.py:270-278",
+        "apps/api/src/better_resume/ai_resilience/policy.py:34-35"
+      ],
+      "evidence": "270:     def __init__(self, inner: Any, flight: RedisFlight) -> None:\n271:         self._inner = inner\n274:     async def run(self, stage: Stage, key: str, fn: Callable[[], Awaitable[T]]) -> T:\n275:         policy = self._inner._policies.for_stage(stage)  # noqa: SLF001 - same package\n276:         if policy.is_stream:\n277:             # Streams are connection-scoped: cross-instance replay is out of scope (documented).\n278:             return await self._inner.run(stage, key, fn)\npolicy.py:34-41（策略的唯一合法来源）\n34:     def for_stage(self, stage: Stage) -> StagePolicy:\n35:         return {\n41:         }[stage]",
+      "why": "「哪个 stage 是流、replay_ttl/negative_ttl 是多少」这份知识唯一的合法来源是 ResilientAiResilience._policies（policy.py），但 distributed.py 用 noqa: SLF001 直接把它读出来——包装层被迫了解内层的私有布局，换内层实现（测试 fake、以后策略改由运行时下发）就必须同步改这里，而 noqa 会让 ruff 从此不再提醒。inner: Any 进一步关掉了类型检查：任何内层对象都能传进来，包括没有 _policies 的。",
+      "fix": "把 policy 显式注入包装层（构造参数或内层暴露 policy_for(stage)），并把 inner 的标注从 Any 改成协议类型（如 AiResilience + policy_for）。"
+    },
+    {
+      "id": "ai-02",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "高",
+      "title": "token bucket 的补充算术在 Python 与 Lua 各写了一遍",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/redis_buckets.py:23-49",
+        "apps/api/src/better_resume/ai_resilience/ratelimit.py:77-85"
+      ],
+      "evidence": "redis_buckets.py:5-7\n5:  The script keeps the *same* arithmetic as the in-process\n6:  `TokenBucket` (so the degraded path behaves like the shared one), with two differences\n7:  that Redis forces:\n---\nratelimit.py:80-85\n80:         self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)\n82:         if self._tokens >= 1.0:\n83:             self._tokens -= 1.0\n84:             return True, 0.0, int(self._tokens)\n85:         return False, (1.0 - self._tokens) / self.rate, 0\nredis_buckets.py:36-44（同一份算术的 Lua 版）\n36:  tokens = tokens + elapsed / 1000 * rate\n40:  if tokens >= 1 then\n41:   tokens = tokens - 1\n44:   retry = (1 - tokens) / rate",
+      "why": "模块 docstring 自己承认这份算术写了两份（Lua 的 _TAKE_LUA 与 TokenBucket.take），并把它当成不变量（「so the degraded path behaves like the shared one」）。代价是任何一次改动（比如把 burst 语义从「最多 capacity」改成别的、或改 retry_after 的口径）都必须两处同时改，而两边分属 Python 与 Lua、由不同测试覆盖（test_ratelimit.py vs test_ratelimit_redis.py）——漏改一处时，降级路径与共享路径的行为会悄悄分叉，正是 D19 想避免的那种不一致。",
+      "fix": "把算术收敛成一处可执行的定义（例如把 Lua 脚本作为唯一实现、进程内路径也用它，或反过来在测试里用同一组向量对两条路径做对照断言并写明同步契约）。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "把 Lua 算术收敛成可执行的 Python 镜像，再用等价断言 + 源码警报钉住两份实现",
+        "approach": "Lua（跨副本原子 RMW）与进程内桶（Redis 不可用时的降级路径）都不可删，故不归约实现：在 redis_buckets.py 新增纯函数 take_lua_math 作为 Lua 算术的可执行定义（运算顺序与 Lua 字面一致），再由三条 hermetic 测试闭合——镜像 vs TokenBucket 逐项+按位等价、镜像 vs 手算向量、_TAKE_LUA 关键式仍在的源码警报。Lua 文本逐字节未改（sha256 552672b88a893730…，与 HEAD 相同），零行为变更。",
+        "files": [
+          "apps/api/src/better_resume/ai_resilience/redis_buckets.py",
+          "apps/api/tests/ai_resilience/test_ratelimit_equivalence.py"
+        ],
+        "evidence": "ai_resilience 85 → 101 tests / 0 failed；全量后端 858 / 0 / 0；ruff 250 files formatted + All checks passed。Lead 独立反向验证：把 Lua 的 elapsed / 1000 * rate 改成 elapsed * rate → FAILED test_lua_source_still_implements_the_same_formula；恢复后绿。执行方第二条反向验证：镜像改序 elapsed * rate / 1000 → FAILED ...never_disagree[order_sensitive_refill]（assert 0.0021000000000000003 == 0.0021），证明 1 ULP 级分叉也会被抓到。",
+        "verification": "bash scripts/verify_ai02_contract.sh tests/ai_resilience/test_ratelimit_equivalence.py（Lead 的红/绿证明脚本，可复跑）；uv run pytest -q --junitxml；uv run ruff check。",
+        "unverified": "Lua 本身在本环境无法执行（fakeredis 的 EVAL 需要 lupa，而 lupa 不在 uv.lock，CI 走 uv sync --frozen）：Redis 端真实执行结果未经机器验证，只由「镜像↔TokenBucket 逐位等价」+「Lua 文本关键式警报」覆盖；Lua tostring(%.14g) 往返的 ~1e-14 尾数漂移未断言；键 TTL 与 max_identities 两种过期策略不要求等价。"
+      }
+    },
+    {
+      "id": "ai-03",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "难以理解的代码"
+      ],
+      "severity": "高",
+      "title": "FailureKind→异常类的映射写了两遍，distributed 那份还用 __import__ 拼类名",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/errors.py:71-76",
+        "apps/api/src/better_resume/ai_resilience/distributed.py:246-257"
+      ],
+      "evidence": "errors.py:71-76\n71:  _BY_KIND: dict[FailureKind, type[AiResilienceError]] = {\n72:     FailureKind.TIMEOUT: AiTimeout,\n73:     FailureKind.OVERLOADED: AiOverloaded,\n74:     FailureKind.UNAVAILABLE: AiUnavailable,\n75:     FailureKind.INVALID: AiInvalid,\n76:  }\n---\ndistributed.py:247-254\n247:                 FailureKind.TIMEOUT: __import__(\n248:                     \"better_resume.ai_resilience.errors\", fromlist=[\"AiTimeout\"]\n249:                 ).AiTimeout,\n250:                 FailureKind.OVERLOADED: __import__(\n251:                     \"better_resume.ai_resilience.errors\", fromlist=[\"AiOverloaded\"]\n252:                 ).AiOverloaded,\n253:                 FailureKind.INVALID: AiInvalid,\n254:             }.get(kind)",
+      "why": "同一个「kind 决定用哪个异常类」的知识在 errors.py 有一份权威表，distributed.py 又内联了一份，并且为了绕开「顶部没 import AiTimeout」而用 __import__ 在运行时拼模块名——读者要执行一遍才能知道拿到的是哪个类。新增一个 FailureKind（或改类名）时，distributed 的失败回放会静默退化到 AiUnavailable（第 257 行 error_type or AiUnavailable 兜底），调用方拿到的错误类型与本地路径不一致。",
+      "fix": "顶部 import AiTimeout/AiOverloaded，复用 errors._BY_KIND（或提供 errors.error_for(kind) 工厂），删掉内联字典与 __import__。"
+    },
+    {
+      "id": "ai-04",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "高",
+      "title": "AiResilience 协议只声明 run，包装层缺 stats/aclose 的缺口只能靠运行时 AttributeError 暴露",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/protocols.py:13-20",
+        "apps/api/src/better_resume/ai_resilience/distributed.py:267-292"
+      ],
+      "evidence": "protocols.py:13-20\n13:  @runtime_checkable\n14:  class AiResilience(Protocol):\n15:     async def run(self, stage: Stage, key: str, fn: Callable[[], Awaitable[T]]) -> T:\n16:         \"\"\"Run `fn` under the stage's resilience policy.\n18:         key = stage|sessionId|questionNumber|sha256(payload)\n19:         \"\"\"\n---\ndistributed.py:274-278\n274:     async def run(self, stage: Stage, key: str, fn: Callable[[], Awaitable[T]]) -> T:\n291:     async def aclose(self) -> None:\n292:         await self._inner.aclose()",
+      "why": "协议只写了 run，但实际使用面远不止 run：main.py:128 调 aclose()、http/resilience.py:22 调 stats()、main.py:118 把对象塞进 app.state.ai_resilience。DistributedAiResilience 只实现了 run/aclose，没有 stats()——它能通过 isinstance(obj, AiResilience) 检查（tests/contracts/test_core_contracts.py:107 正是这么检查的），却在被替换进 app.state 之后让 /api/v1/resilience/stats 变成 AttributeError=500。这个错误本可以在定义层排除（把 stats/aclose 写进协议，或让包装层继承同一个基类），现在却留给每个调用点去撞。",
+      "fix": "把调用者真正依赖的成员（run/aclose/stats 或一个 stats() 的窄协议）写进 AiResilience 协议，并让 DistributedAiResilience 实现它（委托给 inner）。"
+    },
+    {
+      "id": "ai-05",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "RedisFlight 暴露三个只给测试看的计数器，其中一个全仓无人读",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/distributed.py:105-107"
+      ],
+      "evidence": "105:         self.leader_wins = 0\n106:         self.follower_replays = 0\n107:         self.takeovers = 0",
+      "why": "leader_wins 全仓只有这一处赋值（grep 无任何读取点）；follower_replays / takeovers 只被 tests/test_distributed_flight.py:92、:167 断言，生产代码从不读。同一个类里已经有 self.metrics.singleflight_replay 在数同一件事（distributed.py:139-140 两处都加）。AGENTS.md §开发规范 明文要求「断言走公开行为或 fake 协作对象的入参捕获，不加测试专用属性」——这三个公开字段就是为了让测试读内部计数而存在的，维护者还得判断哪个计数器才是真的。",
+      "fix": "把 takeovers/leader_wins 并入 ResilienceMetrics（或删掉 leader_wins），测试改断言 metrics.snapshot()。"
+    },
+    {
+      "id": "ai-06",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "StreamBroadcast 的 6 个只读属性注释自称供 stats 端点用，实际只有测试读",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/stream.py:55-79"
+      ],
+      "evidence": "55:     # ---- observable state (stats endpoint + tests) ------------------------------\n57:     @property\n58:     def task(self) -> asyncio.Task[None] | None:\n62:     def frame_count(self) -> int:\n66:     def consumer_count(self) -> int:\n70:     def finished(self) -> bool:\n74:     def cancelled(self) -> bool:\n78:     def error(self) -> BaseException | None:",
+      "why": "注释承诺这些是给 stats 端点用的，但 stats 端点只报 open_streams/entry_count（resilient.py:122-125），frame_count/consumer_count/cancelled 全仓只被 tests/ai_resilience/test_stream_fanout.py:101/107/143 读。读者为了改一个流的行为，得先判断这六个属性里哪些是契约、哪些是测试脚手架；而其中 error/finished 暴露的是可被外部抢先消费的状态，容易诱导调用者绕过迭代器去轮询。",
+      "fix": "删掉无人读的属性，测试改断言可观察行为（帧序列/取消后的 entry_count）；若确实要给 stats 用，就把它接进 resilient.stats()。"
+    },
+    {
+      "id": "ai-07",
+      "dim": "W5 多返回值用具名字段类",
+      "signals": [],
+      "severity": "中",
+      "title": "取令牌的返回值是裸三元组 (bool, float, int)，而具名类 RateLimitDecision 就在同一个文件里",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/ratelimit.py:42-59",
+        "apps/api/src/better_resume/ai_resilience/degraded.py:60"
+      ],
+      "evidence": "42:  @dataclass(frozen=True, slots=True)\n43:  class RateLimitDecision:\n44:     allowed: bool\n45:     bucket: Bucket\n46:     retry_after: float\n47:     remaining: int\n---\n59:     async def take(self, key: str, *, rate: float, capacity: float) -> tuple[bool, float, int]: ...\n---\ndegraded.py:60:     async def take(self, key: str, *, rate: float, capacity: float) -> tuple[bool, float, int]:",
+      "why": "BucketStore 这条缝上所有实现（InProcessBucketStore、RedisBucketStore、DegradingBucketStore 以及测试里的 _FlakyStore）都返回位置三元组，唯一具名的 RateLimitDecision 只在最上层 check() 里被拼出来（ratelimit.py:200-212）。代价是每个实现和每个读者都必须记住「第一个是 allowed、第二个是 retry_after、第三个是 remaining」——Redis 那份还要额外记住 retry 是字符串化过的浮点（redis_buckets.py:96），而 tests/ai_resilience/test_ratelimit_redis.py:67 已经在用位置解包。加第四个返回值（比如 capacity 或 scope）要改所有实现与所有解包点。",
+      "fix": "让 take() 直接返回一个具名的 TakeOutcome/复用 RateLimitDecision（scope 由 store 自己填），把位置解包从 4 个实现里清掉。"
+    },
+    {
+      "id": "ai-08",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "StagePolicy.allow_stream_replay 是个没人读、没人写的策略位",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/policy.py:22-23"
+      ],
+      "evidence": "22:     is_stream: bool = False\n23:     allow_stream_replay: bool = False",
+      "why": "全仓只有 policy.py:23 的定义和 tests/ai_resilience/test_policy.py:29 的 `assert chat.allow_stream_replay is False`——from_settings 从不传它，没有任何生产代码读它（grep allow_stream_replay 只有这两处）。它和 is_stream 并排出现，读者会以为「流可以被回放」是一条真实能力，得先查证才能确认是空的；测试还把这份空能力钉住了，删起来更费劲。",
+      "fix": "删掉这个字段（连同那条断言）；真需要时再加，并让 from_settings 与某个消费点同时出现。"
+    },
+    {
+      "id": "ai-09",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "低",
+      "title": "wrap_stream_timeout 的 on_timeout 钩子没有任何调用者",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/timeout.py:56-71"
+      ],
+      "evidence": "62:     on_timeout: Callable[[], None] | None = None,\n64:     \"\"\"Apply one budget to the whole stream (open to last frame), not per frame.\"\"\"\n69:             await aclose_quietly(stream)\n70:             if on_timeout is not None:\n71:                 on_timeout()",
+      "why": "唯一的调用者 resilient.py:172-174 只传 stage/timeout/clock（grep on_timeout 在 timeout.py 之外无命中），两处 if on_timeout is not None 因此是死分支。调用者读签名时得为这个不存在的扩展点做一次判断（要不要在超时时也通知 breaker？），而真正的失败记录其实发生在调用方的 _observe_stream 里。",
+      "fix": "删掉 on_timeout 参数（超时通知留在调用方）；确实需要时由调用方在 except AiTimeout 里做。"
+    },
+    {
+      "id": "ai-10",
+      "dim": "D3 先写接口注释",
+      "signals": [],
+      "severity": "中",
+      "title": "run() 的接口注释没有错误模式：既没写 AiResilienceError 分类，也没写 key 类型不符时的裸 TypeError",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/protocols.py:15-19",
+        "apps/api/src/better_resume/ai_resilience/singleflight.py:180-190"
+      ],
+      "evidence": "protocols.py:15-19\n15:     async def run(self, stage: Stage, key: str, fn: Callable[[], Awaitable[T]]) -> T:\n16:         \"\"\"Run `fn` under the stage's resilience policy.\n18:         key = stage|sessionId|questionNumber|sha256(payload)\n19:         \"\"\"\n---\nsingleflight.py:184-189\n184:                 raise TypeError(\n185:                     f\"key {_key_hash(key)} is bound to a live stream; this call expects a value\"\n188:         if expect_stream:\n189:             raise TypeError(f\"key {_key_hash(key)} produced a value but a stream was expected\")",
+      "why": "这是全项目四条链路唯一的调用缝，但接口注释只交代了 key 的格式。调用者（chat/service.py、interview_engine/*、http/media.py）无法从接口知道：失败一定被规范化成 AiResilienceError 四子类（errors.py），还是可能漏出裸 TypeError。main.py:156-160 只为 AiResilienceError 注册了 504/503/502 处理器，所以同一 key 被误用成流/值时，用户看到的是 500 而不是 503——调用者被迫读实现才知道要防哪一类异常。",
+      "fix": "在协议 docstring 里写明错误模式（AiResilienceError 四子类 + 何时抛 TypeError），或把 key 类型不符也纳入 taxonomy。"
+    },
+    {
+      "id": "ai-11",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "stage→policy 的对应关系在 StagePolicies 里写了三遍",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/policy.py:26-41"
+      ],
+      "evidence": "26:  @dataclass(frozen=True, slots=True)\n27:  class StagePolicies:\n28:     chat: StagePolicy\n29:     extraction: StagePolicy\n30:     evaluation: StagePolicy\n31:     followup: StagePolicy\n32:     tts: StagePolicy\n34:     def for_stage(self, stage: Stage) -> StagePolicy:\n35:         return {\n36:             Stage.CHAT: self.chat,\n37:             Stage.EXTRACTION: self.extraction,\n38:             Stage.EVALUATION: self.evaluation,\n39:             Stage.FOLLOWUP: self.followup,\n40:             Stage.TTS: self.tts,\n41:         }[stage]",
+      "why": "同一个「哪个 stage 对应哪条策略」的知识以三种形态存在：五个具名字段、for_stage 里的内联 dict、以及每个 StagePolicy 自带的 stage 字段（policy.py:16，test_policy.py:65 断言 `for_stage(stage).stage is stage`）。新增一个 stage 要同时改 Stage 枚举、StagePolicies 字段、内联 dict、from_settings 的 build 调用四处，漏掉任一处就是 KeyError 或张冠李戴（dict 里指到别人的策略，stage 字段还会理直气壮地说自己是自己）。",
+      "fix": "用 dict[Stage, StagePolicy] 作为唯一存储（或让 from_settings 直接产出 dict），删掉重复的具名字段与 StagePolicy.stage。"
+    },
+    {
+      "id": "ai-12",
+      "dim": "R10 连体方法",
+      "signals": [
+        "连体方法"
+      ],
+      "severity": "中",
+      "title": "流式 flight 的生命周期横跨 execute/_open_stream/_forget_stream，单看 execute 读不懂 expires_at=inf",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/singleflight.py:115-178"
+      ],
+      "evidence": "115:         entry = Flight(key=key, state=FlightState.RUNNING, future=future, expires_at=float(\"inf\"))\n168:         # The flight lives as long as the stream does: followers keep joining the\n169:         # broadcast, and the entry disappears the moment the producer finishes.\n170:         broadcast.start(source, on_finish=lambda: self._forget_stream(key, entry))\n174:     def _forget_stream(self, key: str, entry: Flight) -> None:\n175:         entry.state = FlightState.DONE\n176:         entry.expires_at = self._clock.now()",
+      "why": "execute() 的重放判定（88-95 行）依赖 expires_at/state，但流式分支把 expires_at 设成 inf、真正让 entry 消失的是 _forget_stream 里被 StreamBroadcast 的 on_finish 回调触发的两行。要判断「流结束后 follower 还能不能重放」必须同时读 execute、_open_stream、_forget_stream 与 StreamBroadcast._produce 的 finally——四处耦合在一次调用链上，任何一处改动都可能让 88 行的 `existing.expires_at > now` 对已结束的流做出错误判断。",
+      "fix": "把 flight 的生命周期收进一个显式的状态迁移方法（如 entry.finish_stream()），让 execute 只依赖 Flight 自身的语义，而不是散落的赋值。"
+    },
+    {
+      "id": "ai-13",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "熔断与分布式单飞的默认数值在 settings 与 ai_resilience 各存一份（跨模块）",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:48-52",
+        "apps/api/src/better_resume/ai_resilience/breaker.py:33-37",
+        "apps/api/src/better_resume/settings/config.py:59-61",
+        "apps/api/src/better_resume/ai_resilience/distributed.py:93-95"
+      ],
+      "evidence": "settings/config.py:48-52\n48:     breaker_window: int = 50\n49:     breaker_min_calls: int = 10\n50:     breaker_failure_rate: float = 0.5\n51:     breaker_open_seconds: float = 30.0\n52:     breaker_half_open_permits: int = 10\n---\nai_resilience/breaker.py:33-37\n33:     window: int = 50\n34:     min_calls: int = 10\n35:     failure_rate: float = 0.5\n36:     open_seconds: float = 30.0\n37:     half_open_permits: int = 10\n---\nsettings/config.py:59-61\n59:     flight_lease_seconds: float = 30.0\n60:     flight_wait_seconds: float = 10.0\n61:     flight_poll_seconds: float = 0.1\n---\nai_resilience/distributed.py:93-95\n93:         lease_seconds: float = 30.0,\n94:         wait_seconds: float = 10.0,\n95:         poll_seconds: float = 0.1,",
+      "why": "同一组运维参数在 settings（ResilienceSettings）与 ai_resilience（BreakerPolicy / RedisFlight 的构造默认值）各有一份完全相同的默认值，两份都能单独生效：生产走 from_settings（resilient.py:52、main.py:113）用 settings 那份，而测试与脚本直接 BreakerPolicy(...)/RedisFlight(...)（tests/ai_resilience/test_breaker.py:22-24、tests/test_distributed_flight.py:30-31）用另一份。改默认值的人只改一处时，两条路径的韧性预算就不一样了，而差异只在真机行为上体现。跨模块：settings/config.py 与 ai_resilience/{breaker,distributed}.py。",
+      "fix": "默认值只留 settings 一处，BreakerPolicy/RedisFlight 的对应参数改成必填（或 from_settings 成为唯一构造入口），测试显式传值。"
+    },
+    {
+      "id": "ai-14",
+      "dim": "R1 删除测试",
+      "signals": [
+        "浅模块"
+      ],
+      "severity": "中",
+      "title": "UnimplementedAiResilience 是 M0 的占位实现，靠两个契约测试续命",
+      "where": [
+        "apps/api/src/better_resume/ai_resilience/placeholder.py:1-17",
+        "apps/api/tests/contracts/test_core_contracts.py:106-121"
+      ],
+      "evidence": "placeholder.py:1\n1:  \"\"\"Explicit M0 placeholder; single-flight/circuit-breaker land with M3.\"\"\"\n12:  _REASON = \"AiResilience (single-flight + breaker + limiter) is implemented in M3.\"\n15:  class UnimplementedAiResilience:\n16:     async def run(self, stage: Stage, key: str, fn: Callable[[], Awaitable[T]]) -> T:\n17:         raise NotImplementedError(_REASON)\n---\ntests/contracts/test_core_contracts.py:107\n107:     assert isinstance(UnimplementedAiResilience(), AiResilience)\n118:  async def test_ai_resilience_placeholder_fails_loudly() -> None:",
+      "why": "M3/M6 都已落地，这个类唯一的作用是抛 NotImplementedError，唯一的引用是 ai_resilience/__init__.py 的导出与两个契约测试（一个断言它是 AiResilience、一个断言它抛异常）——删掉它调用方不会变复杂，是典型的浅模块 + 死分支（AGENTS.md §开发规范：不留「默认关闭没人跑」的分支）。它还占着 __init__.py 的公开面，让读者以为存在第三种实现选择。",
+      "fix": "删掉 placeholder.py 及其导出与两条契约测试；契约形状用 ResilientAiResilience/DirectAiResilience 断言即可。"
+    }
+  ]
+}

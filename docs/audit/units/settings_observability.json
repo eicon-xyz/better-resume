@@ -1,0 +1,233 @@
+{
+  "unit": "settings_observability",
+  "title": "settings + observability + main（配置 + 日志/请求中间件 + lifespan 装配）",
+  "scope": [
+    "apps/api/src/better_resume/settings/**",
+    "apps/api/src/better_resume/observability/**",
+    "apps/api/src/better_resume/main.py"
+  ],
+  "one_sentence": "settings 是全进程唯一的配置出口（BR_ 前缀 + 嵌套 __ + 启动即校验），observability 是日志与请求标识的两层 ASGI 中间件，main.py 是把这两者与十几个子系统装配成 FastAPI app 的 lifespan；最重要的一件事是「配置错了要立刻响」——但拼错的变量名会被 extra=ignore 静默吞掉，而 main.py 用 object 抹掉韧性对象的类型后又把 DistributedAiResilience 塞进 app.state，让一个真实存在的接口缺口（缺 stats()）躲过了类型检查与测试。",
+  "knowledge": "「配置项的名字与默认值」这份知识：哪些 BR_* 变量存在、默认值是多少、哪些必须成对出现（哨兵）、哪些取值合法（log_level、bucket 名、adapter 名）。它在本模块与外部各存了一份：桶名清单同时是 settings 的字面量元组与 ai_resilience.Bucket 枚举；讯飞 WS 端点同时是 settings.media.xunfei_ws_url 与 media.adapters.xunfei_ast.DEFAULT_WS_URL；韧性数值同时是 ResilienceSettings 字段与 ai_resilience 的 dataclass 默认值。observability 独占的知识则是「日志格式与 request id 的绑定方式」，这份没有第二份（但第二个进程入口 worker 没被它覆盖）。",
+  "passes": [
+    {
+      "dim": "D1 一句话",
+      "note": "config.py:1-5 一句话说清 BR_ 前缀 / 嵌套 __ / 仓库根 .env 的加载规则，logging.py:1 一句话说清「JSON + request_id，不引 OpenTelemetry」，observability 与 settings 的边界没有重叠。"
+    },
+    {
+      "dim": "D2 设计两次",
+      "note": "有记录在案的取舍：config.py:85-87 解释为何宁可复制桶名字面量也不 import ai_resilience（会成环），config.py:104-110 解释 memory/redis 两种后端与「只共享花供应商钱的桶」的理由，config.py:56-58 解释分布式单飞默认关的代价取向。"
+    },
+    {
+      "dim": "W1 命名精确+一致",
+      "note": "configure_logging / RequestIdMiddleware / InstanceIdMiddleware / shared_bucket_names / degraded_cooldown_seconds / redis_socket_timeout_ms 都精确到能猜出单位与作用；全模块没有 data/time/count 式命名。"
+    },
+    {
+      "dim": "W2 消除特殊情况",
+      "note": "「哨兵两个变量必须成对」用 model_validator 在定义层排除（config.py:233-244），启动即报错并点名缺失变量；消费点因此只需 redis_client.py:50-51 的 uses_sentinel 一个判断，不需要各自判空。"
+    },
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "Settings/ResilienceSettings/RateLimitSettings 全是有名 BaseModel 字段，模块内没有 tuple/Pair/dict 式的多返回值。"
+    },
+    {
+      "dim": "D7 接口注释含实现细节",
+      "note": "middleware.py:18 的类注释只交代「纯 ASGI 是为了不启服务器也能测」这一接口级理由，没有把 header 回填步骤写进接口；logging.py:12-13 同理。"
+    },
+    {
+      "dim": "C3 性能改动测量过",
+      "note": "限流速率不是拍的：config.py:97-98 引 docs/perf/M6-capacity.md §2.7 的实测（单用户 answer ~0.2 rps、chat 流 ~0.5 rps，旧值 8/6 会放出 24 并发供应商流）；redis_socket_timeout_ms=50 也写明了「一次 blip 不能给每个请求叠延迟」的口径。"
+    },
+    {
+      "dim": "R1 删除测试",
+      "note": "只针对两个中间件：删掉 RequestIdMiddleware 会让每个调用点自己生成 request id、回填响应头、绑定 structlog contextvar——接口（add_middleware 一行）远小于实现，不是透传层（get_logger 不在此列，见 so-07）。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "so-01",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "桶名清单在 settings 与 ai_resilience 各一份，而注释声称的「pin 住」测试并不存在",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:85-88",
+        "apps/api/src/better_resume/ai_resilience/ratelimit.py:22-27"
+      ],
+      "evidence": "config.py:85-88\n85:  #: Bucket names as they appear in BR_RATE_LIMIT__SHARED_BUCKETS. Literals live here because\n86:  #: settings must not import ai_resilience (that would close an import cycle);\n87:  #: tests/ai_resilience/test_ratelimit_routing.py pins them against the Bucket enum.\n88:  _RATE_LIMIT_BUCKETS = (\"general\", \"read\", \"answer\", \"heavy\", \"ai_call\")\n---\nratelimit.py:22-27\n22:  class Bucket(StrEnum):\n23:     GENERAL = \"general\"\n24:     READ = \"read\"\n25:     ANSWER = \"answer\"\n26:     HEAVY = \"heavy\"\n27:     AI_CALL = \"ai_call\"",
+      "why": "同一份「系统里有哪几个限流桶」的知识写了两遍：settings 的字面量元组（校验 BR_RATE_LIMIT__SHARED_BUCKETS）与 ai_resilience 的 Bucket 枚举（限流器实际使用的键）。注释承诺 tests/ai_resilience/test_ratelimit_routing.py 会把两者 pin 在一起，但我通读该文件（78 行）并用 grep 全仓搜 _RATE_LIMIT_BUCKETS，只有 config.py 的两处引用——那条守卫不存在。代价：给 Bucket 加第六个桶时，配置里写它的名字会被 _known_buckets_only 判为「unknown bucket」而在启动时报错，而 CI 全绿；反之删一个桶则留下永远不会被命中的配置。",
+      "fix": "把桶名清单收敛到一处（例如由 ai_resilience 提供、settings 通过一个不产生环的窄接口引用，或把枚举生成给 settings），至少补上注释里承诺的那条对照测试。"
+    },
+    {
+      "id": "so-02",
+      "dim": "W6 符合周围约定",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "resilience.distributed 是个没人打开的开关，注释却说 kill drill 在跑它",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:56-58",
+        "compose.yaml:23-30"
+      ],
+      "evidence": "config.py:56-58\n56:     # M6: cross-instance single flight (Redis). Off by default; the kill\n57:     # drill exercises it, so it is not a dead branch.\n58:     distributed: bool = False\n---\ncompose.yaml:24-30（api 服务的环境变量片段；全仓没有任何 BR_RESILIENCE__*）\n24:   BR_LOCK_BACKEND: redis\n25:   BR_HOT_STATE_BACKEND: redis\n26:   # P7/D19: the vendor-cost buckets (ai_call/answer/heavy) share one quota through Redis.\n27:   # The answer rate stays tunable so the smoke can pin capacity to 1 for its sharing probe.\n28:   BR_RATE_LIMIT__BACKEND: ${BR_RATE_LIMIT__BACKEND:-redis}\n29:   BR_RATE_LIMIT__ANSWER_PER_SECOND: ${BR_RATE_LIMIT__ANSWER_PER_SECOND:-2.0}\n30:   BR_JOBS_ENABLED: \"1\"",
+      "why": "grep 全仓（含 compose.yaml、.env.example、scripts/、docs/）没有任何地方设置 BR_RESILIENCE__DISTRIBUTED=true，main.py:108 的 if settings.resilience.distributed 因此永远为假。AGENTS.md §开发规范明文要求「不留『默认关闭没人跑』的分支——要么真机跑通并设为默认，要么删掉」，并规定新变量要同步进 compose.yaml 与 .env.example（两处都没有）。代价不只是清洁度：这个分支里包着 DistributedAiResilience，而它缺 stats()（见 so-03），一个从不被执行、也从不在任何验收脚本里出现的分支正好把这个缺口藏到了今天。",
+      "fix": "要么在 compose/.env.example 与 kill_instance_drill.sh 里真的把它打开并让验收覆盖，要么删掉这条分支与 DistributedAiResilience 的装配（测试仍可直接构造它）。"
+    },
+    {
+      "id": "so-03",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "高",
+      "title": "main.py 用 `resilience: object` 抹掉类型，于是 DistributedAiResilience 缺 stats() 这件事没人发现",
+      "where": [
+        "apps/api/src/better_resume/main.py:106-118",
+        "apps/api/src/better_resume/http/resilience.py:19-22"
+      ],
+      "evidence": "main.py:106-118\n106:     metrics = ResilienceMetrics()\n107:     resilience: object = ResilientAiResilience(settings, metrics=metrics)\n108:     if settings.resilience.distributed:\n109:         resilience = DistributedAiResilience(\n118:     app.state.ai_resilience = resilience\n---\nhttp/resilience.py:19-22\n19:     from ..ai_resilience import ResilientAiResilience\n21:     service: ResilientAiResilience = request.app.state.ai_resilience\n22:     return service.stats()",
+      "why": "变量被声明成 object 之后，类型检查器再也无法验证第 109 行的包装对象是否具备第 128 行 aclose() 与 http/resilience.py:22 stats() 所需的方法；DistributedAiResilience 只有 run/aclose（ai_resilience/distributed.py:274-292），所以只要有人按 config.py:58 打开开关，GET /api/v1/resilience/stats 就会 AttributeError → 500。测试也没覆盖这个形状：tests/test_resilience_api.py 走默认 settings（distributed=False），只测了未包装的那条路径。这是典型的「本可在定义层排除、却留给运行时」——类型标注本可以立刻发现它。",
+      "fix": "把标注改成协议类型（AiResilience + stats/aclose，见 ai_resilience 单元 ai-04）并让 DistributedAiResilience 实现 stats()（委托给 inner）；同时补一条 distributed=true 的 /resilience/stats 用例。"
+    },
+    {
+      "id": "so-04",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "中",
+      "title": "五个异常处理器用 getattr 链反推 kind，而不是用异常自己的类型化字段",
+      "where": [
+        "apps/api/src/better_resume/main.py:204-221"
+      ],
+      "evidence": "204:  async def _gateway_timeout(request: Request, exc: Exception) -> JSONResponse:\n205:     kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n206:     return JSONResponse(status_code=504, content={\"detail\": str(exc), \"kind\": kind})\n209:  async def _service_unavailable(request: Request, exc: Exception) -> JSONResponse:\n211:     kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n219:  async def _bad_gateway(request: Request, exc: Exception) -> JSONResponse:\n220:     kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
+      "why": "AiResilienceError 子类（errors.py:24-57）已经带了类型化的 kind: FailureKind，但处理器把参数声明成 Exception 再用 getattr 探测，并且每个处理器给了不同的兜底字符串（timeout / unavailable / unknown）。结果是：错误响应里的 kind 可能来自三层猜测而不是定义；重构异常类（改名/去掉 kind）时 ruff 与 mypy 都不会响，只有线上响应体悄悄变了。request 参数在五个函数里都没用到，也说明这里的签名是照 Starlette 的形状抄的而不是按需要写的。",
+      "fix": "把 handler 的签名标注成具体异常类型（AiTimeout/AiUnavailable/...），直接用 exc.kind.value；未用的 request 改成 _request。"
+    },
+    {
+      "id": "so-05",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "Retry-After 硬编码 5 秒，与熔断的 open_seconds=30、舱壁的 queue_wait=2 各说各话",
+      "where": [
+        "apps/api/src/better_resume/main.py:209-216",
+        "apps/api/src/better_resume/ai_resilience/breaker.py:94-97"
+      ],
+      "evidence": "main.py:212-216\n212:     return JSONResponse(\n213:         status_code=503,\n214:         content={\"detail\": str(exc), \"kind\": kind},\n215:         headers={\"Retry-After\": \"5\"},\n---\nbreaker.py:94-97\n94:             raise AiUnavailable(\n95:                 f\"circuit open ({self._state.value}), retry in {self._open_remaining():.1f}s\",\n96:                 stage=self.stage,\n97:             )",
+      "why": "「多久以后可以重试」这份知识在熔断器里是算得出来的（_open_remaining()，还写进了 detail），在 HTTP 层却是一个与任何配置都无关的常量 5。客户端按 Retry-After 退避时，熔断场景下会被引导在 5 秒后重试一个还要 25 秒才半开的熔断（连续被拒），而舱壁场景下 5 秒又远大于 2 秒的排队预算。两个数各改各的，没有任何地方把它们绑在一起。",
+      "fix": "让 AiUnavailable/AiOverloaded 携带 retry_after（熔断填 open_remaining、舱壁填 queue_wait），处理器直接用 exc 上的值，拿不到时才退回常量。"
+    },
+    {
+      "id": "so-06",
+      "dim": "R5 时间分解",
+      "signals": [
+        "时间分解"
+      ],
+      "severity": "中",
+      "title": "lifespan 的装配顺序与中间件的添加顺序都是隐式契约，只写在注释里",
+      "where": [
+        "apps/api/src/better_resume/main.py:69-134",
+        "apps/api/src/better_resume/main.py:143-146"
+      ],
+      "evidence": "71:     engine = build_engine(settings.database_url)\n72:     app.state.db_engine = engine\n74:     app.state.session_store = build_session_store(settings)\n78:     app.state.job_queue = JobQueue(\n106:     metrics = ResilienceMetrics()\n107:     resilience: object = ResilientAiResilience(settings, metrics=metrics)\n118:     app.state.ai_resilience = resilience\n126:     finally:\n127:         await app.state.rate_limiter.aclose()\n128:         await app.state.ai_resilience.aclose()\n134:         await engine.dispose()\n---\n143:     # add_middleware prepends, so the request id stays the outermost layer (added last).\n144:     app.add_middleware(RateLimitMiddleware, settings=resolved)\n145:     app.add_middleware(InstanceIdMiddleware, instance_id=resolved.instance_id)\n146:     app.add_middleware(RequestIdMiddleware, header_name=resolved.request_id_header)",
+      "why": "这段代码的结构跟着「启动顺序」走：十几个子系统按创建先后平铺，关闭时再在 finally 里手工逆序抄一遍（127-134），谁依赖谁只体现在行号顺序上——插入一个新组件要同时决定它在两段里的位置，而「谁必须在谁之前」没有任何类型或结构承载。中间件那三行同理：正确性依赖「最后添加的最外层」这条框架细节，靠第 143 行注释维持，把三行按字母序重排就会让 RequestIdMiddleware 落到限流之后，日志里的 request id 与限流的拒绝响应不再同源。",
+      "fix": "把子系统收成一个具名装配对象/列表（每个组件自带 aclose），关闭时按注册逆序统一释放；中间件顺序写成显式的栈（或在测试里断言响应头由最外层写入）。"
+    },
+    {
+      "id": "so-07",
+      "dim": "R8 透传方法",
+      "signals": [
+        "透传方法",
+        "浅模块"
+      ],
+      "severity": "中",
+      "title": "observability.get_logger 只是 structlog.get_logger 的同签名转调，且全仓无人调用",
+      "where": [
+        "apps/api/src/better_resume/observability/logging.py:31-33",
+        "apps/api/src/better_resume/observability/__init__.py:4"
+      ],
+      "evidence": "logging.py:31-33\n31:  def get_logger(**initial_values: Any) -> structlog.stdlib.BoundLogger:\n32:     \"\"\"Return a bound logger carrying the initial context.\"\"\"\n33:     return structlog.get_logger(**initial_values)  # type: ignore[no-any-return]\n---\n__init__.py:4:  __all__ = [\"InstanceIdMiddleware\", \"RequestIdMiddleware\", \"configure_logging\", \"get_logger\"]",
+      "why": "函数体只有一次转调，连类型都是错的（logger_factory=PrintLoggerFactory + make_filtering_bound_logger 返回的不是 stdlib.BoundLogger，所以第 33 行必须 type: ignore）。grep 全仓 35 处 logger 创建，每一处都直接 structlog.get_logger(\"better_resume.xxx\")，没有一处用这个包装——删掉它，所有调用方零改动。它却出现在 __init__ 的 __all__ 里，让读者以为模块约定是「必须经 observability 拿 logger」。",
+      "fix": "删掉 get_logger 与它的导出（要保留约定就改成真的封装：统一 logger 名前缀并返回正确类型）。"
+    },
+    {
+      "id": "so-08",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复",
+        "多类症"
+      ],
+      "severity": "中",
+      "title": "两个中间件是同构的 25 行：纯 ASGI + 跳过非 http + 包 send + 改 response.start 的头",
+      "where": [
+        "apps/api/src/better_resume/observability/middleware.py:17-47",
+        "apps/api/src/better_resume/observability/middleware.py:50-74"
+      ],
+      "evidence": "RequestIdMiddleware\n25:         if scope[\"type\"] != \"http\":\n26:             await self.app(scope, receive, send)\n33:         async def send_with_request_id(message: Message) -> None:\n34:             if message[\"type\"] == \"http.response.start\":\n35:                 MutableHeaders(scope=message)[self.header_name] = request_id\n---\nInstanceIdMiddleware\n65:         if scope[\"type\"] != \"http\":\n66:             await self.app(scope, receive, send)\n69:         async def send_with_instance(message: Message) -> None:\n70:             if message[\"type\"] == \"http.response.start\":\n71:                 MutableHeaders(scope=message)[self.header_name] = self.instance_id",
+      "why": "两个类共享同一份知识：「怎么在一个 ASGI http 响应上盖一个头」（跳过 websocket、包一层 send、只在 response.start 上写）。区别只有取值来源（请求头或 uuid vs 构造参数）与 RequestId 多做的一件 contextvar 绑定。代价是这份 ASGI 细节（以及「非 http 要原样透传」这个容易漏的分支）有两份拷贝：以后加一个 header（比如 traceparent）会变成第三个类，而不是给一个通用盖章中间件加一行。",
+      "fix": "抽一个「在响应上加头」的通用 ASGI 中间件（取值函数由参数给），RequestIdMiddleware 只在它之上多做 contextvar 绑定与访问日志。"
+    },
+    {
+      "id": "so-09",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "中",
+      "title": "「.env.example 覆盖 Settings」的契约测试是单向的、且对嵌套块完全失效，配合 extra=ignore 让拼错的变量名静默生效",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:136-143",
+        "apps/api/tests/test_settings.py:69-80",
+        ".env.example:23-29"
+      ],
+      "evidence": "config.py:136-143\n136:     model_config = SettingsConfigDict(\n137:         env_prefix=\"BR_\",\n140:         extra=\"ignore\",\n142:         env_nested_delimiter=\"__\",\n---\ntest_settings.py:69-80\n69:  def test_env_example_covers_settings_fields() -> None:\n70:     \"\"\"Contract: every BR_* key in .env.example maps to a real Settings field.\"\"\"\n73:         line.split(\"=\", 1)[0].strip() for line in lines if \"=\" in line and not line.startswith(\"#\")\n80:         assert key[3:].lower() in Settings.model_fields, f\"{key} has no matching Settings field\"\n---\n.env.example:26-29（全部以 # 开头，因此被第 73 行过滤掉）\n26:  # BR_RATE_LIMIT__BACKEND=memory|redis\n27:  # BR_RATE_LIMIT__SHARED_BUCKETS=ai_call,answer,heavy",
+      "why": "这条「契约」只检查「.env.example 里的 key 是否是真实字段」，不检查反向（每个 Settings 字段有没有出现在样例里），而且第 73 行把所有 `#` 开头的行都跳过——而嵌套块（BR_RATE_LIMIT__*、BR_RESILIENCE__*、BR_MEDIA__*）在样例里全是注释。配合 extra=\"ignore\"，写错一个变量名（BR_RESILIENCE__BREAKER_WNDOW、BR_RATE_LIMI__BACKEND）既不报错也不被测试发现，进程带着默认值起来——这正是 skills/modules/settings/SKILL.md 警告的「写错前缀 = 配置静默失效」，但代码层没有任何东西拦住它。",
+      "fix": "把测试改成双向（遍历 Settings.model_fields 生成期望的 BR_ 名并允许嵌套展开），或对未知 BR_ 前缀的变量在启动时报警；样例里的嵌套块改成可被测试解析的形式。"
+    },
+    {
+      "id": "so-10",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "讯飞 WS 端点同时是 settings.media.xunfei_ws_url 与 media 的 DEFAULT_WS_URL（跨模块）",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:79",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:36"
+      ],
+      "evidence": "config.py:79\n79:     xunfei_ws_url: str = \"wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1\"\n---\nxunfei_ast.py:36（media 模块）\n36:  DEFAULT_WS_URL = \"wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1\"\n---\nmedia/factory.py:36\n36:         ws_url=media.xunfei_ws_url,",
+      "why": "同一个供应商端点常量写了两份，而装配点 media/factory.py:36 永远传 settings 那份（settings 的默认值就是同一个字符串），media 侧的 DEFAULT_WS_URL 只作为适配器直接构造时的兜底（xunfei_ast.py:70/140 的默认参数）。两份都是「真」的：直接构造适配器的测试/脚本用 media 那份，生产用 settings 那份——供应商换域名时只改一处，另一条路径会继续连旧端点。跨模块：settings/config.py ↔ media/adapters/xunfei_ast.py（装配点 media/factory.py）。",
+      "fix": "端点只在 settings 一处定义，适配器的 ws_url 改为必填（或默认 None 并在缺配置时抛 MediaConfigError，像凭据那样点名缺失变量）。"
+    },
+    {
+      "id": "so-11",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [],
+      "severity": "中",
+      "title": "configure_logging 只挂在 create_app 上，第二个进程入口（worker）靠 import main 的副作用才被配置",
+      "where": [
+        "apps/api/src/better_resume/observability/logging.py:12-13",
+        "apps/api/src/better_resume/main.py:137-139"
+      ],
+      "evidence": "logging.py:12-13\n12:  def configure_logging(level: str = \"INFO\") -> None:\n13:     \"\"\"Configure structlog/stdlib logging once per process.\"\"\"\n---\nmain.py:137-139\n137:  def create_app(settings: Settings | None = None) -> FastAPI:\n138:     resolved = settings or get_settings()\n139:     configure_logging(resolved.log_level)\n---\nworker.py:51（第二个入口，唯一的配置来源是一次 import 副作用）\n51:             __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\nworker.py:202-203（--health 路径在任何日志配置之前就退出）\n202:     if \"--health\" in sys.argv[1:]:\n203:         sys.exit(0 if await check_health(settings) else 1)",
+      "why": "「一次进程配一次日志」这件事被下沉到了 FastAPI 工厂里，于是同仓库的第二个进程入口必须自己想办法：worker 的普通路径靠 worker.py:51 那句 `__import__(\"better_resume.main\")`（为了拿 gateway builder）顺带执行了 main.py:224 的 app = create_app() 才被配置——文档里没有任何地方这么说；而 --health 路径在 worker.py:202 就退出，check_health 里的 worker_healthcheck_failed（worker.py:106）用的是 structlog 默认的 ConsoleRenderer，与 api 的 JSON 日志格式不一致，容器健康检查失败时收集端解析不了这条日志。",
+      "fix": "把 configure_logging 移到进程入口（api 与 worker 的 main() 各调一次，或放进一个共享的 bootstrap），而不是绑在 create_app 上。"
+    },
+    {
+      "id": "so-12",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "低",
+      "title": "shared_buckets 同一份集合知识以 CSV 字符串与 frozenset 两种表示并存",
+      "where": [
+        "apps/api/src/better_resume/settings/config.py:111-130"
+      ],
+      "evidence": "111:     shared_buckets: str = \"ai_call,answer,heavy\"\n117:     @field_validator(\"shared_buckets\")\n120:         names = [part.strip() for part in value.split(\",\") if part.strip()]\n126:         return \",\".join(names)\n128:     @property\n129:     def shared_bucket_names(self) -> frozenset[str]:\n130:         return frozenset(part.strip() for part in self.shared_buckets.split(\",\") if part.strip())",
+      "why": "校验器先把字符串拆开、strip 后再 join 回一个「规范」CSV，紧接着属性又把同一个字符串拆一遍（还重复了 strip/去空的分词逻辑），中间那趟归一化对消费者没有产生任何价值。消费者（ai_resilience/ratelimit_factory.py:39-51）只用 frozenset 形态；字符串形态的存在只是为了让 pydantic 能从环境变量读进来。两处分词逻辑意味着「重复项要不要去重、空格算不算」这类规则改一处就会不一致。",
+      "fix": "把分词收成一个私有 helper（或让校验器直接存成 frozenset 并自定义 env 解析），删掉重复的 split/strip。"
+    }
+  ]
+}

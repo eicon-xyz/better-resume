@@ -1,0 +1,228 @@
+{
+  "unit": "resume_parser_db",
+  "title": "resume_parser_db（PDF → 章节启发式解析 + SQLAlchemy 引擎/session + Alembic 迁移）",
+  "scope": [
+    "apps/api/src/better_resume/resume_parser/**",
+    "apps/api/src/better_resume/db/**",
+    "apps/api/migrations/**",
+    "apps/api/tests/resume_parser/**"
+  ],
+  "one_sentence": "resume_parser 用 pdfplumber 把简历 PDF 变成 TextBlock，再用关键词+排版打分切章节、抽联系方式/技能/项目（确定、无 LLM，D10），db/migrations 提供全项目唯一的 async 引擎、会话工厂与 Alembic 迁移链；最重要的三件事是解析失败要给稳定错误码、章节 key 要有一份规范词表、以及『谁开会话/谁提交』的事务归属要只有一个出口——后两件目前都有第二份拷贝。",
+  "knowledge": "独占知识：`%PDF-` 头与文本层判定、文本行归组参数（_LINE_TOLERANCE/_WORD_GAP）、章节关键词典与强调阈值（_HEADING_SIZE_RATIO）、简历字段正则集合、以及 postgresql+asyncpg 引擎与 Base.metadata 的注册。词表类知识在别处重复：会话状态字面量同时出现在 interview_engine（StrEnum + ORM CheckConstraint）与迁移 CHECK 里（issue 03），章节 key 的字符串字面量在 extractors/parser 手写（issue 08），scene 词表在 llm_gateway 与迁移种子里各一份（issue 04）。",
+  "passes": [
+    {
+      "dim": "W3 错误靠定义规避",
+      "note": "解析失败面是定义出来的：ResumeParseErrorCode = Literal[\"not_a_pdf\",\"text_layer_missing\",\"unreadable\"] + code 属性，HTTP 层统一映射 400 并回带 code（main.py:198-201），三个失败面各有用例（test_parser.py:70-82）。",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/errors.py:7-13"
+      ]
+    },
+    {
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "note": "『PDF 字节 → 有类型的行』整段关在 pdf.py：调用者只拿到 TextBlock 列表，pdfminer 的异常动物园被收敛成 unreadable 错误码（pdf.py:53-57），bytes 只在这一处出现。",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/pdf.py:30-59"
+      ]
+    },
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "多返回值都是具名字段的模型：ResumeContext/Contact/Project/Section，切分结果是 SectionSplit(header, sections)，没有 tuple/dict 解包。",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/sections.py:28-36"
+      ]
+    },
+    {
+      "dim": "W6 符合周围约定",
+      "note": "db 侧遵守 D02 与凭据纪律：只有 build_engine/build_session_factory/Base，engine 挂 app.state，迁移 URL 走 Settings（env.py:27-28 不落盘任何连接串），迁移漂移由 tests/test_migrations.py:13-21 的 alembic check 兜底。",
+      "where": [
+        "apps/api/src/better_resume/db/session.py:21-26",
+        "apps/api/migrations/env.py:27-28"
+      ]
+    },
+    {
+      "dim": "R3 浅模块",
+      "note": "公开面里 pdf（字节→行）、sections（行→章节）、extractors（文本→字段）各自带一页自己的知识且可单独测（test_sections.py 不碰 PDF、test_extractors.py 不碰章节切分）；没有只做转发的类。",
+      "where": [
+        "apps/api/tests/resume_parser/test_sections.py:1-13"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "resume_parser_db-01",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "AGENTS.md 宣称的『全项目统一 get_session 依赖』零调用点，10 处 HTTP 路由各自开会话/自己提交",
+      "where": [
+        "apps/api/src/better_resume/db/session.py:29-33",
+        "apps/api/src/better_resume/http/chat.py:81-88",
+        "apps/api/src/better_resume/http/scenes.py:57-64"
+      ],
+      "evidence": "# apps/api/src/better_resume/db/session.py:29-33\n29:  async def get_session(request: Request) -> AsyncIterator[AsyncSession]:\n30:     \"\"\"Project-wide session dependency; the factory itself lives on app.state.\"\"\"\n31:     factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory\n32:     async with factory() as session:\n33:         yield session\n\n# apps/api/src/better_resume/http/chat.py:81-88\n81:     async with request.app.state.session_factory() as db:\n82:         conversation = await SqlConversationStore(db).create(\n83:             kind=\"chat\",\n84:             user_id=principal.user_id,\n85:             title=payload.title or \"新会话\",\n86:             model_ref=payload.model_ref,\n87:         )\n88:         await db.commit()\n\n# apps/api/src/better_resume/http/scenes.py:57-64\n57:     async with request.app.state.session_factory() as session:\n58:         try:\n59:             await SceneBindingStore(session).upsert(resolved, payload.adapter, payload.target_ref)\n60:         except SceneBindingError as exc:\n61:             raise HTTPException(\n62:                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)\n63:             ) from exc\n64:         await session.commit()",
+      "why": "AGENTS.md 技术栈一节写着『async_sessionmaker 挂 lifespan，全项目统一 get_session 依赖』，但 `Depends(get_session)` 全仓库 0 处匹配，get_session 只有定义与 db/__init__ 的 re-export；HTTP 层 10 处（http/chat.py:81/97/110/124/137、scenes.py:57、interview.py:101/119/223/463）各自 async with request.app.state.session_factory() 再自己 commit。『谁开、谁提交、谁回滚』这条规则因此没有单一出口：新端点作者要么照抄，要么按文档用 get_session——而它的 docstring 不提事务归属，只有 conversation/store.py:28 与 interview_engine/flow_store.py:26 那句『callers own the transaction』散落在别处。跨模块：http/ 与 interview_engine/。",
+      "fix": "让 get_session 成为唯一入口（把事务归属写进它的 docstring），或删掉它并在 db/ 里明确写出开会话的约定；不要让文档描述一个没有调用者的缝。"
+    },
+    {
+      "id": "resume_parser_db-02",
+      "dim": "W2 消除特殊情况",
+      "signals": [],
+      "severity": "高",
+      "title": "『没有标题』的退化输入有三套回退：sections 已定义好诚实兜底，parse() 却绕过它再加两个 or full_text",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/parser.py:27-33",
+        "apps/api/src/better_resume/resume_parser/sections.py:91-98"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/parser.py:27-33\n27:         split = split_document(blocks)\n28:         full_text = \"\\n\".join(block.text for block in blocks)\n29:         header = split.header or full_text\n30:  \n31:         contact = extract_contact(header)\n32:         skills = extract_skills(_section_text(split.sections, \"skills\") or full_text)\n33:         projects = extract_projects(split.sections)\n\n# apps/api/src/better_resume/resume_parser/sections.py:91-98\n91:  def split_sections(blocks: Sequence[TextBlock]) -> list[DetectedSection]:\n92:     \"\"\"Sections if any heading was found, otherwise one honest catch-all section.\"\"\"\n93:     split = split_document(blocks)\n94:     if split.sections:\n95:         return split.sections\n96:  \n97:     everything = \"\\n\".join(block.text.strip() for block in blocks if block.text.strip())\n98:     return [DetectedSection(key=\"other\", title=\"其他\", text=everything)] if everything else []",
+      "why": "sections.split_sections 已经把『一个标题都没检测到』定义成一种形状：全文装进唯一一个 key=\"other\" 的段（sections.py:91-98，还有 test_sections.py:60-70 钉住）。但 parse() 用的是 split_document，然后在解析层又补两次 `or full_text`：header 退回全文（→ contact 从全文第一行猜名字）、skills 从全文抽（→ 工作经历里的技术名词也会被当成技能）。同一个输入于是有三套行为，而且 warnings 照样写 no_sections_detected——数据与告警互相矛盾；每加一个抽取器都要记得再加一次 or，改标题启发式的人必须同时看懂这三处。",
+      "fix": "让 parse() 走 split_sections（或在 split_document 里就定义好『无标题』这一种形状），抽取器只吃一个确定的 header/sections 形状，删除调用层的 or 兜底。"
+    },
+    {
+      "id": "resume_parser_db-03",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "会话状态词表有三份拷贝（StrEnum + ORM CheckConstraint + 迁移 CHECK），而 alembic check 看不到 CHECK 文本",
+      "where": [
+        "apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54",
+        "apps/api/src/better_resume/interview_engine/orm.py:36-41",
+        "apps/api/src/better_resume/interview_engine/session_fsm.py:10-16"
+      ],
+      "evidence": "# apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54\n49:         sa.CheckConstraint(\n50:             \"status IN (\"\n51:             \"'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'\"\n52:             \")\",\n53:             name=\"ck_interview_sessions_status\",\n54:         ),\n\n# apps/api/src/better_resume/interview_engine/orm.py:36-41\n36:         CheckConstraint(\n37:             \"status IN (\"\n38:             \"'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'\"\n39:             \")\",\n40:             name=\"ck_interview_sessions_status\",\n41:         ),\n\n# apps/api/src/better_resume/interview_engine/session_fsm.py:10-16\n10:  class SessionStatus(StrEnum):\n11:     DRAFT = \"draft\"\n12:     RESUME_UPLOADING = \"resume_uploading\"\n13:     READY = \"ready\"\n14:     IN_PROGRESS = \"in_progress\"\n15:     FINISHED = \"finished\"\n16:     ABANDONED = \"abandoned\"",
+      "why": "SessionStatus 的 6 个值是权威词表，但同一串字面量又抄进 ORM 的 CheckConstraint（orm.py:36-41）和迁移的 CHECK（c28d77ba4f32:49-54）。alembic env.py:43 只开了 compare_type=True，`alembic check` 不会比对 CHECK 文本，所以给状态机加一个值（如 paused）而忘了改另外两份时，CI 全绿、本地全绿，直到往库里写这个新状态才 IntegrityError。同一模式还出现在 ck_conversation_messages_role / ck_conversations_kind 与 conversation/models.py:13 的 SessionKind。跨模块：interview_engine/、conversation/。",
+      "fix": "从一个来源生成 CHECK 文本（例如用 SessionStatus 值拼出约束字符串，迁移与 ORM 共用同一常量），或加一条断言三处一致的测试。"
+    },
+    {
+      "id": "resume_parser_db-04",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "scene 词表的第三份拷贝：默认绑定只存在于迁移种子里，且没有一条断言把枚举↔种子↔测试清单钉在一起",
+      "where": [
+        "apps/api/src/better_resume/llm_gateway/scenes.py:13-25",
+        "apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23-29",
+        "apps/api/tests/llm_gateway/test_scene_binding_store.py:46-49"
+      ],
+      "evidence": "# apps/api/src/better_resume/llm_gateway/scenes.py:13-25\n13:  class LlmScene(StrEnum):\n14:     \"\"\"One AI step of the product. Inputs/outputs are documented per scene below.\"\"\"\n15:  \n16:     #: Free-form conversation: history in, streamed text out (no schema).\n17:     CHAT = \"chat\"\n18:     #: Resume context in, QuestionBatch(resume_score, questions[]) out.\n19:     QUESTION_EXTRACTION = \"question_extraction\"\n20:     #: Question + focus points + answer in, ScoreResult out.\n21:     ANSWER_EVALUATION = \"answer_evaluation\"\n22:     #: Question + answer + missing points in, FollowUpQuestion out.\n23:     FOLLOW_UP = \"follow_up\"\n24:     #: Frozen numbers in, ReportSummary out (narrative only).\n25:     REPORT_SUMMARY = \"report_summary\"\n\n# apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23-29\n23:  DEFAULT_BINDINGS = [\n24:     (\"chat\", \"openai_compat\", \"deepseek-flash\"),\n25:     (\"question_extraction\", \"openai_compat\", \"deepseek-flash\"),\n26:     (\"answer_evaluation\", \"openai_compat\", \"deepseek-flash\"),\n27:     (\"follow_up\", \"openai_compat\", \"deepseek-flash\"),\n28:     (\"report_summary\", \"openai_compat\", \"deepseek-flash\"),\n29:  ]\n\n# apps/api/tests/llm_gateway/test_scene_binding_store.py:46-49\n46:  def test_scene_enum_is_the_business_vocabulary() -> None:\n47:     assert {scene.value for scene in LlmScene} == EXPECTED_SCENES\n48:     assert scene_label(LlmScene.QUESTION_EXTRACTION) == \"出题\"\n49:     assert scene_label(LlmScene.REPORT_SUMMARY) == \"报告总结\"",
+      "why": "每个 scene 必须有一行绑定，否则 resolver 会在运行时抛 LlmConfigError（resolver.py:168-172 提示去 PUT /api/v1/scenes/<scene>）；而默认那 5 行只活在迁移的 DEFAULT_BINDINGS 里，词表本身在 scenes.py 的枚举，测试又把它抄成第三份 EXPECTED_SCENES。加一个 scene 要同时改枚举、迁移种子、测试清单，且 alembic check 管不到业务清单——漏了迁移这一处就是上线后 502/配置错误，漏了测试也无人报警。",
+      "fix": "让 DEFAULT_BINDINGS 从 LlmScene 派生（或加一条『枚举 == 种子 == 测试清单』的一致性测试），测试改为从枚举派生期望。"
+    },
+    {
+      "id": "resume_parser_db-05",
+      "dim": "R14 实现文档污染接口",
+      "signals": [
+        "实现文档污染接口"
+      ],
+      "severity": "中",
+      "title": "ResumeParser 缝的接口注释写死了当前实现路线，类名 Hybrid 也没有对应物",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/protocols.py:10-14",
+        "apps/api/src/better_resume/resume_parser/parser.py:16-17"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/protocols.py:10-14\n10:  @runtime_checkable\n11:  class ResumeParser(Protocol):\n12:     def parse(self, pdf: bytes) -> ResumeContext:\n13:         \"\"\"pdfplumber text extraction -> section heuristics -> ResumeContext.\"\"\"\n14:         ...\n\n# apps/api/src/better_resume/resume_parser/parser.py:16-17\n16:  class HybridResumeParser:\n17:     \"\"\"Deterministic parser: no LLM, no network, same bytes in -> same context out.\"\"\"",
+      "why": "缝存在的意义是 parse(pdf) -> ResumeContext 这一条契约（tests/contracts/test_domain_contracts.py:90 还专门断言 isinstance(HybridResumeParser(), ResumeParser)），但接口注释把调用者不需要知道的实现路线（pdfplumber 文本提取 → 章节启发式）当成交付说明写进去：换一个实现（DOCX、OCR、LLM 兜底）的人会以为必须保留这条管线，也更难判断哪些行为是契约、哪些只是现状。类名 Hybrid 更是指向一个已不存在的『混合』设计（docs 里只有 m2/T1-resume-parser.md:22 一提），维护者无法从名字判断它和别的 parser 差在哪。",
+      "fix": "接口注释只写前置条件/错误码/不变量（确定性、无 LLM、失败抛 ResumeParseError(code)），把实现路线留在类注释里，并给类换个说清差异的名字。"
+    },
+    {
+      "id": "resume_parser_db-06",
+      "dim": "R12 通用专用混合体",
+      "signals": [
+        "通用专用混合体"
+      ],
+      "severity": "中",
+      "title": "章节启发式（与来源无关的文本知识）直接吃 PDF 排版类型 TextBlock",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/sections.py:12",
+        "apps/api/src/better_resume/resume_parser/sections.py:39-43",
+        "apps/api/src/better_resume/resume_parser/pdf.py:20-27"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/sections.py:12-12\n12:  from .pdf import TextBlock\n\n# apps/api/src/better_resume/resume_parser/sections.py:39-43\n39:  def body_size(blocks: Sequence[TextBlock]) -> float:\n40:     \"\"\"Baseline = smallest size among prose-length lines (short display text is ignored).\"\"\"\n41:     prose = [block.size for block in blocks if len(block.text.strip()) > 12]\n42:     candidates = prose or [block.size for block in blocks]\n43:     return min(candidates) if candidates else 0.0\n\n# apps/api/src/better_resume/resume_parser/pdf.py:20-27\n20:  class TextBlock(BaseModel):\n21:     \"\"\"One visual line with the typographic hints the heuristics rely on.\"\"\"\n22:  \n23:     text: str\n24:     size: float\n25:     bold: bool\n26:     top: float\n27:     page: int",
+      "why": "关键词典 + 强调判据（bold 或字号 ≥ 基线×1.12）是与来源无关的解析知识，但它依赖 TextBlock 的 size/bold，外加只用于排序的 top/page——这三个字段都是 PDF 字体与坐标的产物。要单测启发式必须伪造 PDF 块（test_sections.py:9-12 的 block() 就是为此存在），要接第二种来源（DOCX/纯文本/OCR）就得伪造 pdf 模块的类型；反过来 pdf.py 也不知道自己供的字段对章节检测意味着什么。换源或调启发式时，耦合都在这一个类型上爆开。",
+      "fix": "在中间定义一层『排版行』（text / emphasis 程度 / 阅读顺序），pdf.py 负责映射，sections.py 只依赖它；top/page 只作为排序键保留在提取层。"
+    },
+    {
+      "id": "resume_parser_db-07",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "阅读顺序算两遍：extract_blocks 与 split_document 各排一次 (page, top)",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/pdf.py:59",
+        "apps/api/src/better_resume/resume_parser/sections.py:67"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/pdf.py:56-59\n56:         logger.warning(\"resume_pdf_unreadable\", error=str(exc))\n57:         raise ResumeParseError(\"unreadable\", f\"PDF 无法解析：{exc}\") from exc\n58:  \n59:     return sorted(blocks, key=lambda block: (block.page, block.top))\n\n# apps/api/src/better_resume/resume_parser/sections.py:65-68\n65:  def split_document(blocks: Sequence[TextBlock]) -> SectionSplit:\n66:     \"\"\"Leading content before the first heading is header material (contact, name).\"\"\"\n67:     ordered = sorted(blocks, key=lambda block: (block.page, block.top))\n68:     baseline = body_size(ordered)",
+      "why": "『块必须按阅读顺序』是同一条不变量，却在两处各写一份 sorted(key=lambda block: (block.page, block.top))。header 与正文的切分完全依赖这个顺序：谁改了一处的口径（加 doctop、改成列优先）而漏了另一处，行为就静默分叉，而现有测试都是直接喂有序块，覆盖不到『pdf 排了但 sections 没排』的组合。",
+      "fix": "排序只留在 extract_blocks（提取即有序）并在注释里承诺，sections 按序消费，不再自己排。"
+    },
+    {
+      "id": "resume_parser_db-08",
+      "dim": "W1 命名精确+一致",
+      "signals": [],
+      "severity": "中",
+      "title": "规范章节 key 只有一份 dict 字面量，对外契约却是裸 str，比较字面量散在三个函数里",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/models.py:15-20",
+        "apps/api/src/better_resume/resume_parser/sections.py:15-22",
+        "apps/api/src/better_resume/resume_parser/extractors.py:72-74"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/models.py:15-20\n15:  class Section(BaseModel):\n16:     \"\"\"One resume section. `key` is the canonical category (education/projects/...) or \"other\".\"\"\"\n17:  \n18:     title: str\n19:     key: str = \"other\"\n20:     bullets: list[str] = Field(default_factory=list)\n\n# apps/api/src/better_resume/resume_parser/sections.py:15-22\n15:  SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {\n16:     \"education\": (\"教育\", \"学历\", \"education\", \"academic\"),\n17:     \"experience\": (\"工作经历\", \"工作经验\", \"实习经历\", \"实习\", \"experience\", \"employment\"),\n18:     \"projects\": (\"项目\", \"project\"),\n19:     \"skills\": (\"技能\", \"擅长的技术\", \"skills\", \"technical skills\"),\n20:     \"summary\": (\"自我评价\", \"个人简介\", \"个人总结\", \"summary\", \"about me\", \"profile\"),\n21:     \"awards\": (\"获奖\", \"荣誉\", \"awards\", \"honors\"),\n22:  }\n\n# apps/api/src/better_resume/resume_parser/extractors.py:72-74\n72:     for section in sections:\n73:         if section.key != \"projects\":\n74:             continue",
+      "why": "唯一权威词表是 SECTION_KEYWORDS 的 dict key，但对外模型把它降级成 `key: str = \"other\"`：extractors.py:73 写 section.key != \"projects\"、parser.py:32 写 _section_text(..., \"skills\")、parser.py:61 写 section.key == key。拼错（project / 技能）不会报错，只会静默抽不到东西；下游将来要按 key 筛选或统计时，拿到的是无类型保证的自由文本，词表本身也没有名字可引用。",
+      "fix": "把词表提成 SectionKey（Literal/StrEnum）并让 Section.key 与 SECTION_KEYWORDS 由它派生，字面量比较改为枚举成员。"
+    },
+    {
+      "id": "resume_parser_db-09",
+      "dim": "S1 共享同一份知识",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "DetectedSection 与 Section 是同一个领域概念的两套模型，中间靠 _to_section 转换",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/sections.py:28-31",
+        "apps/api/src/better_resume/resume_parser/models.py:15-25",
+        "apps/api/src/better_resume/resume_parser/parser.py:64-70"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/sections.py:28-31\n28:  class DetectedSection(BaseModel):\n29:     key: str\n30:     title: str\n31:     text: str\n\n# apps/api/src/better_resume/resume_parser/models.py:15-25\n15:  class Section(BaseModel):\n16:     \"\"\"One resume section. `key` is the canonical category (education/projects/...) or \"other\".\"\"\"\n17:  \n18:     title: str\n19:     key: str = \"other\"\n20:     bullets: list[str] = Field(default_factory=list)\n21:  \n22:     @property\n23:     def text(self) -> str:\n24:         \"\"\"Bullets joined back into text (used by previews and prompt building).\"\"\"\n25:         return \"\\n\".join(self.bullets)\n\n# apps/api/src/better_resume/resume_parser/parser.py:64-70\n64:  def _to_section(section: DetectedSection) -> Section:\n65:     bullets = [line.strip(\" -•·*\\t\") for line in section.text.splitlines() if line.strip()]\n66:     return Section(\n67:         title=section.title,\n68:         key=section.key,\n69:         bullets=[bullet for bullet in bullets if bullet],\n70:     )",
+      "why": "两者表达的都是『一节：标题 + 规范 key + 若干行文本』，差别只是内部存一段 text、对外存 bullets；于是包内抽取器吃 DetectedSection（extractors.py:69-92 自己按行拆），包外吃 Section（prompts.py:50-54 按 bullets 渲染），同一份知识要维护两个模型 + 一个转换函数 + Section.text 的反向拼接（models.py:22-25）。调用者还要先知道 split_sections 返回的是哪一个 Section。",
+      "fix": "只保留一个模型（内部切分结果不进 __init__ 的公开面），或让 DetectedSection 只是 split 的局部返回类型、不对外导出。"
+    },
+    {
+      "id": "resume_parser_db-10",
+      "dim": "C2 注释在代码附近且同步",
+      "signals": [],
+      "severity": "中",
+      "title": "两处注释都在宣称不存在的消费者：Section.text 的『previews and prompt building』与 warnings 的『so the UI can warn』",
+      "where": [
+        "apps/api/src/better_resume/resume_parser/models.py:22-25",
+        "apps/api/src/better_resume/resume_parser/models.py:39-40"
+      ],
+      "evidence": "# apps/api/src/better_resume/resume_parser/models.py:22-25\n22:     @property\n23:     def text(self) -> str:\n24:         \"\"\"Bullets joined back into text (used by previews and prompt building).\"\"\"\n25:         return \"\\n\".join(self.bullets)\n\n# apps/api/src/better_resume/resume_parser/models.py:39-40\n39:     # Non-fatal observations (no sections detected, no contact found, ...) so the UI can warn.\n40:     warnings: list[str] = Field(default_factory=list)\n\n# apps/api/src/better_resume/interview_engine/prompts.py:50-54\n50:     for section in context.sections:\n51:         if not section.bullets:\n52:             continue\n53:         lines.append(f\"[{section.title}]\")\n54:         lines.extend(f\"- {bullet}\" for bullet in section.bullets[:12])",
+      "why": "Section.text 的注释说它被 previews 与 prompt building 使用，但唯一的提示词渲染路径 prompts.render_context 用的是 section.bullets（prompts.py:50-54），没有任何 preview 读它；warnings 的注释说『so the UI can warn』，而 warnings 既不在 openapi.json 里（全文件 grep 无此字段），web 侧也没有引用——三个软降级信号（no_sections_detected / no_contact_found / no_skills_found）被产出、写进日志，然后丢掉。维护者读注释会以为这两条通道是活的，可能在此基础上继续加字段。",
+      "fix": "要么把 warnings 返回给上传接口、把 Section.text 接给真正的预览，要么连同注释一起删掉这两个没有消费者的面。"
+    },
+    {
+      "id": "resume_parser_db-11",
+      "dim": "W1 命名精确+一致",
+      "signals": [],
+      "severity": "中",
+      "title": "测试夹具的 bold=True 对中文并不是加粗，导致 bold 分支在中文路径上从未被验证",
+      "where": [
+        "apps/api/tests/resume_parser/conftest.py:19-31",
+        "apps/api/src/better_resume/resume_parser/sections.py:61"
+      ],
+      "evidence": "# apps/api/tests/resume_parser/conftest.py:19-31\n19:     \"\"\"Render lines top-down; bold=True uses a bold font (CJK uses a size bump instead).\"\"\"\n20:     with contextlib.suppress(KeyError):  # already registered in this process\n21:         pdfmetrics.registerFont(UnicodeCIDFont(_CJK_FONT))\n22:  \n23:     buffer = io.BytesIO()\n24:     pdf = canvas.Canvas(buffer)\n25:     y = page_top\n26:     for text, size, bold in lines:\n27:         is_cjk = any(\"\\u4e00\" <= char <= \"\\u9fff\" for char in text)\n28:         if is_cjk:\n29:             pdf.setFont(_CJK_FONT, size + (1 if bold else 0))\n30:         else:\n31:             pdf.setFont(\"Helvetica-Bold\" if bold else \"Helvetica\", size)\n\n# apps/api/src/better_resume/resume_parser/sections.py:61-61\n61:     emphasized = block.bold or (baseline > 0 and block.size >= baseline * _HEADING_SIZE_RATIO)",
+      "why": "build_pdf 的参数叫 bold，但 CJK 分支用字号 +1 顶替粗体（STSong-Light 没有粗体），于是 is_heading 的 block.bold 那一支在中文用例里永远为假：test_sections.py:18/20/22 那些 bold=True 实际只在测字号路径，而真实中文简历若『加粗但字号相同』，判定完全依赖 pdfplumber 的 fontname 是否含 bold——这条分支没有任何中文样本。写用例的人从参数名得到的是错的模型，回归也测不到它。",
+      "fix": "让 CJK 也能真出粗体（换可加粗字体或在夹具里用描边模拟），或把参数改名为 emphasis 并为 bold 分支补一个真实样本。"
+    }
+  ]
+}
