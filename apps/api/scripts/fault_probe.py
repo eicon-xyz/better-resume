@@ -3,7 +3,7 @@
 Everything here talks to the stack through nginx (never straight into a container) and injects
 faults with docker, so the evidence is "what a client saw while Redis/worker were broken".
 
-Run it through \`scripts/fault_injection_drill.sh\`, or by hand:
+Run it through `scripts/fault_injection_drill.sh`, or by hand:
 
     uv run python -m scripts.fault_probe soak --duration 1200
     uv run python -m scripts.fault_probe fault --scenario redis-pause --seconds 20
