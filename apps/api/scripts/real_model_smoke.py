@@ -74,7 +74,7 @@ def ensure_broken_model() -> bool:
 
 
 def parse_meta(line: str) -> dict[str, Any] | None:
-    """\`event: meta\` + \`data: {...}\` is how the api exposes the vendor's model and usage."""
+    """`event: meta` + `data: {...}` is how the api exposes the vendor's model and usage."""
     if not line.startswith("data:"):
         return None
     try:
