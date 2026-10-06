@@ -1,0 +1,230 @@
+{
+  "unit": "identity_jobs",
+  "title": "identity_jobs（Cookie 会话 / WS 票据 / redis_client 单一缝 + Redis Stream 队列与 worker）",
+  "scope": [
+    "apps/api/src/better_resume/identity/**",
+    "apps/api/src/better_resume/jobs/**",
+    "apps/api/src/better_resume/worker.py",
+    "apps/api/src/better_resume/redis_client.py"
+  ],
+  "one_sentence": "identity 用 Redis 存 30 天滑动的 HttpOnly Cookie 会话与一次性 WS 票据（D11，后端不可用要与『没登录』分得清），jobs+worker 用一条 Redis Stream 跑全项目唯一的后台任务（报告叙述）；最重要的三件事是认证失效的语义（401 vs 503）、队列的幂等/重试/接管、以及 redis_client 这条横跨 8 个调用点的『连哪个节点』的缝——缝收住了端点，却没收回超时策略与哨兵判据。",
+  "knowledge": "独占知识：`session:<id>` 与 `br:ws_ticket:<ticket>` 两个键格式及 TTL 语义、WS 票据的一次性取删（Redis 6.0 无 GETDEL，用 Lua 替代）、`br:jobs` 流的消费组/ack/attempts/死信/状态键约定、以及 `BR_REDIS_SENTINELS`+`BR_REDIS_MASTER_NAME` → 主节点的解析。已确认的重复：哨兵成对判据在 settings/config.py 有第二份（issue 01），队列的 stream/group 键名在 scripts/fault_probe.py 有第二份（issue 09），运行时装配清单在 main.py 有第二份（issue 03）。",
+  "passes": [
+    {
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "note": "redis_client 确实把『连哪个节点』下沉了：全 src 里 `from_url` 只剩 redis_client.py:68 一处，8 个调用点全部走 `redis_client(...)`；JobQueue.blocking_block_ms 把『socket 超时必须大于阻塞窗口』这条矛盾收进队列内部，调用者只给业务想要的 block_ms。",
+      "where": [
+        "apps/api/src/better_resume/redis_client.py:58-75",
+        "apps/api/src/better_resume/jobs/queue.py:105-108"
+      ]
+    },
+    {
+      "dim": "W6 符合周围约定",
+      "note": "AGENTS.md 的 P26 被执行了：worker 循环里心跳写与 run_once 同在兜底 try 内，Redis 抖动只累加 failures 并退避，不 exit（worker.py:154-178）。",
+      "where": [
+        "apps/api/src/better_resume/worker.py:154-178"
+      ]
+    },
+    {
+      "dim": "W3 错误靠定义规避",
+      "note": "队列对 Redis 6.0 下限的处理是定义式的：reclaim_stale 用 XPENDING+XCLAIM 并把『XAUTOCLAIM 是 6.2+』的理由写在注释里，而不是让每个调用者去试；会话 store 一侧也把 RedisError 收敛成 SessionBackendUnavailable（→ 503 + Retry-After）。",
+      "where": [
+        "apps/api/src/better_resume/jobs/queue.py:133-143"
+      ]
+    },
+    {
+      "dim": "W2 消除特殊情况",
+      "note": "一次性票据的『取-删』竞态靠原子 Lua 脚本、内存实现靠 pop-before-check 消除，调用者不需要自己加锁或判空（tickets.py:14-20、50-57）。",
+      "where": [
+        "apps/api/src/better_resume/identity/tickets.py:14-20"
+      ]
+    },
+    {
+      "dim": "D1 一句话",
+      "note": "identity（认证状态与票据）、jobs（队列语义）、redis_client（端点缝）三者都能一句话说清给谁用、为什么存在；identity/__init__.py:21-42 的 __all__ 与模块 docstring 一致。",
+      "where": [
+        "apps/api/src/better_resume/identity/__init__.py:21-42"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "identity_jobs-01",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露",
+        "重复"
+      ],
+      "severity": "高",
+      "title": "哨兵配置的『成对且可用』判据有两份且不等价：BR_REDIS_SENTINELS=\",\" 能过启动校验，运行时却静默退回单节点",
+      "where": [
+        "apps/api/src/better_resume/redis_client.py:38-51",
+        "apps/api/src/better_resume/settings/config.py:233-244"
+      ],
+      "evidence": "# apps/api/src/better_resume/redis_client.py:40-47\n40:         sentinels = tuple(\n41:             entry.strip() for entry in settings.redis_sentinels.split(\",\") if entry.strip()\n42:         )\n43:         return cls(\n44:             url=settings.redis_url,\n45:             sentinels=sentinels,\n46:             master_name=settings.redis_master_name.strip(),\n47:         )\n\n# apps/api/src/better_resume/settings/config.py:234-238\n234:     def _validate_sentinel_pair(self) -> Settings:\n235:         \"\"\"Fail loudly instead of silently degrading to a single URL nobody can fail over.\"\"\"\n236:         has_sentinels = bool(self.redis_sentinels.strip())\n237:         has_master_name = bool(self.redis_master_name.strip())\n238:         if has_sentinels != has_master_name:",
+      "why": "缝的注释自称 from_settings 是『唯一读 BR_REDIS_SENTINELS / BR_REDIS_MASTER_NAME 的地方』，但 Settings._validate_sentinel_pair 也读这两个字段，而且两条判据不等价：校验器只看 `bool(self.redis_sentinels.strip())`，运行时看的是过滤空项之后的 `bool(self.sentinels and self.master_name)`（redis_client.py:49-51）。于是一个只写了分隔符的值（BR_REDIS_SENTINELS=\",\" 或 \" , \"）能通过『必须成对』的启动校验，from_settings 却产出空 tuple → uses_sentinel=False → redis_client 走 from_url(redis_url) 单节点，无异常、无日志。这正是校验器 docstring 起誓要防的『silently degrading to a single URL nobody can fail over』：多副本部署里主挂了不会切换，故障只在演练时才被发现；日后改判据的人也得同时想到两处。",
+      "fix": "把『成对且至少一个有效地址』的判据收进 RedisTopology（from_settings 里校验并抛错），Settings 的 validator 直接调用它，删掉第二份 bool(...strip()) 判断。"
+    },
+    {
+      "id": "identity_jobs-02",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "高",
+      "title": "WS 票据的 Redis store 没有错误类型：握手时驱动异常直接穿过，与会话 store 的 503 语义不对称",
+      "where": [
+        "apps/api/src/better_resume/identity/tickets.py:63-85",
+        "apps/api/src/better_resume/identity/redis_store.py:33-38",
+        "apps/api/src/better_resume/http/media.py:131"
+      ],
+      "evidence": "# apps/api/src/better_resume/identity/tickets.py:78-85\n78:     async def consume(self, ticket: str) -> Principal | None:\n79:         raw = await self._client.eval(_CONSUME_LUA, 1, self._key(ticket))\n80:         if not raw:\n81:             return None\n82:         try:\n83:             return Principal.model_validate(json.loads(raw))\n84:         except (TypeError, ValueError):\n85:             return None\n\n# apps/api/src/better_resume/identity/redis_store.py:33-38\n33:     async def _call(self, command):  # noqa: ANN001, ANN202 - one seam for every command\n34:         \"\"\"Redis trouble is an availability problem, not an authentication answer.\"\"\"\n35:         try:\n36:             return await command\n37:         except redis.RedisError as exc:\n38:             raise SessionBackendUnavailable(\"session store is unavailable\") from exc\n\n# apps/api/src/better_resume/http/media.py:129-134\n129:     tickets: WsTicketStore = state.ws_ticket_store\n130:  \n131:     principal = await tickets.consume(ticket) if ticket else None\n132:     if principal is None:\n133:         await websocket.close(code=CLOSE_UNAUTHORIZED)\n134:         return",
+      "why": "同一个模块里两个 Redis store，一个把 redis.RedisError 翻译成领域错误（redis_store.py 的 _call → SessionBackendUnavailable → main.py:162 装配的 503 + Retry-After），另一个让 eval 抛出的 RedisError 原样冒到 WS 端点：tickets.consume 只兜了 (TypeError, ValueError)（那是 JSON 解析用的），media.py:131 也不做任何转换。后果是 Redis 重启/主从切换时，握手失败不是 P17 要求的『我这边坏了、请稍后重试』的确定语义，而是连接被 1011/1006 关掉——客户端分不清『票据无效』和『后端不可用』，排障时也没有点名变量的错误。错误类型命名为 SessionBackendUnavailable 也让门票店作者难以复用，只能自己再定义一份或干脆不兜。",
+      "fix": "把 RedisError → 领域不可用的翻译提到共享 seam（或让 WsTicketStore 定义自己的不可用错误），并在 WS 握手里映射成一个显式关闭码。"
+    },
+    {
+      "id": "identity_jobs-03",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "worker 复制了一份 app 的运行时装配，还为可直接 import 的符号绕道 __import__(\"better_resume.main\")（顺带触发模块级 create_app）",
+      "where": [
+        "apps/api/src/better_resume/worker.py:43-68",
+        "apps/api/src/better_resume/main.py:52-60",
+        "apps/api/src/better_resume/main.py:224"
+      ],
+      "evidence": "# apps/api/src/better_resume/worker.py:43-54\n43:  def build_worker_runtime(settings: Settings) -> dict[str, Any]:\n44:     \"\"\"Minimal runtime for background work (the HTTP app builds its own, richer one).\"\"\"\n45:     engine = build_engine(settings.database_url)\n46:     session_factory = build_session_factory(engine)\n47:     resilience = ResilientAiResilience(settings)\n48:     resolver = SceneResolver(\n49:         session_factory,\n50:         gateway_builder=lambda: (\n51:             __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\n52:         ),\n53:         cache_ttl_seconds=settings.scene_binding_cache_seconds,\n54:     )\n\n# apps/api/src/better_resume/main.py:59-59\n59:     build_llm_gateway,\n\n# apps/api/src/better_resume/main.py:224-224\n224:  app = create_app()",
+      "why": "worker.py:50-52 去 better_resume.main 拿 build_llm_gateway，而那只是 llm_gateway 的同一个对象在 main.py:59 被 re-export（worker.py:24-31 本来就从 llm_gateway 导入一堆同级符号）。导入 main 会执行第 224 行的模块级 `app = create_app()`：worker 进程启动时白建一个 FastAPI app，并顺带跑 configure_logging / get_settings，只为拿一个可以直接 `from .llm_gateway import build_llm_gateway` 的函数。同时 engine/session_factory/ModelRegistry/SceneResolver+两个 register_factory/ResilientAiResilience 这份装配清单在 main.py:71-121 与 worker.py:43-68 各写一遍：新增一种 AdapterKind 或给韧性链加 DistributedAiResilience（main.py:108-117 只在 app 侧）时，两条路径会静默漂移，而 worker 正是报告叙述的唯一执行者。",
+      "fix": "把运行时装配抽成一个共享的 build_runtime(settings) 给 app 与 worker 用；gateway_builder 直接 from .llm_gateway import build_llm_gateway，删掉 __import__ hack。"
+    },
+    {
+      "id": "identity_jobs-04",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "/auth/session 让调用者自报 user_id 与 roles，而 roles 全仓库没有任何鉴权消费者",
+      "where": [
+        "apps/api/src/better_resume/identity/router.py:18-22",
+        "apps/api/src/better_resume/identity/router.py:32-44",
+        "apps/api/src/better_resume/identity/models.py:8-12"
+      ],
+      "evidence": "# apps/api/src/better_resume/identity/router.py:18-22\n18:  class AuthSessionRequest(BaseModel):\n19:     \"\"\"Dev-issued session body (real credential login arrives in M2).\"\"\"\n20:  \n21:     user_id: str = Field(min_length=1, max_length=128)\n22:     roles: list[str] = Field(default_factory=list)\n\n# apps/api/src/better_resume/identity/router.py:39-44\n39:     record = await store.create(\n40:         Principal(user_id=payload.user_id, roles=payload.roles),\n41:         ttl_seconds=settings.session_ttl_seconds,\n42:     )\n43:     set_session_cookie(response, settings=settings, session_id=record.session_id)\n44:     return record.principal\n\n# apps/api/src/better_resume/identity/models.py:8-12\n8:  class Principal(BaseModel):\n9:     \"\"\"The authenticated subject of a session.\"\"\"\n10:  \n11:     user_id: str\n12:     roles: list[str] = Field(default_factory=list)",
+      "why": "接口把『你是谁』的决定权整个交给请求体：POST 一个 user_id 就拿到该主体的会话（前端 apps/web/src/api/client.ts:230 的 devLogin 正是这么用的，router 与 main.py 都没有任何环境前置条件），roles 更是客户端自填。而 Principal.roles 除了被原样回显之外没有任何消费者（grep roles 只命中 identity 这三处），也就是说『主体携带角色』这条契约是空的：将来做权限的人会默认 roles 是服务端派生的可信输入。接口注释只留下一句『real credential login arrives in M2』，把未实现的前置条件留给了读者。",
+      "fix": "给该端点加显式前置条件（仅 local/test 可用），并让 roles 由服务端派生（或直接从 Principal/请求体里删掉这个无消费者的字段）。"
+    },
+    {
+      "id": "identity_jobs-05",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "缝收住了端点，却把 socket_timeout/decode_responses 留给 8 个调用点：6 处根本不设超时",
+      "where": [
+        "apps/api/src/better_resume/redis_client.py:58-63",
+        "apps/api/src/better_resume/jobs/queue.py:52-57",
+        "apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74"
+      ],
+      "evidence": "# apps/api/src/better_resume/redis_client.py:58-63\n58:  def redis_client(\n59:     source: RedisSource,\n60:     *,\n61:     decode_responses: bool = True,\n62:     socket_timeout: float | None = None,\n63:  ) -> aioredis.Redis:\n\n# apps/api/src/better_resume/jobs/queue.py:52-57\n52:         self._socket_timeout_seconds = socket_timeout_seconds\n53:         # redis-py 8 has a 5s default socket timeout, which truncates blocking reads for\n54:         # no good reason; keep it explicit and comfortably above our block window.\n55:         self._client = redis_client(\n56:             redis_source, decode_responses=True, socket_timeout=socket_timeout_seconds\n57:         )\n\n# apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74\n72:         self._client = redis_client(\n73:             redis_source, decode_responses=True, socket_timeout=socket_timeout\n74:         )",
+      "why": "redis_client 的签名把 socket_timeout 做成可选，于是『等多久』变成每个调用点各自的决定：只有 JobQueue（15s，为阻塞读留出余量）和 RedisRateLimiter（settings.rate_limit.redis_socket_timeout_ms=50ms，config.py:113）设了，两者差 300 倍；identity/redis_store.py:26、tickets.py:65、interview_engine/locks.py:94、hot_state.py:86、ai_resilience/distributed.py:99、worker.py:102/149 全都不传 → 无超时。Redis『半死』（TCP 通但不答）时，/auth/me、WS 票据兑换、题级锁、分布式单飞会无限等，而 P5/D19 的整个故障面就是为这种情况做的。另外 7 个调用点还要各写一遍 decode_responses=True（seam 默认已经是 True），说明这个参数在实际使用中也是常量。",
+      "fix": "在 seam 里定一个来自 Settings 的默认 socket_timeout（允许有理由地覆盖），调用点不再各自发明；decode_responses 保留默认不重复书写。"
+    },
+    {
+      "id": "identity_jobs-06",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [],
+      "severity": "中",
+      "title": "SessionStore 的 TTL 由每个调用点线过去，而 store 本身就是从 Settings 造出来的",
+      "where": [
+        "apps/api/src/better_resume/identity/store.py:20-24",
+        "apps/api/src/better_resume/identity/factory.py:13-16",
+        "apps/api/src/better_resume/identity/deps.py:31"
+      ],
+      "evidence": "# apps/api/src/better_resume/identity/store.py:16-24\n16:  @runtime_checkable\n17:  class SessionStore(Protocol):\n18:     \"\"\"Minimal session persistence contract; TTL is sliding on read (`touch`).\"\"\"\n19:  \n20:     async def create(self, principal: Principal, *, ttl_seconds: int) -> SessionRecord: ...\n21:  \n22:     async def get(self, session_id: str) -> SessionRecord | None: ...\n23:  \n24:     async def touch(self, session_id: str, *, ttl_seconds: int) -> SessionRecord | None: ...\n\n# apps/api/src/better_resume/identity/factory.py:13-16\n13:  def build_session_store(settings: Settings) -> SessionStore:\n14:     if settings.environment == \"test\":\n15:         return InMemorySessionStore()\n16:     return RedisSessionStore(RedisTopology.from_settings(settings))\n\n# apps/api/src/better_resume/identity/deps.py:31-31\n31:     record = await store.touch(session_id, ttl_seconds=settings.session_ttl_seconds)",
+      "why": "build_session_store(settings) 已经握有 settings（含 session_ttl_seconds），却不在构造时收下 TTL，于是 create/touch 的签名都要求调用者再带一次 ttl_seconds：deps.current_principal（deps.py:31）与 router.create_session（router.py:39-42）各写一遍 settings.session_ttl_seconds。D11 的『30 天滑动』是一条会话策略而不是每次调用的自由参数；每加一个触及会话的调用点，作者都要先知道去 settings 的哪个字段取值，否则就会写出第二个 TTL 口径（比如给刷新接口配 1 小时）。",
+      "fix": "把 ttl 收进 SessionStore 的构造（factory 从 settings 传入），接口只留 create/get/touch/delete 的主体语义。"
+    },
+    {
+      "id": "identity_jobs-07",
+      "dim": "W5 多返回值用具名字段类",
+      "signals": [],
+      "severity": "中",
+      "title": "enqueue 用 tuple[str, bool] 表达 (task_id, created)，而唯一的生产调用点把返回值整个丢掉",
+      "where": [
+        "apps/api/src/better_resume/jobs/queue.py:67-87",
+        "apps/api/src/better_resume/http/interview.py:435-439"
+      ],
+      "evidence": "# apps/api/src/better_resume/jobs/queue.py:67-70\n67:     async def enqueue(\n68:         self, kind: str, payload: dict[str, Any], *, idempotency_key: str\n69:     ) -> tuple[str, bool]:\n70:         \"\"\"Returns (task_id, created). A repeated key returns the existing task id.\"\"\"\n\n# apps/api/src/better_resume/http/interview.py:435-439\n435:         await state.job_queue.enqueue(\n436:             \"report.summary\",\n437:             {\"session_id\": session_id, \"user_id\": principal.user_id},\n438:             idempotency_key=f\"report:{session_id}\",\n439:         )",
+      "why": "tuple[str, bool] 把两个不同含义的位置值塞给调用者，读代码的人必须回来看实现才知道第二个是『本次是否新建』；而生产里唯一的调用者（http/interview.py:435）连接收都不接收，created 这个语义只有 tests/test_job_queue.py:41、60-63 在断言。结果『重复投递返回既有 task_id』这条幂等契约在系统里没有任何可见面（只有 dedupe key 的副作用），前端也无从知道报告叙述是本次新排的还是早就排过。",
+      "fix": "返回具名字段对象（如 EnqueueResult(task_id, created)），或让 enqueue 只返回 task_id 并把幂等事实写进状态/日志。"
+    },
+    {
+      "id": "identity_jobs-08",
+      "dim": "R15 模糊的名称",
+      "signals": [
+        "模糊的名称"
+      ],
+      "severity": "中",
+      "title": "worker 用 id(settings) 当消费者名：仓库已把这类 bug 记为 P40 并修掉测试，生产代码还在用",
+      "where": [
+        "apps/api/src/better_resume/worker.py:148",
+        "apps/api/tests/test_job_worker_api.py:31-40",
+        "docs/resume/interview-notes.md:92"
+      ],
+      "evidence": "# apps/api/src/better_resume/worker.py:147-151\n147:     stopping = stop or asyncio.Event()\n148:     consumer = f\"worker-{id(settings) & 0xFFFF:x}\"\n149:     health = redis_client(RedisTopology.from_settings(settings), decode_responses=True)\n150:     key = heartbeat_key(settings)\n151:     logger.info(\"worker_started\", stream=settings.jobs_stream, consumer=consumer)\n\n# apps/api/tests/test_job_worker_api.py:34-38\n34:     This used to be `f\"br:jobs:test:{id(settings):x}\"`. CPython reuses object addresses —\n35:     12 freshly built Settings objects yielded only 2 distinct ids — so the \"private stream\n36:     per test\" was really one or two shared streams. A test that leaves a job behind (the\n37:     freeze test asserts the stream length and stops there) then hands that job to the next\n38:     test's worker, which reports `run_once == 1` while its own report keeps `summary: None`.\n\n# docs/resume/interview-notes.md:92-92\n92:  | 拿 `id()` 当资源名的偶发失败：12 个 Settings 只产出 2 个不同地址 | `apps/api/tests/test_job_worker_api.py` 的 `_private_jobs_stream()` docstring 与 `test_private_jobs_stream_is_unique_per_call` | `uv run pytest tests/test_job_worker_api.py -k private_jobs_stream` |",
+      "why": "消费者名是从 Python 对象地址派生的 worker-<addr 低 16 位>：它既不含主机也不含进程，排障时看到 XPENDING/XCLAIM 里的 worker-1f3a 无法对应到任何容器，重启后还会复用同一个名字。仓库在 P40 已经确诊过同一类缺陷——测试私有流名原本就是 f\"br:jobs:test:{id(settings):x}\"，因为『12 个 freshly built Settings 只产出 2 个不同地址』而改成 uuid4（test_job_worker_api.py:34-38），简历笔记还把它当亮点记录（docs/resume/interview-notes.md:92）——但生产这一处没有一起改。settings 里本就有 instance_id（config.py:191 = hostname，compose 按副本注入）。",
+      "fix": "改成 f\"{settings.instance_id}-{os.getpid()}\"（或把 consumer 名做成显式参数）。"
+    },
+    {
+      "id": "identity_jobs-09",
+      "dim": "R1 删除测试",
+      "signals": [
+        "浅模块",
+        "重复"
+      ],
+      "severity": "中",
+      "title": "队列的可观测面在生产里没有消费者：status()/pending() 只有测试调用，V6 演练改用裸 redis-cli 自己拼键名",
+      "where": [
+        "apps/api/src/better_resume/jobs/queue.py:89-91",
+        "apps/api/src/better_resume/jobs/queue.py:226-228",
+        "apps/api/scripts/fault_probe.py:881-883"
+      ],
+      "evidence": "# apps/api/src/better_resume/jobs/queue.py:89-91\n89:     async def status(self, task_id: str) -> dict[str, Any] | None:\n90:         data = await self._client.hgetall(f\"{self.stream}:status:{task_id}\")\n91:         return data or None\n\n# apps/api/scripts/fault_probe.py:881-883\n881:         pending = docker(\n882:             \"compose\", \"exec\", \"-T\", \"redis\", \"redis-cli\", \"XPENDING\", \"br:jobs\", \"br:workers\"\n883:         )",
+      "why": "删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:881-883，且它在 837 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。",
+      "fix": "要么把状态面接给真实消费者（报告页轮询/运维接口）保留 status()，要么删到只剩 xlen/pending 并在演练里调 queue.pending()，让键名只有一处来源。"
+    },
+    {
+      "id": "identity_jobs-10",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "STATUS_DUPLICATE 与 monotonic() 是没有任何消费者的对外符号",
+      "where": [
+        "apps/api/src/better_resume/jobs/queue.py:28",
+        "apps/api/src/better_resume/jobs/queue.py:238-239",
+        "apps/api/src/better_resume/jobs/__init__.py:2-10"
+      ],
+      "evidence": "# apps/api/src/better_resume/jobs/queue.py:26-28\n26:  STATUS_DONE = \"done\"\n27:  STATUS_FAILED = \"failed\"\n28:  STATUS_DUPLICATE = \"duplicate\"\n\n# apps/api/src/better_resume/jobs/queue.py:236-239\n236:  \n237:  \n238:  def monotonic() -> float:  # small seam for tests that want to observe backoff\n239:     return time.monotonic()\n\n# apps/api/src/better_resume/jobs/__init__.py:1-10\n1:  from .queue import (\n2:     STATUS_DONE,\n3:     STATUS_DUPLICATE,\n4:     STATUS_FAILED,\n5:     STATUS_QUEUED,\n6:     STATUS_RUNNING,\n7:     Job,\n8:     JobQueue,\n9:     backoff_seconds,\n10:  )",
+      "why": "AGENTS.md §清洁度要求不留『默认关闭、没人跑』的分支——要么跑通设为默认，要么删掉。STATUS_DUPLICATE 在 enqueue 走重复路径时并没有被写入（那条路径只 return (existing, False)），全仓库仅有定义与 __init__.py 的 re-export；monotonic() 自称是『small seam for tests that want to observe backoff』，但没有一个测试引用它（退避的断言用的是 worker.loop_backoff_seconds 的纯函数）。读者会因此以为存在一种 duplicate 状态、以及一个可注入的队列时钟。",
+      "fix": "删掉这两个符号；若确实要，重复投递时写 STATUS_DUPLICATE、退避路径改用 monotonic() 并在测试里断言。"
+    },
+    {
+      "id": "identity_jobs-11",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "identity 的装配策略在两个 builder 里各写一遍，第三个实现从不被装配",
+      "where": [
+        "apps/api/src/better_resume/identity/factory.py:13-22",
+        "apps/api/src/better_resume/identity/tickets.py:91-101",
+        "apps/api/tests/test_identity.py:101-105"
+      ],
+      "evidence": "# apps/api/src/better_resume/identity/factory.py:13-22\n13:  def build_session_store(settings: Settings) -> SessionStore:\n14:     if settings.environment == \"test\":\n15:         return InMemorySessionStore()\n16:     return RedisSessionStore(RedisTopology.from_settings(settings))\n17:  \n18:  \n19:  def build_ws_ticket_store(settings: Settings) -> WsTicketStore:\n20:     if settings.environment == \"test\":\n21:         return InMemoryWsTicketStore()\n22:     return RedisWsTicketStore(RedisTopology.from_settings(settings))\n\n# apps/api/src/better_resume/identity/tickets.py:94-98\n94:     async def issue(self, principal: Principal, *, ttl_seconds: int) -> str:\n95:         raise NotImplementedError(\"WS ticket issuing is not wired in this build\")\n96:  \n97:     async def consume(self, ticket: str) -> Principal | None:\n98:         raise NotImplementedError(\"WS ticket consuming is not wired in this build\")\n\n# apps/api/tests/test_identity.py:101-105\n101:  async def test_ws_ticket_placeholder_fails_loudly() -> None:\n102:     store = UnimplementedWsTicketStore()\n103:  \n104:     with pytest.raises(NotImplementedError):\n105:         await store.issue(Principal(user_id=\"u1\"), ttl_seconds=30)",
+      "why": "『environment == \"test\" 就用内存实现』这条策略在 build_session_store 与 build_ws_ticket_store 各复制一份（factory.py:14 与 :20），两者没有共享的分派点，新增第三个 store 时容易漏；而 UnimplementedWsTicketStore 在任何 build 里都不会被装配（唯一引用是 test_identity.py:101 的『它会抛 NotImplementedError』用例），属于清洁度点名的死分支——它让读者以为存在一种『票据未接线』的部署形态。",
+      "fix": "两个 builder 合成一个 store 工厂（一处环境分派）；删掉 UnimplementedWsTicketStore 及其用例。"
+    }
+  ]
+}

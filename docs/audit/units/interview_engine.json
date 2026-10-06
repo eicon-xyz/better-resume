@@ -1,0 +1,263 @@
+{
+  "unit": "interview_engine",
+  "title": "interview_engine（两层状态机 + 出题/答题/追问/报告四个服务 + 题级锁 + 热层）",
+  "scope": [
+    "apps/api/src/better_resume/interview_engine/**",
+    "apps/api/tests/interview_engine/**"
+  ],
+  "one_sentence": "它把一场模拟面试拆成两层状态机（session 生命周期 + flow 答题推进）加四段业务（出题、评分+追问裁决、恢复视图、报告冻结），最重要的三件事是：答题幂等（request_id + 唯一约束 + 重放）、题级互斥（进程内/Redis 双实现）、flow 的版本 CAS——三件事都在，但幂等这条在生产契约上有个洞（IE-01），且模块对外宣称的 「InterviewEngine 四方法缝」是死面（IE-04）。",
+  "knowledge": "本模块独占的知识是「一场面试的推进规则」：session 六态与 flow 五态的转移表（未列出即非法）、题目编号 \"3-F1\" 的生成与解析、追问裁决规则链与其 fail-open 语义、评分/出题/追问三份结构化输出契约、报告维度公式与建议规则、以及幂等键与 flow 版本 CAS 的写法。其中「低分阈值 60」「追问预算 2」「幂等键构造」「网关 parsed 类型防御」「失败attempt与成功答案共用 request_id」这几份知识在本模块内被复制了 2~5 份（IE-01/05/06/07/10）。",
+  "passes": [
+    {
+      "dim": "D1 一句话",
+      "note": "session_fsm.py:19 与 flow_fsm.py:18-28 的注释把不变量一句话写清（「anything not listed is illegal（same-state is a no-op）」），两层状态机各自的职责（生命周期 vs 答题推进）在模块头即可区分。"
+    },
+    {
+      "dim": "D3 先写接口注释",
+      "note": "关键存储与锁的接口注释给出了前置条件和不变量：FlowStateStore「Per-request store bound to one AsyncSession; callers own the transaction」、mutate「Apply mutate under version CAS; retries when another writer wins the race」、QuestionLockRegistry「entries disappear once nobody holds them」——注释先于签名表达约束，不是事后补的。"
+    },
+    {
+      "dim": "W4 注释只写难理解的内容",
+      "note": "抽查的注释都在讲 why：answer_service.py:118 解释锁内为何要第二次查幂等、flow_store.py:100 解释 CAS 失败后的退避、follow_up.py:45 解释守卫节点先于裁判、follow_up.py:92 解释 fail-open 的取舍——不是复述代码。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "IE-01",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "高",
+      "title": "失败的答案行与成功的答案行不可区分：同 request_id 重试会被幂等闸门当成「已作答」重放，分数永远拿不回来",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/answer_service.py:118-121",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:368-377",
+        "apps/api/src/better_resume/interview_engine/answer_repo.py:58-67",
+        "apps/api/src/better_resume/interview_engine/orm.py:98-100",
+        "apps/api/tests/interview_engine/test_answer_service.py:234-268"
+      ],
+      "evidence": "answer_service.py（幂等闸门）\n118:             # Second check inside the lock: the previous holder may have finished this turn.\n119:             existing = await AnswerRepository(db).find_by_request(session_id, request_id)\n120:             if existing is not None:\n121:                 return await self._replay(db, existing, session_id)\nanswer_service.py（失败回滚写入同一 request_id）\n368:         \"\"\"Record the failed attempt and put the flow back so the question can be retried.\"\"\"\n371:                 await AnswerRepository(db).add(\n374:                     request_id=request_id,\n376:                     error_message=str(error) or error.__class__.__name__,\nanswer_repo.py（查找不过滤失败行）\n58:     async def find_by_request(self, session_id: str, request_id: str) -> AnswerRecord | None:\n61:                 select(InterviewAnswerRow).where(\n62:                     InterviewAnswerRow.session_id == session_id,\n63:                     InterviewAnswerRow.request_id == request_id,\norm.py（唯一约束把 request_id 钉成一次请求一行）\n99:         # The idempotency gate: one row per client request, replay instead of re-charging.\n100:         UniqueConstraint(\"session_id\", \"request_id\", name=\"uq_interview_answers_session_request\"),\ntests/interview_engine/test_answer_service.py（失败后换了一个 request_id 才重试）\n244:             request_id=\"ans-fail\",\n266:             request_id=\"ans-fail-retry\",",
+      "why": "三条各自合理的设计合起来是一个洞：(a) request_id 是「客户端的幂等键」（models.py:74），(b) 评分失败也要留痕，于是用同一个 request_id 写一行 score=NULL、error_message 非空的行（368-377），(c) 幂等闸门只按 (session_id, request_id) 查、不复核是否成功（answer_repo.py:58-67），查到的行交给 _replay 直接当成答案返回。结果是：客户端拿合规的幂等语义重试同一个 request_id 时，会收到 replayed=True、score=None 的「成功」响应，题目永远不会被评分；而唯一约束（orm.py:100）又保证它不可能再写一行进去——这个答案被永久吞掉。测试只覆盖了「换 request_id 重试」那条路（244 行失败、266 行换了新 id），所以本地全绿。",
+      "fix": "让失败attempt不占用成功答案的幂等键（失败行 request_id 置空/加 attempt 维度/单独表），或在 find_by_request 里显式排除 error_message IS NOT NULL 并补一条「同 request_id 重试必须重新评分」的测试。"
+    },
+    {
+      "id": "IE-02",
+      "dim": "R10 连体方法",
+      "signals": [
+        "连体方法",
+        "重复"
+      ],
+      "severity": "高",
+      "title": "ReportService.finish 与 freeze 是同一段 35 行流程的两份实现，只差是否生成 summary",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/report_service.py:90-129",
+        "apps/api/src/better_resume/interview_engine/report_service.py:141-175"
+      ],
+      "evidence": "report_service.py finish（90-106）\n92:         async with self._session_factory() as db:\n96:             existing = await self._load_row(db, session_id)\n97:             if existing is not None:\n99:                 return ReportResult(\n102:                     llm_summary_used=bool(existing.summary),\n105:             payload = await self._aggregate(db, session_id)\n106:         summary, used = await self._summarise(payload, gateway)\nreport_service.py freeze（141-159）\n141:     async def freeze(self, *, session_id: str, user_id: str) -> ReportResult:\n142:         \"\"\"Persist the deterministic report (no narrative); the worker adds it later.\"\"\"\n146:             existing = await self._load_row(db, session_id)\n147:             if existing is not None:\n152:                     llm_summary_used=bool(existing.summary),\n154:             payload = await self._aggregate(db, session_id)\n159:             if session.status is not SessionStatus.FINISHED:",
+      "why": "要理解 freeze 必须先读 finish 再逐行 diff：两段都重复了「get_for_user → 已有报告直接返回 → _aggregate → 开新事务 → 必要时 transition(FINISHED) → 组 payload/dimensions/summary → commit → 重读 session」。任何字段级改动（报告 payload 增键、dimensions 的存放位置、llm_summary_used 的来源）都要改两遍，而且两处对同一份报告给出的 llm_summary_used 语义已经不同：finish 的回放分支用 bool(existing.summary) 推断，freeze 写死 False 并在 payload 里写死 \"llm_summary_used\": False。",
+      "fix": "合并为一个内部方法（如 `_freeze(session_id, user_id, summary: str | None = None)`），finish 只在事务外补一次 _summarise 再委托；两条入口共用同一份组装与回放逻辑。"
+    },
+    {
+      "id": "IE-03",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "重复",
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "RestoreService 硬编码 _hot_ttl=600 覆盖 settings 的热层 TTL；put(ttl_seconds) 参数本身是冗余的，两个后端对 0 的解释还相反",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/restore_service.py:41-49",
+        "apps/api/src/better_resume/interview_engine/restore_service.py:88-89",
+        "apps/api/src/better_resume/interview_engine/hot_state.py:71-75",
+        "apps/api/src/better_resume/interview_engine/hot_state.py:85-87",
+        "apps/api/src/better_resume/interview_engine/hot_state.py:106-112",
+        "apps/api/src/better_resume/settings/config.py:183-184"
+      ],
+      "evidence": "restore_service.py\n47:         self._session_factory = session_factory\n48:         self._hot_state = hot_state\n49:         self._hot_ttl = 600\n89:             await self._hot_state.put(view, user_id=user_id, ttl_seconds=self._hot_ttl)\nhot_state.py（内存实现）\n71:     async def put(self, view: RestoreView, *, user_id: str, ttl_seconds: int) -> None:\n74:             self._now() + max(0, ttl_seconds),\nhot_state.py（Redis 实现）\n85:     def __init__(self, redis_source: RedisSource, *, ttl_seconds: int = 600) -> None:\n87:         self._ttl = max(1, ttl_seconds)\n111:                 ex=max(1, ttl_seconds or self._ttl),\nsettings/config.py\n183:     hot_state_backend: Literal[\"memory\", \"redis\"] = \"memory\"\n184:     hot_state_ttl_seconds: int = 600",
+      "why": "热层 TTL 这份知识有三处：settings.hot_state_ttl_seconds（build_hot_state 传给 RedisHotState）、RedisHotState 的默认值 600、以及 RestoreService 自己写死的 600——而 RestoreService 是唯一的生产写入路径，每次 put 都把 600 传下去，所以运营改 BR_HOT_STATE_TTL_SECONDS 对 restore 缓存完全无效（RedisHotState 的 ttl_seconds 只在调用方传 0/None 时才兜底）。协议签名 put(..., ttl_seconds) 把「存多久」这个 store 自己就能决定的事推给每个调用者，代价是两实现语义分叉：ttl_seconds=0 时内存实现算出 expires_at=now（立刻失效、永不命中），Redis 实现却退回 self._ttl（600s）。模块头注释（hot_state.py:5-8）声称「两个后端必须回答一致」，实际不一致。",
+      "fix": "TTL 只由 store 的构造参数决定（来自 settings），put() 不接收 ttl_seconds；若确实需要按视图区分，就把默认值放到 settings 并让两个实现共用同一段 TTL 归一化。"
+    },
+    {
+      "id": "IE-04",
+      "dim": "R1 删除测试",
+      "signals": [
+        "浅模块",
+        "透传方法"
+      ],
+      "severity": "高",
+      "title": "整条 M0 缝（InterviewEngine 协议 + 10 个值对象 + UnimplementedInterviewEngine）在生产路径上没有实现者也没有使用者，只被 contracts 测试钉住",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/protocols.py:1",
+        "apps/api/src/better_resume/interview_engine/protocols.py:19-27",
+        "apps/api/src/better_resume/interview_engine/models.py:48-103",
+        "apps/api/src/better_resume/interview_engine/placeholder.py:16-30",
+        "apps/api/src/better_resume/http/interview.py:23-32",
+        "apps/api/tests/contracts/test_domain_contracts.py:48-56"
+      ],
+      "evidence": "1  \"\"\"InterviewEngine seam: 4 public methods, the state machine is the only writer (§12.2).\"\"\"\n...\n19  @runtime_checkable\n20  class InterviewEngine(Protocol):\n21      async def start(self, user_id: UserId, resume: ResumeUpload) -> SessionHandle: ...\n22  \n23      async def answer(self, session_id: SessionId, turn: AnswerTurn) -> TurnResult: ...\n24  \n25      async def restore(self, session_id: SessionId) -> SessionView: ...\n26  \n27      async def finish(self, session_id: SessionId) -> ReportHandle: ...\n\napps/api/src/better_resume/interview_engine/models.py:48  class ResumeUpload(BaseModel):\napps/api/src/better_resume/interview_engine/models.py:49      filename: str\napps/api/src/better_resume/interview_engine/models.py:50      content: bytes\napps/api/src/better_resume/interview_engine/models.py:51  \napps/api/src/better_resume/interview_engine/models.py:52  \napps/api/src/better_resume/interview_engine/models.py:53  class Question(BaseModel):\napps/api/src/better_resume/interview_engine/models.py:54      kind: Literal[\"question\"] = \"question\"\napps/api/src/better_resume/interview_engine/models.py:55      question_no: int\napps/api/src/better_resume/interview_engine/models.py:56      text: str\napps/api/src/better_resume/interview_engine/models.py:57  \napps/api/src/better_resume/interview_engine/models.py:58  \n...\napps/api/src/better_resume/interview_engine/models.py:86  class SessionView(BaseModel):\napps/api/src/better_resume/interview_engine/models.py:87      session_id: SessionId\napps/api/src/better_resume/interview_engine/models.py:88      status: str\napps/api/src/better_resume/interview_engine/models.py:89      question_no: int\napps/api/src/better_resume/interview_engine/models.py:90      answered: int\napps/api/src/better_resume/interview_engine/models.py:91  \napps/api/src/better_resume/interview_engine/models.py:92  \napps/api/src/better_resume/interview_engine/models.py:93  class TurnResult(BaseModel):\napps/api/src/better_resume/interview_engine/models.py:94      score: float\napps/api/src/better_resume/interview_engine/models.py:95      feedback: str\napps/api/src/better_resume/interview_engine/models.py:96      missing_points: list[str] = Field(default_factory=list)\napps/api/src/better_resume/interview_engine/models.py:97      next: NextStep\napps/api/src/better_resume/interview_engine/models.py:98  \napps/api/src/better_resume/interview_engine/models.py:99  \napps/api/src/better_resume/interview_engine/models.py:100  class ReportHandle(BaseModel):\napps/api/src/better_resume/interview_engine/models.py:101      session_id: SessionId\napps/api/src/better_resume/interview_engine/models.py:102      report_id: str\napps/api/src/better_resume/interview_engine/models.py:103  \n\napps/api/src/better_resume/http/interview.py:23  from ..interview_engine import (\napps/api/src/better_resume/http/interview.py:24      AnswerService,\napps/api/src/better_resume/http/interview.py:25      InterviewSession,\napps/api/src/better_resume/http/interview.py:26      InterviewSessionRepository,\napps/api/src/better_resume/http/interview.py:27      QuestionService,\napps/api/src/better_resume/http/interview.py:28      ReportRecord,\napps/api/src/better_resume/http/interview.py:29      ReportService,\napps/api/src/better_resume/http/interview.py:30      RestoreService,\napps/api/src/better_resume/http/interview.py:31      ResumeStorage,\napps/api/src/better_resume/http/interview.py:32  )\n\napps/api/src/better_resume/interview_engine/placeholder.py:1  \"\"\"Explicit M0 placeholder; the state machine + scoring land with M2.\"\"\"\n...\napps/api/src/better_resume/interview_engine/placeholder.py:16  _REASON = \"InterviewEngine (flow state machine + scoring) is implemented in M2.\"\napps/api/src/better_resume/interview_engine/placeholder.py:17  \napps/api/src/better_resume/interview_engine/placeholder.py:18  \napps/api/src/better_resume/interview_engine/placeholder.py:19  class UnimplementedInterviewEngine:\napps/api/src/better_resume/interview_engine/placeholder.py:20      async def start(self, user_id: UserId, resume: ResumeUpload) -> SessionHandle:\napps/api/src/better_resume/interview_engine/placeholder.py:21          raise NotImplementedError(_REASON)\n\napps/api/tests/contracts/test_domain_contracts.py:1  \"\"\"Contract smoke tests for interview-engine / resume-parser / media (§12.2 signatures).\"\"\"\n...\napps/api/tests/contracts/test_domain_contracts.py:48  def test_interview_engine_shape() -> None:\napps/api/tests/contracts/test_domain_contracts.py:49      assert isinstance(UnimplementedInterviewEngine(), InterviewEngine)\napps/api/tests/contracts/test_domain_contracts.py:50      assert params_of(InterviewEngine.start) == [\"self\", \"user_id\", \"resume\"]\napps/api/tests/contracts/test_domain_contracts.py:51      assert params_of(InterviewEngine.answer) == [\"self\", \"session_id\", \"turn\"]\napps/api/tests/contracts/test_domain_contracts.py:52      assert params_of(InterviewEngine.restore) == [\"self\", \"session_id\"]\napps/api/tests/contracts/test_domain_contracts.py:53      assert params_of(InterviewEngine.finish) == [\"self\", \"session_id\"]\napps/api/tests/contracts/test_domain_contracts.py:54      assert all(\napps/api/tests/contracts/test_domain_contracts.py:55          inspect.iscoroutinefunction(getattr(InterviewEngine, name))\napps/api/tests/contracts/test_domain_contracts.py:56          for name in (\"start\", \"answer\", \"restore\", \"finish\")",
+      "why": "模块对外宣称的缝是「4 个方法、状态机是唯一写者」，但真实生产路径（http/interview.py、worker.py）走的是四个 Service + 三个 Repository + 两个 Store；唯一「实现」这个协议的类是抛 NotImplementedError 的占位类，且其存在理由是 M2 之前的排期（注释原文），M2 早已用另一套对象交付。代价是同一领域两套词汇并存：SessionView vs RestoreView、TurnResult vs AnswerResult、Question.question_no:int vs QuestionNo(\"3-F1\")、SessionHandle/ReportHandle 在生产里没有任何对应物。读者（尤其是 AI agent）按 protocols.py 与 __init__.py 的导出面去改代码会实现一个没人调用的第五个 Service；删掉这一整块后调用方只会更简单。",
+      "fix": "删掉 protocols.py / placeholder.py 与 models.py:48-103 这一组未使用对象（或反向：把真实服务的门面提升为协议并让 http 层依赖它），contracts 测试改成断言真实服务的方法签名。"
+    },
+    {
+      "id": "IE-05",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "低分阈值 60 有两份常量，评分提示词里还写了第三份；evaluation.LOW_SCORE_THRESHOLD 在生产路径上无人使用",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/evaluation.py:9-10",
+        "apps/api/src/better_resume/interview_engine/evaluation.py:22-25",
+        "apps/api/src/better_resume/interview_engine/follow_up.py:11",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:26"
+      ],
+      "evidence": "1  \"\"\"Scoring prompts + the structured result contract (§4.1.2 step: evaluate).\"\"\"\n...\n9  MAX_FEEDBACK_LENGTH = 2000\n10  LOW_SCORE_THRESHOLD = 60.0\n...\n22  SCORING_SYSTEM_PROMPT = (\n23      \"你是一名严格但公平的技术面试评分官。你会收到题目、考察要点与候选人的回答。请：\\n\"\n24      \"1) 只依据回答本身评分，不要因为回答短就臆测候选人不会；\\n\"\n25      \"2) 评分区间 0-100，60 分以下表示明显不达标；\\n\"\n\napps/api/src/better_resume/interview_engine/follow_up.py:10  RULE_VERSION = \"m2.1\"\napps/api/src/better_resume/interview_engine/follow_up.py:11  DEFAULT_LOW_SCORE_THRESHOLD = 60.0\n\napps/api/src/better_resume/interview_engine/answer_service.py:26      DEFAULT_LOW_SCORE_THRESHOLD,",
+      "why": "「60 分以下要追问」是一个产品规则，却写在三个地方：follow_up 的默认阈值（实际生效）、evaluation 的同名常量（生产无人引用，只有 tests/test_fake_openai.py 用它造低分响应）、以及评分提示词第 2 条（让模型也知道这条线）。把阈值改成 70 时，改了常量而漏了 prompt，模型仍会按 60 打分并给出 follow_up_needed，规则链与模型判断开始互相矛盾；改错哪一个都不会报错。",
+      "fix": "阈值只留一份（follow_up.DEFAULT_LOW_SCORE_THRESHOLD），评分提示词由该常量插值生成，删掉 evaluation.LOW_SCORE_THRESHOLD。"
+    },
+    {
+      "id": "IE-06",
+      "dim": "R11 重复",
+      "signals": [
+        "重复",
+        "注释重复了代码"
+      ],
+      "severity": "中",
+      "title": "三个幂等键构造函数各写一份「stage|session|关键输入哈希」的知识，docstring 还各自复述同一个历史 bug",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/question_service.py:41-48",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:55-57",
+        "apps/api/src/better_resume/interview_engine/follow_up_service.py:30-37"
+      ],
+      "evidence": "question_service.py\n41: def build_generation_key(session_id: str, *, resume_digest: str, count: int, language: str) -> str:\n44:     The M2 version keyed on session + email/name only, so a different resume (or a\n48:     return f\"extraction|{session_id}|{count}|{language}|{digest}\"\nanswer_service.py\n55: def build_evaluation_key(session_id: str, question_no: str, answer: str) -> str:\n57:     return f\"evaluation|{session_id}|{question_no}|{digest}\"\nfollow_up_service.py\n30: def build_follow_up_key(session_id: str, question_no: str, answer: str) -> str:\n33:     M2 keyed on session + question only, so a different answer to the same question\n37:     return f\"followup|{session_id}|{question_no}|{digest}\"",
+      "why": "「键 = 阶段前缀 + 会话 + 影响 prompt 的全部输入 + sha256 前 16 位」是同一份知识，被三个 Service 各自实现（连历史 bug 的说明都抄了两遍）；它们只在键的字段构成上不同，却分散在三个文件、只差字符串字面量。改哈希长度、改截断位数、或想统一加版本号都要改三处；而 ai_resilience 只是把 key 当不透明字符串（Stage 分类在调用点重复手写），没有一处能集中校验这些键的格式。",
+      "fix": "抽一个 build_idempotency_key(stage, session_id, **inputs) 放进 ai_resilience（或本模块的 keys.py），三处只提供输入字典。"
+    },
+    {
+      "id": "IE-07",
+      "dim": "W3 错误靠定义规避",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "同一条「网关返回的 parsed 不是期望类型」防御分支有四种写法，其中两种把模型契约问题报成 404",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/answer_service.py:217-222",
+        "apps/api/src/better_resume/interview_engine/question_service.py:163-168",
+        "apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98",
+        "apps/api/src/better_resume/interview_engine/report_service.py:293-296"
+      ],
+      "evidence": "answer_service.py\n219:             parsed = result.parsed\n220:             if not isinstance(parsed, ScoreResult):  # defensive: the gateway validates\n221:                 raise QuestionNotFound(\"score was not validated\")\nquestion_service.py\n166:             if not isinstance(parsed, QuestionBatch):  # defensive: the gateway enforces the schema\n167:                 raise InterviewEngineError(\"question batch was not validated\")\nfollow_up_service.py\n96:             if not isinstance(parsed, FollowUpQuestion):  # defensive: the gateway validates\n97:                 raise InterviewEngineError(\"follow-up question was not validated\")\nreport_service.py\n294:             if not isinstance(parsed, ReportSummary):\n295:                 raise SessionNotFound(\"summary was not validated\")",
+      "why": "四个服务对同一个上游契约违规给出四种身份：QuestionNotFound 与 SessionNotFound 会被 main.py:147-149 的 handler 映射成 HTTP 404（客户端看到的是「题目/会话不存在」，与真实原因相差最远，还会误导客户端去重新拉取资源），InterviewEngineError 映射成 422，而 score 那条路径直接把 QuestionNotFound 抛给用户。排障时异常类型不再能定位问题层（是网关 schema 失败还是数据被删）；同时这四段防御代码本身是同一份知识的四份拷贝，gateway 若真的保证 parsed 类型，它们应该都不存在。",
+      "fix": "定义单一错误（如 LlmSchemaError 直接上抛 / 一个 InterviewEngineError 子类），HTTP 层映射到 502/422；把「parsed 类型不对」的检查收敛到网关出口一处。"
+    },
+    {
+      "id": "IE-08",
+      "dim": "W5 多返回值用具名字段类",
+      "signals": [
+        "难以理解的代码"
+      ],
+      "severity": "中",
+      "title": "ReportService._aggregate 返回无名 dict（6 个键），被 build_report_key / _summarise / JSONB payload 三处按字符串键消费",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/report_service.py:208",
+        "apps/api/src/better_resume/interview_engine/report_service.py:269-276",
+        "apps/api/src/better_resume/interview_engine/report_service.py:65-77",
+        "apps/api/src/better_resume/interview_engine/report_service.py:280"
+      ],
+      "evidence": "report_service.py\n208:     async def _aggregate(self, db: AsyncSession, session_id: str) -> dict:\n269:         return {\n270:             \"session_id\": session_id,\n271:             \"overall_score\": round(statistics.fmean(all_scores), 1) if all_scores else None,\n272:             \"dimensions\": dimensions,\n273:             \"turns\": turns,\n65: def build_report_key(payload: dict) -> str:\n69:             \"overall\": payload[\"overall_score\"],\n71:             \"missing\": [point for turn in payload[\"turns\"] for point in turn[\"missing_points\"]],\n280:         missing = [point for turn in payload[\"turns\"] for point in turn[\"missing_points\"]]",
+      "why": "报告数字集合有一个稳定且不平凡的形状（turns 是 list[dict]，每个 turn 又有 10 个键），却没有类型：build_report_key 在模块级直接下标（键名一改就是 KeyError，而它只在生成 summary 的那条路径上跑，容易漏测），_summarise 依赖 payload[\"turns\"] 的两层结构，同一个 dict 还被塞进 JSONB 变成了前后端契约的一部分。读者必须同时读 208-276、65-77、280 三处才能拼出这个形状；ReportRecord.turns/dimensions 用的又是另一套字段名。",
+      "fix": "给聚合结果一个具名模型（ReportPayload / TurnFact），build_report_key 与 _summarise 接收该类型，JSONB 序列化由它统一负责。"
+    },
+    {
+      "id": "IE-09",
+      "dim": "C1 改动让设计变好一点",
+      "signals": [
+        "注释重复了代码"
+      ],
+      "severity": "中",
+      "title": "三处「留给未来调用者 / 为了让 import 不算未使用」的死代码，带 pragma 所以覆盖率也不会报警",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/answer_service.py:405-406",
+        "apps/api/src/better_resume/interview_engine/report_service.py:375-380",
+        "apps/api/src/better_resume/interview_engine/answer_repo.py:143-144"
+      ],
+      "evidence": "answer_service.py\n405: async def _noop() -> None:  # pragma: no cover - keeps asyncio import used in type-checking paths\n406:     await asyncio.sleep(0)\nreport_service.py\n375: async def _noop() -> None:  # pragma: no cover - keeps asyncio import meaningful for type checkers\n376:     await asyncio.sleep(0)\n379: def _new_id() -> str:  # pragma: no cover - helper for future callers\n380:     return str(uuid.uuid4())\nanswer_repo.py\n143: def _as_dict(value: Any) -> dict[str, Any]:  # pragma: no cover - helper kept for symmetry\n144:     return value if isinstance(value, dict) else {}",
+      "why": "AGENTS §清洁度写得很直白：「不留临时文件、注释掉的死代码、『默认关闭没人跑』的分支——要么真机跑通并设为默认，要么删掉」。这里三处都是没人调用的函数，其中 answer_service 与 report_service 的两个 _noop 的唯一作用是让 `import asyncio` 不触发 ruff 的未使用告警——正确修法恰恰是删掉 import；_new_id 与 _as_dict 的注释自认「给未来调用者/为对称保留」。因为都带 # pragma: no cover，覆盖率地板也不会发现，只能靠人读出来；它们还传递了错误信号（似乎 asyncio/uuid 有别的用途）。",
+      "fix": "删掉这五个函数与随之无用的 import（asyncio / uuid / Any）；真需要 ID 生成就统一走一个 helper 模块。"
+    },
+    {
+      "id": "IE-10",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "追问预算 max_follow_up=2 在五处各写一遍，派生路径固定写 2 而不是继承既有预算",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/models.py:132",
+        "apps/api/src/better_resume/interview_engine/flow_store.py:37",
+        "apps/api/src/better_resume/interview_engine/question_service.py:217-223",
+        "apps/api/src/better_resume/interview_engine/restore_service.py:153-156",
+        "apps/api/src/better_resume/interview_engine/orm.py:148-150",
+        "apps/api/src/better_resume/http/interview.py:72"
+      ],
+      "evidence": "models.py\n132:     max_follow_up: int = 2\nflow_store.py\n37:         max_follow_up: int = 2,\nquestion_service.py\n220:                 max_follow_up=2,\nrestore_service.py（流状态丢失时的派生路径）\n153:         return await FlowStateStore(db).initialize(\n156:             max_follow_up=2,\norm.py\n148:     max_follow_up: Mapped[int] = mapped_column(\n149:         Integer, nullable=False, default=2, server_default=\"2\"\nhttp/interview.py（http 模块的对外视图也给同一个默认值）\n72:     max_follow_up: int = 2",
+      "why": "「每个主题最多追问 2 次」这一条产品规则被抄了五次（模型默认、store 默认、生成时写入、派生时写入、ORM/DB 默认），settings 里没有对应变量，谁都无法在部署时调整。更实际的风险是 RestoreService._derive 在 flow 行丢失时硬写 2——如果将来支持按 session 配置追问次数（或有人改了其中一处常量），派生出来的会话会静默拿到与创建时不同的预算，且 flow 表里也看不出这个差异。",
+      "fix": "预算只留一处常量（或进 settings），initialize 的默认值由它派生，_derive 复用同一来源；对外视图的默认值改为从 flow 读取而不是自带字面量。"
+    },
+    {
+      "id": "IE-11",
+      "dim": "R12 通用专用混合体",
+      "signals": [
+        "通用专用混合体",
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "InterviewSessionRepository.update(**fields) 是个能写任意列的 setattr 逃逸口，绕开 FSM，而模块宣称「状态机是唯一写者」",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/session_repo.py:84-92",
+        "apps/api/src/better_resume/interview_engine/question_service.py:205-215",
+        "apps/api/src/better_resume/interview_engine/protocols.py:1"
+      ],
+      "evidence": "84      async def update(self, session_id: str, **fields: object) -> InterviewSession:\n85          row = await self._fetch(session_id)\n86          for name, value in fields.items():\n87              if not hasattr(row, name):\n88                  raise AttributeError(f\"interview_sessions has no column {name!r}\")\n89              setattr(row, name, value)\n90          row.updated_at = _utcnow()\n91          await self._session.flush()\n92          return _to_model(row)\n\napps/api/src/better_resume/interview_engine/question_service.py:205              updates: dict[str, object] = {\napps/api/src/better_resume/interview_engine/question_service.py:206                  \"question_count\": len(rows),\napps/api/src/better_resume/interview_engine/question_service.py:207                  \"resume_score\": resume_score,\napps/api/src/better_resume/interview_engine/question_service.py:208              }\napps/api/src/better_resume/interview_engine/question_service.py:209              if stored_resume is not None:\napps/api/src/better_resume/interview_engine/question_service.py:210                  updates |= {\napps/api/src/better_resume/interview_engine/question_service.py:211                      \"resume_path\": stored_resume.path,\napps/api/src/better_resume/interview_engine/question_service.py:212                      \"resume_sha256\": stored_resume.sha256,\napps/api/src/better_resume/interview_engine/question_service.py:213                      \"resume_size\": stored_resume.size,\napps/api/src/better_resume/interview_engine/question_service.py:214                  }\napps/api/src/better_resume/interview_engine/question_service.py:215              await repo.update(session_id, **updates)\n\napps/api/src/better_resume/interview_engine/protocols.py:1  \"\"\"InterviewEngine seam: 4 public methods, the state machine is the only writer (§12.2).\"\"\"",
+      "why": "同一个 Repository 上并存两套写入语义：transition() 走 ensure_transition 且有行锁，update() 则用 hasattr 运行时白名单直接 setattr 任意列——包括 status、started_at、finished_at。于是「状态机是唯一写者」这条宣称对任何持有 repo 的代码都不成立：一处手滑写成 repo.update(id, status=\"finished\") 就能跳过全部转移校验；列名拼错要到运行时才炸（没有类型约束，fields 的值是 object）。唯一真实需求只是「写入 question_count 与 resume_* 元数据」。",
+      "fix": "把 update 换成领域方法（如 mark_generated(question_count, resume_score, stored)），或至少限制为白名单字段并在方法内复用 FSM 校验。"
+    },
+    {
+      "id": "IE-12",
+      "dim": "W3 错误靠定义规避",
+      "signals": [],
+      "severity": "中",
+      "title": "QuestionLockTimeout 不在错误家族里、HTTP 层没有映射，且本地默认实现永远不会产生它——同一个锁缝两条失败语义",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/locks.py:42-43",
+        "apps/api/src/better_resume/interview_engine/locks.py:104-118",
+        "apps/api/src/better_resume/interview_engine/locks.py:52-72",
+        "apps/api/src/better_resume/main.py:147-152"
+      ],
+      "evidence": "locks.py\n42: class QuestionLockTimeout(RuntimeError):\n43:     \"\"\"Somebody else holds the lock longer than we are willing to wait.\"\"\"\n113:             if self._clock.now() >= deadline:\n114:                 raise QuestionLockTimeout(\n115:                     f\"question {question_no} is locked by another worker \"\n52: class QuestionLockRegistry:\n53:     \"\"\"One lock per (session, question); entries disappear once nobody holds them.\"\"\"\n67:             async with entry.lock:\nmain.py（已注册的引擎错误）\n150:     app.add_exception_handler(IllegalSessionTransition, _conflict)\n151:     app.add_exception_handler(IllegalFlowTransition, _conflict)\n152:     app.add_exception_handler(InterviewEngineError, _unprocessable)",
+      "why": "locks.py 声称两个实现满足同一个缝，但失败语义不同：内存实现（默认单进程）排队等到底、永不超时；Redis 实现在 wait_seconds 后抛 QuestionLockTimeout。这个异常刻意不继承 InterviewEngineError（那条分支会映射成 422），也不是 IllegalFlowTransition（409），main.py 的 handler 表里没有它——于是生产（Redis 锁）下并发提交会变成 500，而测试里跑的是内存实现，根本产生不出这条路径（只有 test_distributed_lock 直连 Redis 才覆盖）。调用方（AnswerService 声明 locks: QuestionLockRegistry）看不出两种实现的行为差异。",
+      "fix": "把锁超时并入错误家族（如继承 IllegalFlowTransition 或新子类）并在 main.py 注册 409/503；给内存实现同等的有界等待，或把「有界等待」提升为缝的不变量。"
+    },
+    {
+      "id": "IE-13",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "同一包内两种重试等待风格：FlowStateStore 用不可注入的裸 asyncio.sleep（12 次），锁用注入的 Clock",
+      "where": [
+        "apps/api/src/better_resume/interview_engine/flow_store.py:18",
+        "apps/api/src/better_resume/interview_engine/flow_store.py:28-30",
+        "apps/api/src/better_resume/interview_engine/flow_store.py:96-103",
+        "apps/api/src/better_resume/interview_engine/locks.py:92",
+        "apps/api/src/better_resume/interview_engine/locks.py:108-118"
+      ],
+      "evidence": "18  DEFAULT_MAX_RETRIES = 12\n...\n28      def __init__(self, session: AsyncSession, *, max_retries: int = DEFAULT_MAX_RETRIES) -> None:\n29          self._session = session\n30          self._max_retries = max(1, max_retries)\n...\n96              if result.rowcount == 1:\n97                  await self._session.flush()\n98                  return updated.model_copy(update={\"version\": current.version + 1})\n99  \n100              # Lost the race: back off a little so the winner can commit, then re-read.\n101              await asyncio.sleep(0.005 * (attempt + 1))\n102  \n103          raise FlowConflict(f\"flow state for {session_id} kept changing under us\")\n\napps/api/src/better_resume/interview_engine/locks.py:85      def __init__(\napps/api/src/better_resume/interview_engine/locks.py:86          self,\napps/api/src/better_resume/interview_engine/locks.py:87          redis_source: RedisSource,\napps/api/src/better_resume/interview_engine/locks.py:88          *,\napps/api/src/better_resume/interview_engine/locks.py:89          ttl_seconds: float = 30.0,\napps/api/src/better_resume/interview_engine/locks.py:90          wait_seconds: float = 10.0,\napps/api/src/better_resume/interview_engine/locks.py:91          poll_seconds: float = 0.05,\napps/api/src/better_resume/interview_engine/locks.py:92          clock: Clock | None = None,\napps/api/src/better_resume/interview_engine/locks.py:93      ) -> None:\napps/api/src/better_resume/interview_engine/locks.py:94          self._client = redis_client(redis_source, decode_responses=True)\napps/api/src/better_resume/interview_engine/locks.py:95          self._ttl_ms = max(1, int(ttl_seconds * 1000))\napps/api/src/better_resume/interview_engine/locks.py:96          self._wait_seconds = wait_seconds\napps/api/src/better_resume/interview_engine/locks.py:97          self._poll_seconds = poll_seconds\napps/api/src/better_resume/interview_engine/locks.py:98          self._clock = clock or SystemClock()\n...\napps/api/src/better_resume/interview_engine/locks.py:108          deadline = self._clock.now() + self._wait_seconds\napps/api/src/better_resume/interview_engine/locks.py:109  \napps/api/src/better_resume/interview_engine/locks.py:110          while True:\napps/api/src/better_resume/interview_engine/locks.py:111              if await self._client.set(key, token, nx=True, px=self._ttl_ms):\napps/api/src/better_resume/interview_engine/locks.py:112                  break\napps/api/src/better_resume/interview_engine/locks.py:113              if self._clock.now() >= deadline:\napps/api/src/better_resume/interview_engine/locks.py:114                  raise QuestionLockTimeout(\napps/api/src/better_resume/interview_engine/locks.py:115                      f\"question {question_no} is locked by another worker \"\napps/api/src/better_resume/interview_engine/locks.py:116                      f\"(waited {self._wait_seconds:g}s)\"\napps/api/src/better_resume/interview_engine/locks.py:117                  )\napps/api/src/better_resume/interview_engine/locks.py:118              await self._clock.sleep(self._poll_seconds)",
+      "why": "答一题要过两套重试：flow 的版本 CAS（最多 12 次，每次真睡 5ms×(n+1)，累计约 0.4s）与题级锁（注入 Clock，可假时钟驱动）。flow_store 既不接受 clock 也不接受 sleep 注入，退避常量与重试上限都写死在实现里：单测要触发 FlowConflict 就得真睡，或者永远测不到「12 次都输」这条出口；AGENTS §开发规范要求「时间用注入时钟测，不写真实 sleep 断言」，这条路径无法满足。locks.py 就在隔壁给出了本仓库的正确做法。",
+      "fix": "给 FlowStateStore 注入 clock/sleep（与 locks 同一套 Clock 协议），退避参数进构造参数或 policy，测试用假时钟驱动 CAS 冲突。"
+    }
+  ]
+}

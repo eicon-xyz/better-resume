@@ -1,0 +1,32 @@
+{
+  "unit": "EXAMPLE",
+  "title": "示例 unit（不要照抄内容，只照抄结构）",
+  "scope": [
+    "apps/api/src/better_resume/example/**"
+  ],
+  "one_sentence": "一句话判读。",
+  "knowledge": "该模块独占的知识。",
+  "passes": [
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "全模块返回值都是具名 dataclass，无 tuple 解包。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "EXAMPLE-01",
+      "dim": "R12 通用专用混合体",
+      "signals": [
+        "通用专用混合体"
+      ],
+      "severity": "高",
+      "title": "示例标题",
+      "where": [
+        "apps/api/src/better_resume/media/assembler.py:88-104"
+      ],
+      "evidence": "88:  if seg_id in self._seen_sentence_ids:\n89:      # 讯飞会把同一句分多次推\n90:      continue",
+      "why": "示例：为什么这是问题，代价是什么。",
+      "fix": "示例：一句话修法。"
+    }
+  ]
+}
