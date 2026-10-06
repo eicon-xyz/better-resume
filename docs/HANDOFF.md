@@ -1,22 +1,26 @@
-# 交接文档（better-resume · P5 阶段收口）
+# 交接文档（better-resume · P7 阶段收口）
 
-> 写给下一个窗口/接手的人：先读这一页与仓库根 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
-> 再读当前阶段票据 `docs/tickets/p5-auto-failover/README.md`。
-> 最后更新：**2026-09-28**（P3/P4/P39/P40 已合并进 main；P5+P6 在 PR 流程中）。
+> 写给下一个窗口/接手的人：先读仓库根 **`GLOSSARY.md`**（域词汇表/术语）与 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
+> 再读当前阶段票据 `docs/tickets/p7-shared-rate-limit/README.md`。
+> 最后更新：**2026-10-06**（M0–M6/V/P1–P6 已合并进 main；**P7 收口在 PR #18**；审计/文档线另开一条 PR）。
 
 ## 1. 一句话状态
 
-**M0–M6、V、P1、P2、P3、P4 全部已合并进 main**（最新 `4ef9f55`，CI 绿）。
-**当前在 PR 流程中的是 P5 + P6**：
+**M0–M6、V、P1–P6 已全部合并进 main**（`main` = `6c8bdae`，CI 绿；P5 = PR #15、P6 = PR #16，均 2026-09-28 合并）。
+**P4 守护网修复**（P35–P38、P39、P40）让 `nightly` 与 `weekly-full` 从「上线起从没绿过」变成**真跑绿**
+（nightly `35835316554`、weekly `35870043832`）。真机花费 ~191 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
 
-- **PR #15（P5，Redis 自动 failover）**：一个缝（`redis_client.py`）收掉 8 处 `from_url`，主挂了应用自己切到新主。
-  冷卷演练 `bash scripts/fault_injection_drill.sh --sentinel` → `verdict=recovered`、哨兵日志 `+switch-master` 为证。
-  收口：后端 **831** / `verify.sh --layer all` **12 条命令全绿**。
-- **PR #16（P6，简历条目）**：5 条 × 一行（60–90 字），详细版降级为 `interview-notes.md`（面试稿）。
+**P7 阶段收口在 PR #18**（`p7/stage-close` → `main`，**open**）：限流状态迁到 Redis，**N 个副本共享同一份对外配额**
+（只共享供应商成本桶 `ai_call/answer/heavy`；`general/read` 限的是自己的容量，按副本限才是对的），Redis 不可用时
+**降级回进程内桶**并把降级做成可观测量（`rate_limit_degraded` 计数 + 响应头 `X-RateLimit-Scope: shared|instance` + 30s 冷却）。
+验收数字（`docs/tickets/p7-shared-rate-limit/ACCEPTANCE.md`）：后端 **842 passed**、`bash scripts/verify.sh --layer all` =
+**ALL PASS（12 条命令）**；真机调用 **0 次**。决议 = **D19**。
 
-**P4（守护网修复 P35–P38、P39、P40）已合并**——`nightly` 与 `weekly-full` 从「上线起从没绿过」变成
-**真跑绿**（nightly `35835316554`、weekly `35870043832`）。
-真机花费 ~191 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
+**审计/文档线**：PR #17（模块设计审计 + 验证工具线，6 个 commit）已于 2026-10-06 合并，但它的 base 选在了阶段分支
+`p7/shared-rate-limit`（merge `f8c4267`）——**只落进阶段分支，没进 main**。审计线连同本轮的门禁/文档改动将随
+`audit/gates-and-glossary` **再开一条 PR**（→ `main`）。
+
+> **教训**：把 PR 的 base 选在阶段分支，合并只会落在阶段分支上；要让改动进 main，必须再开一条对 `main` 的 PR。
 
 ## 2. 仓库与流程约定
 
@@ -38,7 +42,7 @@ export UV_CACHE_DIR='/root/better resume/.cache/uv'
 cd '/root/better resume/apps/api'
 export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
 export BR_REDIS_URL='redis://127.0.0.1:6379/0'
-uv run pytest -q          # 678 例；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
+uv run pytest -q          # 863 例；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
 
 # 前端
 cd '/root/better resume' && pnpm -C apps/web test --run     # 必须从仓库根；在 apps/api 下用 -C ../web
@@ -63,7 +67,9 @@ uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序
 
 # 单一入口（P2-T1；CI 与本地同一份命令）
 bash scripts/verify.sh --list          # 全部层与命令
-bash scripts/verify.sh --layer all     # 本地收口（unit+contract+scripts = 12 条命令，747+173）
+bash scripts/verify.sh --layer all     # 本地收口（unit+contract+scripts = 15 条命令）
+bash scripts/verify.sh --layer scripts # 4 条：shell 逐文件语法 + 脚本语法 + 审计结构校验 + 脚本回归
+python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手动跑：逐字核对引文（partial 也算失败）
 ```
 
 人工测试只有一处入口：**`docs/MANUAL-TESTING.md`**（统一清单，§1 为必测）。
@@ -75,6 +81,21 @@ bash scripts/verify.sh --layer all     # 本地收口（unit+contract+scripts = 
   `scripts/fault_injection_drill.sh`（浸泡/故障注入）、`apps/api/scripts/v3_ws_probe.py`（ASR 走 WS 端到端）。
 - **契约漂移三件套**（改过后端模型必须一起跑）：`uv run python scripts/export_openapi.py`（apps/api 下）、
   `pnpm -C apps/web gen:api`、`uv run python scripts/extract_api_index.py --check`。
+
+## 3b. 审计与验证工具（2026-10 新增）
+
+| 东西 | 一句话 |
+| --- | --- |
+| `docs/audit/MODULE-AUDIT.html` | 模块设计审计的**渲染产物**（10 个单元 / 122 条问题，每条带 `文件:行号` 与原文摘录）；`python3 scripts/build_module_audit.py` 重新生成 |
+| `docs/audit/units/*.json` | 审计**数据**——渲染器的输入；改问题清单改这里，不要手改 HTML |
+| `docs/audit/FIXES.md` | **修复台账**：已动手的审计条目（改了什么 / 为什么 / 怎么验证 / 未验证项）+ 环境改进记录 |
+| `docs/audit/CONTRACT.md` | 审计**口径**：检查维度、危险信号、证据与写作红线、severity 分级 |
+| `scripts/verify_mutation.sh` | **变异证明**：断言「基线绿 → 变异红 → 恢复绿」，真看退出码并在恢复后校验 sha256；用来证明一条测试真的钉住了某段实现 |
+| `scripts/verify_audit_evidence.py` | 引证核对分两层：**结构层总是跑**（字段齐全 + `where` 指向的文件/行号存在——对代码漂移稳定，所以 CI 跑它，`--structural` 可只跑这层）；**逐字层**默认只报告，`--strict` 时 partial 也算失败，归审计/修复收口手动跑（见 D22） |
+| `scripts/check_scripts.py` | 两个脚本目录的语法扫描（`SyntaxWarning` 当错误处理） |
+| `GLOSSARY.md` | 域词汇表（**先读它**）；术语以外的实现细节不进这个文件 |
+| `docs/agents/subagents.md` | 用子智能体干活的操作约定（先建任务、写范围不重叠、fork 与席位、等待上限） |
+| D20 / D21 / D22 | D20 = 桶算术双实现 + 等价契约（审计条目 ai-02）；D21 = 文档落点（`GLOSSARY.md` 取代 `CONTEXT.md`，ADR 仍在 `docs/DECISIONS.md`）；D22 = 验证证据的判定权（CI 只做结构校验，`--strict` 与变异证明是收口手段） |
 
 ## 4. 本机环境事实与坑（踩过的，别再踩）
 
@@ -211,10 +232,12 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
 
 ## 9. 交接动作清单
 
+0. **本轮动作**：等 **PR #18**（P7 收口）合入 `main` → 审计/文档线 rebase 到新 `main` 后开 PR（`audit/gates-and-glossary`）
+   → 用户验收。**不要**再把 PR 的 base 选在阶段分支（见 §1 的教训）。
 1. ~~**用户**：正式验收 **P1 + P2**~~ ✅ **已完成（2026-09-17）**：用户验收通过，结论回填
    `docs/tickets/p1-post-v/ACCEPTANCE.md` §7（浏览器手测第 3 轮 ✅，见 `docs/MANUAL-TESTING.md` §5）。
 2. **用户**（小事仍挂着）：轮换三个 key（对话里出现过）；端到端验证"星云等价物"时给百炼应用 **app_id**。
-3. **我**（PR 流程，**进行中**）：**PR #8 已开**（`p1/realtime-asr` → `main`，正文 = ACCEPTANCE.md）。
+3. ~~**我**（PR 流程）~~ ✅ **已完成**：**PR #8 已合并**（`p1/realtime-asr` → `main`，正文 = ACCEPTANCE.md）。
    首跑 backend 红（P31–P33，本地看不见的三层）→ 已红-绿修完并复跑 `--layer all` 12 条命令全绿 → 复跑 CI → 用户点头 → 合并：
    ```bash
    cd '/root/better resume'
@@ -235,9 +258,13 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
 ## 10. 文件地图（找东西用这个）
 
 ```
-AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律（接手先读）
-docs/HANDOFF.md                         ← 本文档
-docs/DECISIONS.md                       技术决议 D01–D19（冲突以它为准）
+GLOSSARY.md                             ← 域词汇表（术语；**接手先读这个**）
+AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律
+docs/HANDOFF.md                         ← 本文档：状态 / 怎么跑 / 环境坑 / 未验证清单
+docs/DECISIONS.md                       技术决议 D01–D22（冲突以它为准）
+docs/agents/subagents.md                子智能体操作约定（先建任务、写范围不重叠、fork 与席位、等待上限）
+docs/audit/                             模块设计审计：MODULE-AUDIT.html（产物）/ units/*.json（数据）/ FIXES.md（台账）/ CONTRACT.md（口径）
+docs/tickets/p7-shared-rate-limit/      P7 阶段：README + ACCEPTANCE + PROBLEMS
 docs/tickets/p1-post-v/                 P1 阶段：README + ACCEPTANCE + PROBLEMS(P24–P33) + 4 份 EVIDENCE
 docs/tickets/p2-test-automation/        P2 阶段：README（T1–T6 全落地）+ coverage-report-round1.md
 docs/MANUAL-TESTING.md                  人工测试统一入口（结果记录在第 3 节回填表）
@@ -255,10 +282,13 @@ apps/api/src/better_resume/
   jobs/queue.py + worker.py             Redis Stream 队列 + worker（心跳、重试、死信、接管）
   media/adapters/{xunfei_ast,qwen_asr,paraformer_rt,edge_tts,scripted}.py  语音适配器（paraformer_rt=实时，默认）
 apps/api/scripts/                       real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / assembler_real_probe / make_fixture_audio / check_coverage_floors / fake_openai / export_openapi / extract_api_index
-apps/api/tests/                         747 例；test_source_hygiene.py 拦语法警告与转义反引号
+apps/api/tests/                         863 例；test_source_hygiene.py 拦语法警告与转义反引号
 scripts/verify.sh                       单一验证入口（P2-T1；CI 与本地同一份命令）
 scripts/compose_smoke.sh                部署面验收（含 P29 缓存头断言）
 scripts/kill_instance_drill.sh          §12.4 硬验收
 scripts/fault_injection_drill.sh        V6 浸泡/故障注入
+scripts/verify_mutation.sh              变异证明（基线绿 → 变异红 → 恢复绿，真看退出码）
+scripts/check_scripts.py                两个脚本目录的语法扫描（SyntaxWarning 当错误）
+.githooks/pre-commit                    可选提交前检查（`git config core.hooksPath .githooks` 启用）
 compose.yaml + deploy/nginx.conf        部署最终形态
 ```
