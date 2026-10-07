@@ -233,15 +233,32 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_sentinel_pair(self) -> Settings:
         """Fail loudly instead of silently degrading to a single URL nobody can fail over."""
-        has_sentinels = bool(self.redis_sentinels.strip())
-        has_master_name = bool(self.redis_master_name.strip())
-        if has_sentinels != has_master_name:
-            missing = "BR_REDIS_MASTER_NAME" if has_sentinels else "BR_REDIS_SENTINELS"
+        sentinels = parse_sentinel_addresses(self.redis_sentinels)
+        master_name = self.redis_master_name.strip()
+        if bool(sentinels) != bool(master_name):
+            missing = "BR_REDIS_MASTER_NAME" if sentinels else "BR_REDIS_SENTINELS"
             raise ValueError(
                 "BR_REDIS_SENTINELS and BR_REDIS_MASTER_NAME must be set together "
                 f"({missing} is missing)"
             )
+        if self.redis_sentinels.strip() and not sentinels:
+            # P8 / identity_jobs-01: "," is "some text" but names no node, so this used to slip
+            # through and leave the client on a single URL with no error and no log.
+            raise ValueError(
+                "BR_REDIS_SENTINELS lists no usable address: give at least one host:port, "
+                "or unset both BR_REDIS_SENTINELS and BR_REDIS_MASTER_NAME to use BR_REDIS_URL"
+            )
         return self
+
+
+def parse_sentinel_addresses(raw: str) -> tuple[str, ...]:
+    """The single reading of BR_REDIS_SENTINELS (P8 / identity_jobs-01).
+
+    Both the startup validator and RedisTopology.from_settings go through this, so "what counts as
+    a configured sentinel" cannot drift into two disagreeing answers again. Address *syntax* stays
+    with the client (redis_client._sentinel_address), which already fails loudly.
+    """
+    return tuple(entry.strip() for entry in raw.split(",") if entry.strip())
 
 
 @functools.lru_cache(maxsize=1)

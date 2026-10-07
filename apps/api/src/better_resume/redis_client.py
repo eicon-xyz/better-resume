@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import redis.asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 
-from .settings import Settings
+from .settings import Settings, parse_sentinel_addresses
 
 #: 哨兵默认端口（redis-sentinel 的标准端口）。
 _DEFAULT_SENTINEL_PORT = 26379
@@ -37,12 +37,9 @@ class RedisTopology:
     @classmethod
     def from_settings(cls, settings: Settings) -> RedisTopology:
         """唯一读 `BR_REDIS_SENTINELS` / `BR_REDIS_MASTER_NAME` 的地方。"""
-        sentinels = tuple(
-            entry.strip() for entry in settings.redis_sentinels.split(",") if entry.strip()
-        )
         return cls(
             url=settings.redis_url,
-            sentinels=sentinels,
+            sentinels=parse_sentinel_addresses(settings.redis_sentinels),
             master_name=settings.redis_master_name.strip(),
         )
 
