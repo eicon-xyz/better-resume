@@ -168,15 +168,9 @@ class ChatService:
     async def _load(
         self, store: SqlConversationStore, session: SessionRef, user_id: UserId
     ) -> Conversation:
-        await store.require_owner(session, user_id)
-        conversations = await store.list_for_user(user_id, limit=200)
-        for conversation in conversations:
-            if conversation.id == session.session_id:
-                return conversation
-        # require_owner passed but the row was filtered out: treat as missing.
-        from ..conversation import ConversationNotFoundError
-
-        raise ConversationNotFoundError(session.session_id)
+        # One query for ownership + lookup: paging list_for_user() meant a user with more
+        # conversations than the page size could not open their older ones (P8 / chat-02).
+        return await store.get_owned(session, user_id)
 
     async def _is_duplicate(
         self, store: SqlConversationStore, session: SessionRef, client_message_id: str
