@@ -270,6 +270,75 @@ async def test_scoring_failure_keeps_the_question_answerable(factory, ready_sess
     assert retry.next_action == "next_question"
 
 
+async def test_a_failed_attempt_does_not_burn_the_idempotency_key(
+    factory, ready_session: str
+) -> None:
+    """P8 / IE-01: retrying with the SAME request_id after a failure must still score.
+
+    The failed attempt stays on record (it is the evidence that the vendor timed out), but it must
+    not answer the retry with score=None forever — the row is re-scored in place instead.
+    """
+    svc = service(factory)
+    failing = FakeGateway(error=LlmTimeoutError("scorer down"))
+
+    with pytest.raises(LlmTimeoutError):
+        await svc.submit(
+            session_id=ready_session,
+            user_id=USER,
+            question_no="1",
+            answer="会失败的答案",
+            request_id="ans-same-key",
+            gateway=failing,
+        )
+
+    retry = await svc.submit(
+        session_id=ready_session,
+        user_id=USER,
+        question_no="1",
+        answer="会失败的答案",
+        request_id="ans-same-key",
+        gateway=FakeGateway(),
+    )
+
+    assert retry.replayed is False, "a failed attempt must not be replayed as a finished answer"
+    assert retry.answer.score == 80
+    assert retry.next_action == "next_question"
+
+    async with factory() as session:
+        rows = (await session.execute(select(InterviewAnswerRow))).scalars().all()
+
+    assert len(rows) == 1, "the retry re-scores the failed row in place; it must not add a second"
+    assert rows[0].score == 80
+    assert rows[0].error_message is None
+
+
+async def test_a_retry_that_fails_again_still_keeps_one_row(factory, ready_session: str) -> None:
+    """P8 / IE-01 edge: a second failure must refresh that row, not insert a rival one.
+
+    The database allows one row per (session_id, request_id); writing the failure with add()
+    would raise IntegrityError and mask the vendor error the caller needs to see.
+    """
+    svc = service(factory)
+
+    for reason in ("scorer down", "still down"):
+        with pytest.raises(LlmTimeoutError):
+            await svc.submit(
+                session_id=ready_session,
+                user_id=USER,
+                question_no="1",
+                answer="会失败的答案",
+                request_id="ans-same-key-fails-twice",
+                gateway=FakeGateway(error=LlmTimeoutError(reason)),
+            )
+
+    async with factory() as session:
+        rows = (await session.execute(select(InterviewAnswerRow))).scalars().all()
+
+    assert len(rows) == 1
+    assert rows[0].score is None
+    assert rows[0].error_message == "still down"
+
+
 async def test_answering_another_question_is_rejected(factory, ready_session: str) -> None:
     with pytest.raises(QuestionNotCurrent):
         await service(factory).submit(

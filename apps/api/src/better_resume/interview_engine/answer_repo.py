@@ -94,6 +94,41 @@ class AnswerRepository:
         )
         return [_to_model(row) for row in rows]
 
+    async def overwrite(
+        self,
+        answer_id: str,
+        *,
+        answer: str,
+        score: float | None,
+        feedback: str | None,
+        missing_points: list[str],
+        follow_up_needed: bool | None,
+        follow_up_reason: str | None,
+        rule_version: str | None,
+        error_message: str | None,
+    ) -> AnswerRecord:
+        """Write a new outcome onto an existing row (P8/IE-01).
+
+        A retry that reuses a failed attempt's request_id must stay one row per
+        (session_id, request_id) — the database enforces that uniqueness — so the retry's result
+        (or its own failure) is written here instead of through add().
+        """
+        row = (
+            await self._session.execute(
+                select(InterviewAnswerRow).where(InterviewAnswerRow.id == answer_id)
+            )
+        ).scalar_one()
+        row.answer = answer
+        row.score = score
+        row.feedback = feedback
+        row.missing_points = missing_points
+        row.follow_up_needed = follow_up_needed
+        row.follow_up_reason = follow_up_reason
+        row.rule_version = rule_version
+        row.error_message = error_message
+        await self._session.flush()
+        return _to_model(row)
+
     async def update_result(
         self,
         answer_id: str,

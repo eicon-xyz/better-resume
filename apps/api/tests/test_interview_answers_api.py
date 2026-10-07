@@ -188,6 +188,30 @@ def test_vendor_timeout_is_504_and_stays_answerable(
     assert retried.json()["next_question_no"] == "2"
 
 
+def test_retrying_the_same_request_id_after_a_timeout_scores(
+    client: TestClient, gateway, migrated_database: str
+) -> None:
+    """P8 / IE-01: the published contract tells clients to resend the same request_id when
+    retrying (schema.d.ts: "resend it when retrying"), so the resend must score — not hand back
+    the failed attempt with score=None and leave the question permanently ungraded."""
+    login(client)
+    fake = gateway(FakeGateway())
+    session_id = prepare(client, fake)
+
+    gateway(FakeGateway(error=LlmTimeoutError("scorer down")))
+    failed = answer(client, session_id, "1", "ans-retry-same")
+
+    assert failed.status_code == 504
+
+    gateway(FakeGateway(score=70.0, missing=[]))
+    retried = answer(client, session_id, "1", "ans-retry-same")
+
+    assert retried.status_code == 201, retried.text
+    assert retried.json()["replayed"] is False
+    assert retried.json()["answer"]["score"] == 70.0
+    assert retried.json()["next_question_no"] == "2"
+
+
 def test_low_score_follow_up_is_surfaced(
     client: TestClient, gateway, migrated_database: str
 ) -> None:
