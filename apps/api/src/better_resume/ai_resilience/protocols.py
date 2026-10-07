@@ -19,13 +19,18 @@ class AiResilience(Protocol):
         """
         ...
 
-    def stats(self) -> dict[str, Any]:
-        """The snapshot GET /resilience/stats serves.
 
-        P8 / settings_observability-03: the chain can be wrapped (Redis single flight) and the
-        wrapper had no way to answer for what it wraps — while main.py annotated the wired chain
-        as `object`, so nothing pointed at the gap until the wrapper was switched on.
-        """
+@runtime_checkable
+class AiResilienceSnapshot(Protocol):
+    """What GET /resilience/stats and the lifespan need from whatever the chain is wrapped in.
+
+    P8 / settings_observability-03: the chain can be wrapped (Redis single flight) and the wrapper
+    answered for nothing — the endpoint raised AttributeError the moment the wrapper was switched
+    on, because main.py annotated the wired chain as object and nothing pointed at the gap.
+    """
+
+    def stats(self) -> dict[str, Any]:
+        """The snapshot the endpoint serves; a wrapper answers for what it wraps."""
         ...
 
     async def aclose(self) -> None:
