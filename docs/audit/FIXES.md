@@ -11,6 +11,14 @@
 | 审计编号 | 严重度 | 一句话 | 状态 | 改动文件 |
 | --- | --- | --- | --- | --- |
 | ai-02 | 高 | token bucket 的补充算术在 Python 与 Lua 各写了一遍 | **已修复**（含一条已知边界） | redis_buckets.py、tests/ai_resilience/test_ratelimit_equivalence.py |
+| conversation_chat-02 | 高 | 「取一条属于我的会话」没有 store 方法，用 list_for_user(limit=200) 线性找 | **已修复** | conversation/store.py、chat/service.py、tests/test_chat_service.py |
+| IE-01 | 高 | 失败的答案行占用成功幂等键，同 request_id 重试分数永久拿不回 | **已修复**（语义 = 原地重评） | interview_engine/answer_service.py、answer_repo.py、tests/interview_engine/test_answer_service.py、tests/test_interview_answers_api.py |
+| resume_parser_db-03 | 中 | 会话状态词表三份拷贝，alembic check 对 CHECK 文本完全盲 | **已修复** | interview_engine/orm.py、tests/test_migrations.py |
+| settings_observability-03（so-03） | 高 | 分布式包装类缺 stats()，开关一开 /resilience/stats 必 500 | **已修复** | ai_resilience/protocols.py、distributed.py、main.py、tests/test_resilience_api.py |
+| identity_jobs-01 | 高 | 哨兵「成对且可用」两份判据不等价，分隔符值静默退回单节点 | **已修复** | settings/config.py、redis_client.py、tests/test_settings.py |
+| web-04 | 高 | 用回答内容相等去重，同一条回答出现两次时第二条被静默吞掉 | **已修复** | apps/web/src/chat/selectors.ts、selectors.test.ts |
+| media-01 | 中 | assembler→事件映射在两个适配器里逐行重复，且没有一致性守卫 | **已修复**（抽取成一份 + 源码警报） | media/event_map.py、media/adapters/{xunfei_ast,scripted}.py、tests/media/test_event_map.py |
+| （新发现，非审计条目）N1 | — | 测试污染：切场景的用例不还原共享绑定表 → 单跑 tests/test_chat_api.py 必 6 假红 | **已修复** | apps/api/tests/conftest.py、tests/test_scene_routing.py |
 
 ---
 
@@ -188,4 +196,189 @@ tests=858 failures=0 errors=0 skipped=0 time=64.885s
 
 ### 未验证 / 已知边界
 <诚实清单>
-```
+```| conversation_chat-02 | 高 | 「取一条属于我的会话」没有 store 方法，用 list_for_user(limit=200) 线性找 | **已修复** | conversation/store.py、chat/service.py、tests/test_chat_service.py |
+| IE-01 | 高 | 失败的答案行占用成功幂等键，同 request_id 重试分数永久拿不回 | **已修复**（语义 = 原地重评） | interview_engine/answer_service.py、answer_repo.py、tests/interview_engine/test_answer_service.py、tests/test_interview_answers_api.py |
+| resume_parser_db-03 | 中 | 会话状态词表三份拷贝，alembic check 对 CHECK 文本完全盲 | **已修复** | interview_engine/orm.py、tests/test_migrations.py |
+| settings_observability-03（so-03） | 高 | 分布式包装类缺 stats()，开关一开 /resilience/stats 必 500 | **已修复** | ai_resilience/protocols.py、distributed.py、main.py、tests/test_resilience_api.py |
+| identity_jobs-01 | 高 | 哨兵「成对且可用」两份判据不等价，分隔符值静默退回单节点 | **已修复** | settings/config.py、redis_client.py、tests/test_settings.py |
+| web-04 | 高 | 用回答内容相等去重，同一条回答出现两次时第二条被静默吞掉 | **已修复** | apps/web/src/chat/selectors.ts、selectors.test.ts |
+| media-01 | 中 | assembler→事件映射在两个适配器里逐行重复，且没有一致性守卫 | **已修复**（抽取成一份 + 源码警报） | media/event_map.py、media/adapters/{xunfei_ast,scripted}.py、tests/media/test_event_map.py |
+| （新发现，非审计条目）N1 | — | 测试污染：切场景的用例不还原共享绑定表 → 单跑 tests/test_chat_api.py 必 6 假红 | **已修复** | apps/api/tests/conftest.py、tests/test_scene_routing.py |
+
+---
+
+---
+
+## conversation_chat-02 · 按 id 取自己的会话（不再翻用户列表）
+
+**来源**：`MODULE-AUDIT.html#conversation_chat-02`（conversation_chat 单元，高）。**实测证据**见 `docs/tickets/p8-audit-hardening/README.md` §1。
+
+### 为什么要修
+
+用户会话数超过 200 时，`ChatService._load` 先 `require_owner` 通过、再用 `list_for_user(limit=200)` 翻页线性找目标 —— 目标排在第 201 位就找不到，客户端拿到 **HTTP 200 + SSE error 帧**（审计原文写的 404 不成立：异常在 SSE 生成器里被吞）。
+
+### 改了什么
+
+store 新增 `get_owned(session, user_id)`：一次查询同时完成归属校验与取行；`_load` 直接委托它，删掉翻页查找。归属失败仍一律 `ConversationNotFoundError`（对外 404 语义不变）。
+
+### 怎么验证
+
+修前红：201 条会话时新用例抛 `ConversationNotFoundError`；修后 `tests/test_chat_service.py + test_chat_api.py + test_conversation_store.py` = **27 passed / 0 failed**。
+
+### 未验证 / 边界
+
+只覆盖 chat 会话；`list_for_user` 仍不按 `kind` 过滤（当前无 interview 会话写入该表）。审计提到的「未来 interview 会话会挤掉 chat」属潜在项，未处理。
+
+---
+
+## IE-01 · 失败的一次作答不该吃掉幂等键
+
+**来源**：`MODULE-AUDIT.html#IE-01`（interview_engine 单元，高）。
+
+### 为什么要修
+
+评分失败时 `_rollback_evaluation` 用**同一个** `request_id` 写一行 `score=NULL` 的失败记录；幂等闸门只查「这行在不在」，于是按契约重发同一 `request_id` 的客户端拿到 `201 + replayed=true + score=None`，而唯一约束保证再也写不进第二行 —— 该题分数**永久拿不回**（实测：换新 id 才拿到 84.0）。
+
+### 改了什么
+
+按用户拍板的 **(b) 原地重评**：命中失败行（`error_message` 非空）时不再 replay，而是走完整评分并**原地覆写该行**（`AnswerRepository.overwrite`）；命中成功行仍 replay。**连带缺陷**：重试再次失败时原实现会用同一个 key 再 `add()` 一行 → 撞 `uq_interview_answers_session_request`、把供应商错误掩盖成 `IntegrityError`；现按 `resume_of` 分支复用同一行并刷新失败原因。
+
+### 怎么验证
+
+修前红：服务层 `replayed=True`；HTTP 面同 id 重试 = 201 + `score=None`。修后 `tests/interview_engine/test_answer_service.py + tests/test_interview_answers_api.py` = **20 passed / 0 failed**，含三条新用例（同 id 重试拿分、重试再失败仍一行、HTTP 同 id 重试拿分）。
+
+### 未验证 / 边界
+
+语义变更：幂等键现在「可重入直到成功」。第一方前端 `useInterviewRoom.ts` 每次点击都换新 id，所以 UI 行为不变；受影响的是**按契约重发同 id 的消费者**（丢包重发、脚本、第三方）。
+
+---
+
+## resume_parser_db-03 · 状态词表只留一份真相 + 一条会变红的守卫
+
+**来源**：`MODULE-AUDIT.html#resume_parser_db-03`（resume_parser_db 单元，中）。
+
+### 为什么要修
+
+会话状态词表有三份手写拷贝（`SessionStatus` 枚举 / ORM `CheckConstraint` / 迁移里的 CHECK 文本），而 `alembic check` **看不见 CHECK 文本**：实测在内存里改写甚至删除 ORM 的约束 → `compare_metadata` 仍报 **0 op**（对照：多加一列 → 1 op）。改一处漂两处，且只在第一次写新状态时才炸成 `CheckViolationError`。
+
+### 改了什么
+
+ORM 侧改为由枚举派生（`_STATUS_CHECK = "status IN (...)"` 从 `SessionStatus` 生成），删掉一份字面量；迁移文本不动（历史不可改）。
+
+### 怎么验证
+
+新增 `tests/test_migrations.py::test_the_status_vocabulary_agrees_across_code_the_orm_and_the_database`：从 Postgres 读回 `pg_get_constraintdef`，比对「枚举 ↔ ORM 约束 ↔ 数据库」三处的字面量集合。**变异证明**：`bash scripts/verify_mutation.sh` 把枚举里 `ABANDONED` 的值改掉 → 该用例变红；恢复后变绿，且 sha256 与 HEAD 一致（基线绿 → 变异红 → 恢复绿）。
+
+### 未验证 / 边界
+
+只钉 `ck_interview_sessions_status`；同模式的 `conversations/messages` 两条约束（审计同一单元里提到）未加断言。迁移文本仍是第三份拷贝 —— 现在它漂了会被守卫抓住，但**不会**被自动修正。
+
+---
+
+## settings_observability-03 · 包装类必须替它所包的链路作答
+
+**来源**：`MODULE-AUDIT.html#settings_observability-03`（settings_observability 单元，高；unit JSON 里 id 为 `so-03`）。
+
+### 为什么要修
+
+打开分布式单飞（`BR_RESILIENCE__DISTRIBUTED=true`）后，`app.state.ai_resilience` 被换成 `DistributedAiResilience`，它只有 `run/aclose`、没有 `stats()`；而 `main.py` 把该变量标注成 `object`，类型信息被抹掉，于是 `GET /api/v1/resilience/stats` 对已登录调用者 **100% 500**（实测真 app + 真 PG/Redis + 真登录）。
+
+### 改了什么
+
+`DistributedAiResilience.stats()` 委托 `self._inner.stats()`；新增 `AiResilienceSnapshot` 协议（`stats` + `aclose`）并把装配点标注改成它。**没有**给 `AiResilience`（run-only 契约）加方法 —— 第一版那样改会让 `UnimplementedAiResilience` 不再满足 `tests/contracts/test_core_contracts.py::test_ai_resilience_shape`，被全量跑抓红。
+
+### 怎么验证
+
+修前红：`AttributeError: 'DistributedAiResilience' object has no attribute 'stats'`（pytest 1 failed）。修后 `tests/test_resilience_api.py + tests/ai_resilience + tests/test_distributed_flight.py + tests/test_healthz.py` = **117 passed / 0 failed**，含新用例（distributed=true 时 /stats 必须 200）。
+
+### 未验证 / 边界
+
+后端**没有** mypy/pyright 门禁，协议标注只是文档级约束：下次再包一层忘了 `stats` 不会在 CI 变红，真正拦住它的是那条新用例。默认部署（开关关）本来就 200，故这条对现网无影响。
+
+---
+
+## identity_jobs-01 · 哨兵判据收敛成一份
+
+**来源**：`MODULE-AUDIT.html#identity_jobs-01`（identity_jobs 单元，高）。
+
+### 为什么要修
+
+`BR_REDIS_SENTINELS` 的「成对且可用」有两份判据：`Settings` 校验只看「有没有字符」(`bool(strip())`)，`RedisTopology.from_settings` 则过滤空项后再判空。于是只含分隔符的值（`","` / `" , "`）**能过启动校验**，运行时静默退回单节点客户端（`uses_sentinel=False`、普通 `ConnectionPool`）—— 多副本下主挂了不切换，**无异常、无日志**。
+
+### 改了什么
+
+新增 `settings.config.parse_sentinel_addresses` 作为「什么算配了哨兵」的唯一判据（settings 拥有、redis_client 复用）；校验里补一条：原始值非空但解析不出地址 → 启动即拒并点名变量。**地址语法**仍归 `redis_client._sentinel_address`（它对 `x:abc` 本来就抛，实测确认「响的」）。
+
+### 怎么验证
+
+修前红：三个分隔符参数化用例全部 `DID NOT RAISE ValidationError`。修后 `tests/test_settings.py + test_redis_client.py + test_distributed_flight.py + test_identity.py` = **39 passed / 0 failed**；另加一条「validator 与 topology 读法一致」的契约用例。
+
+### 未验证 / 边界
+
+只覆盖「算不算配了」这一层；语法层未合并（见上）。半配置（只给一半）与非法地址在改动前后都是响的，行为未变。
+
+---
+
+## web-04 · 回答的身份锚在它那一轮，而不是它的文本
+
+**来源**：`MODULE-AUDIT.html#web-04`（web 单元，高）。
+
+### 为什么要修
+
+`mergeHistory` 用「assistant 回答的**文本内容**是否与历史里某条完全相同」判断草稿是否已落库。连续两次回答内容相同（模板化上游、连点两次「你好」）时，第二条在 refetch 落地前就被当成「已回放」静默吞掉 —— 用户看着刚出现的回答消失；refetch 失败则**永久不回**（调查员在真 `ChatPage` 上复现）。
+
+### 改了什么
+
+去重改为**按回答所属那一轮的 `client_message_id`**：先算出「历史里已被回答的用户轮」（该轮之后的第一条 assistant 行），本地草稿只在它自己那一轮**尚未被回答**时才保留；内容比较只留作「草稿前面没有用户轮」时的兜底。
+
+### 怎么验证
+
+修前红：`Tests 1 failed | 5 passed`（新用例「第二条相同回答必须留下」）。修后前端 **177 passed**（24 文件）、`eslint` 与 `tsc --noEmit` 干净。
+
+### 未验证 / 边界
+
+**没有**按提案写的「`ChatMessage` 带服务端 id」：SSE 的 `done` 帧只带 `finish_reason`，草稿拿不到服务端 `seq`，那要改传输协议（超出本轮范围，已记进 ACCEPTANCE §5.1）。
+
+---
+
+## media-01 · 映射规则只留一份 + 源码警报
+
+**来源**：`MODULE-AUDIT.html#media-01`（media 单元，中）。
+
+### 为什么要修
+
+assembler 快照 → `TranscriptEvent` 的映射在 `xunfei_ast._emit_update` 与 `scripted._apply` 里逐行重复（含各自一份 `_committed_seen` 记忆），而 `scripted` 是本地/CI 的默认通道；两份当前等价（差分实测一致），但**没有任何测试要求它们一致** —— 只改一份，默认通道的多句切片就与供应商通道分叉，套件仍绿。
+
+### 改了什么
+
+把规则与它的记忆抽成 `media/event_map.py` 的 `TranscriptEventMapper.events()`，两个适配器只负责喂包（各自删掉 `_committed_seen`）。
+
+### 怎么验证
+
+新增 `tests/media/test_event_map.py`：两句四个包 → `[replace, archive, replace, archive]`（此前无人钉住多句切片）、重复 final 包不重复 archive、以及「适配器里不许再出现 `update.committed[`」的源码警报。`tests/media + test_media_ws.py + test_media_tts_api.py` = **79 passed / 0 failed**。
+
+### 未验证 / 边界
+
+`paraformer_rt.py` 是同一规则的第三份实现（按供应商 `sentence_end` 驱动、不经 assembler），**未动**（来源不同，属合理实现）。等价证明是结构性的（只有一份 + 警报），不是两适配器逐帧对拍。
+
+---
+
+## N1 · 测试污染：共享的场景绑定表要还原（非审计条目，本轮实测发现）
+
+**来源**：本机实测（`docs/tickets/p8-audit-hardening/README.md` §1 的 N1 段有完整因果链原始输出）。
+
+### 为什么要修
+
+`tests/test_scene_routing.py` 用真 `PUT /api/v1/scenes` 把 chat 场景切到 `xingyun:flow-chat`，前 4 处手动还原、**第 5 处（文件最后一个用例）漏了** —— 绑定表在进程外、被整个 run 共享，于是任何**只跑子集**的人（`pytest tests/test_chat_api.py`、`-k chat`）都会看到 **6 条假红**，理由全是「缺 XINGCHEN_API_KEY」，与他的改动无关。全量跑为什么一直绿：store 测试的 fixture 恰好在那之前把整表重置。
+
+### 改了什么
+
+`tests/conftest.py` 新增快照/还原 fixture `restore_scene_bindings`（记录五行、只在与快照不同时写回），`test_scene_routing.py` 用模块级 `pytest.mark.usefixtures` 全量套用；再加一条**同文件内、顺序确定**的回归用例（断言「前序用例切换过的场景回到默认」）。
+
+### 怎么验证
+
+修前红：`pytest tests/test_scene_routing.py tests/test_chat_api.py` = **14 tests / 7 failed**（新用例 `AssertionError: chat was left on xingyun:flow-chat` + chat_api 六条）。修后同命令 **14 / 0**；单文件 6 / 0。
+
+### 未验证 / 边界
+
+fixture 只加在**已知污染者**上（+ conftest 供复用），**没有**做全局 autouse —— 那会让 865 条用例全部强依赖数据库，破坏「无 DB 时其余用例照跑」。其它文件若将来切换场景，需要自己套用这个 fixture。
