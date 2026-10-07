@@ -2,25 +2,27 @@
 
 > 写给下一个窗口/接手的人：先读仓库根 **`GLOSSARY.md`**（域词汇表/术语）与 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
 > 再读当前阶段票据 `docs/tickets/p7-shared-rate-limit/README.md`。
-> 最后更新：**2026-10-06**（M0–M6/V/P1–P6 已合并进 main；**P7 收口在 PR #18**；审计/文档线另开一条 PR）。
+> 最后更新：**2026-10-07**（M0–M6/V/P1–P7 已合并，main = `f915f20`；审计/文档线由 PR #19 落地）。
 
 ## 1. 一句话状态
 
-**M0–M6、V、P1–P6 已全部合并进 main**（`main` = `6c8bdae`，CI 绿；P5 = PR #15、P6 = PR #16，均 2026-09-28 合并）。
+**M0–M6、V、P1–P6 已全部合并进 main**（P5 = PR #15、P6 = PR #16，均 2026-09-28 合并）。
 **P4 守护网修复**（P35–P38、P39、P40）让 `nightly` 与 `weekly-full` 从「上线起从没绿过」变成**真跑绿**
 （nightly `35835316554`、weekly `35870043832`）。真机花费 ~191 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
 
-**P7 阶段收口在 PR #18**（`p7/stage-close` → `main`，**open**）：限流状态迁到 Redis，**N 个副本共享同一份对外配额**
+**P7（限流状态迁到 Redis）已合并**——**PR #18**（`p7/stage-close` → `main`，merge `15f073e`，2026-10-07）：**N 个副本共享同一份对外配额**
 （只共享供应商成本桶 `ai_call/answer/heavy`；`general/read` 限的是自己的容量，按副本限才是对的），Redis 不可用时
 **降级回进程内桶**并把降级做成可观测量（`rate_limit_degraded` 计数 + 响应头 `X-RateLimit-Scope: shared|instance` + 30s 冷却）。
 验收数字（`docs/tickets/p7-shared-rate-limit/ACCEPTANCE.md`）：后端 **842 passed**、`bash scripts/verify.sh --layer all` =
 **ALL PASS（12 条命令）**；真机调用 **0 次**。决议 = **D19**。
 
-**审计/文档线**：PR #17（模块设计审计 + 验证工具线，6 个 commit）已于 2026-10-06 合并，但它的 base 选在了阶段分支
-`p7/shared-rate-limit`（merge `f8c4267`）——**只落进阶段分支，没进 main**。审计线连同本轮的门禁/文档改动将随
-`audit/gates-and-glossary` **再开一条 PR**（→ `main`）。
+**审计/文档线已合并**——**PR #19**（`audit/gates-and-glossary` → `main`，merge `f915f20`，2026-10-07）：模块设计审计（122 条问题，`docs/audit/`）
++ ai-02 修复 + 验证工具链（`verify_mutation.sh` / `check_scripts.py` / 引证两级核对）+ `GLOSSARY.md` + 决议 D20/D21/D22。
 
-> **教训**：把 PR 的 base 选在阶段分支，合并只会落在阶段分支上；要让改动进 main，必须再开一条对 `main` 的 PR。
+**当前 `main` = `f915f20`（CI 绿），没有挂起的 PR、没有在飞的阶段**——下一次开工要么开新阶段提案，要么从 `docs/audit/FIXES.md` 台账里挑一条。
+
+> **教训（PR #17 踩的）**：把 PR 的 base 选在阶段分支，合并只会落在阶段分支上（#17 因此只进了 `p7/shared-rate-limit`，
+> 直到 #19 才真正进 main）。阶段分支只用来收口一个阶段；跨阶段的内容直接对 `main` 开 PR。
 
 ## 2. 仓库与流程约定
 
@@ -101,6 +103,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手�
 
 | 事实 | 影响 / 做法 |
 | --- | --- |
+| **本地 `main` 可能过期** | `git pull --ff-only` 在没有 upstream 时只打印提示、**不会拉取**（2026-10-07 实际踩过：以为在 main 上，其实落后 20+ 个提交，收尾分支建在了旧树上）。收口前先 `git fetch && git merge --ff-only origin/main`，或先 `git branch --set-upstream-to=origin/main main` |
 | WSL2 + Docker Desktop（VM 与发行版不同网络） | 构建要 `build.network: host` + shell 里带 `HTTPS_PROXY=http://127.0.0.1:7897`（compose 会自动转成 build args）；**不要**往 `~/.docker/config.json` 写 proxies |
 | Docker Hub 直连不通 | `.env` 里 `BR_LIBRARY_PREFIX=docker.m.daocloud.io/library/`、`BR_UV_IMAGE=ghcr.m.daocloud.io/astral-sh/uv:latest`（仓库默认仍是上游 tag） |
 | **Docker Desktop 的 WSL 集成会掉线** | 症状：`docker` 命令突然消失（`/usr/bin/docker` 指向 `/mnt/wsl/docker-desktop/...`，挂载没了）。恢复：`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'`，等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次） |
@@ -232,8 +235,7 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
 
 ## 9. 交接动作清单
 
-0. **本轮动作**：等 **PR #18**（P7 收口）合入 `main` → 审计/文档线 rebase 到新 `main` 后开 PR（`audit/gates-and-glossary`）
-   → 用户验收。**不要**再把 PR 的 base 选在阶段分支（见 §1 的教训）。
+0. ~~**本轮动作**：等 PR #18 合入 → 审计线开 PR~~ ✅ **已完成（2026-10-07）**：#18（`15f073e`）与 #19（`f915f20`）均已合入 `main`；收尾只改文档（本节 + §1 + §4 加一行坑）。
 1. ~~**用户**：正式验收 **P1 + P2**~~ ✅ **已完成（2026-09-17）**：用户验收通过，结论回填
    `docs/tickets/p1-post-v/ACCEPTANCE.md` §7（浏览器手测第 3 轮 ✅，见 `docs/MANUAL-TESTING.md` §5）。
 2. **用户**（小事仍挂着）：轮换三个 key（对话里出现过）；端到端验证"星云等价物"时给百炼应用 **app_id**。
