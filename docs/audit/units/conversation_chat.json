@@ -1,0 +1,193 @@
+{
+  "unit": "conversation_chat",
+  "title": "conversation + chat（会话存储 + 两类会话服务）",
+  "scope": [
+    "apps/api/src/better_resume/conversation/**",
+    "apps/api/src/better_resume/chat/**"
+  ],
+  "one_sentence": "conversation 是「会话/消息」的存储与值对象（Postgres 行 + 序号分配 + 所有权校验），chat 是其中 chat 这一类会话的编排服务（历史进、SSE 流出、两条消息都落库）；最重要的三件事是顺序号不变量、幂等键、流失败也要留下痕迹——前两件在 store 里，第三件在 service 的 try/finally 里，而三者共同的「谁拥有这个会话」入口至今没有归位（见 conversation_chat-01/02）。",
+  "knowledge": "conversation 独占的知识是「ConversationStore」这一份存储契约：会话 = (kind, session_id) 唯一寻址、消息按 per-conversation seq 单调、seq 用行锁 + 唯一索引分配而不是 Redis（store.py:3-4 给了 D03 的理由）、client_message_id 幂等、所有权失败一律收敛成 NotFound。chat 独占的是「一轮对话怎么变成一个流」：历史窗口怎么裁、什么时候落用户消息、失败/取消也要落助手消息、以及 single-flight 键的构成（build_resilience_key）。两份知识的分界线目前不干净：chat 需要「取一条属于我的会话」，却只能自己用 list_for_user(limit=200) 拼（conversation_chat-02）。",
+  "passes": [
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "返回值都是具名 pydantic 模型（Conversation/StoredMessage）或单个 int seq，没有 tuple/dict 解包；连 _persist 也没有用元组传多值。"
+    },
+    {
+      "dim": "W3 错误靠定义规避",
+      "note": "「不存在/不属于你/kind 不匹配」三种情况统一收敛为 ConversationNotFoundError（errors.py:10-12），调用者不必分别处理，也不泄露他人会话是否存在（store.py:74-77、175-183）。"
+    },
+    {
+      "dim": "S2 拆开后接口更简单还是更复杂",
+      "note": "conversation 与 chat 拆开后两边接口都更小：chat/service.py 只 import 值对象与 store，完全不知道 SQLAlchemy；conversation 也不知道 LLM/SSE 的存在（conversation/__init__.py 的导出里没有任何 chat 符号）。"
+    },
+    {
+      "dim": "D7 接口注释含实现细节",
+      "note": "protocols.py 的三条注释只讲契约（返回升序、before 的语义、何时 raise），没有行锁、SQL、JSONB 这些实现细节；实现细节留在 store.py 的实现注释里。"
+    },
+    {
+      "dim": "C3 性能改动测量过",
+      "note": "序号分配选型有依据且写了理由（store.py:3-4：事务 + 行锁 + 唯一索引兜底，不引 Redis Lua），并发正确性有测试（tests/test_conversation_store.py:196-213 并发 20 写断言 seq 连续唯一）。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "conversation_chat-01",
+      "dim": "R3 浅模块",
+      "signals": [
+        "浅模块"
+      ],
+      "severity": "高",
+      "title": "ConversationStore 是个没有调用者的「幽灵缝」：只声明 3/9 个方法，生产全用具体类，合同测试还把生产用不上的签名钉死",
+      "where": [
+        "apps/api/src/better_resume/conversation/protocols.py:10-24",
+        "apps/api/src/better_resume/http/chat.py:82,98,111,125,138"
+      ],
+      "evidence": "11: class ConversationStore(Protocol):\n12:     async def append(self, session: SessionRef, msg: Message) -> int:\n13:         \"\"\"Append a message and return its sequence number.\"\"\"\n16:     async def history(\n22:     async def require_owner(self, session: SessionRef, user_id: UserId) -> None:\n--- http/chat.py（生产调用点，直接 new 具体类）\n111:         store = SqlConversationStore(db)\n112:         await store.require_owner(_ref(session_id), principal.user_id)\n113:         messages = await store.history(_ref(session_id), before=before, limit=limit)",
+      "why": "全仓没有任何一处把 ConversationStore 当类型用（grep `: ConversationStore` / `-> ConversationStore` 零命中）：http/chat.py 五处、chat/service.py 两处都直接 `SqlConversationStore(db)`。真正被调用的 create、list_for_user、update_title、delete、has_client_message_id，以及 append 的 client_message_id/token_count/error_message（生产必用，service.py:93-95、217-230）都不在协议里 → 协议既不约束实现也不给调用方保证，只制造「可以换存储」的错觉；对比 identity 的 seam（Protocol + InMemory + Redis + factory）可见同层约定是「要么真能换，要么不设缝」。tests/contracts/test_core_contracts.py:59 还把 append 钉成 [\"self\",\"session\",\"msg\"]——一个生产调用点用不了的签名，却给人一种「缝被合同测试保护着」的安心感。",
+      "fix": "要么把协议补成生产真正使用的 9 个方法、调用方按协议注入（配 in-memory 实现给无 DB 测试），要么删掉协议只留具体类 + 显式依赖。"
+    },
+    {
+      "id": "conversation_chat-02",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "「取一条属于我的会话」没有 store 方法：ChatService 用 list_for_user(limit=200) 线性查找，会话超过 200 个就误判不存在",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:168-179",
+        "apps/api/src/better_resume/conversation/store.py:61-72"
+      ],
+      "evidence": "171:         await store.require_owner(session, user_id)\n172:         conversations = await store.list_for_user(user_id, limit=200)\n173:         for conversation in conversations:\n174:             if conversation.id == session.session_id:\n175:                 return conversation\n176:         # require_owner passed but the row was filtered out: treat as missing.\n179:         raise ConversationNotFoundError(session.session_id)\n--- store.py（_load 想用的那个方法不存在）\n62:         self, user_id: UserId, *, limit: int = 50, offset: int = 0",
+      "why": "两个代价都落在调用者身上：(1) 上限是硬编码 200 —— 会话数超过 200 的用户打开旧会话会拿到 404，而 require_owner 刚刚证明它存在，注释把这个矛盾写成了「treat as missing」；(2) 每次发消息要先查一次归属、再捞 200 行头表；HTTP 层 list_messages 同样是 require_owner + history 各查一次（http/chat.py:112-113），而 history 内部还会第三次 _fetch（store.py:161）。「取一条属于某人的会话」是存储层最自然的能力（_fetch 已实现，store.py:175-184），却被推给每个调用者自己拼，拼法还各不相同。",
+      "fix": "store 增加 get_owned(session, user_id) -> Conversation（复用 _fetch，一次带 for_update 的查询），_load 直接调用；history/append 接受已校验的会话，避免一请求三次取行。"
+    },
+    {
+      "id": "conversation_chat-03",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复"
+      ],
+      "severity": "高",
+      "title": "客户端可见的失败类别在三个模块各存一份，ChatErrorEvent.kind 把它抄成字符串字面量",
+      "where": [
+        "apps/api/src/better_resume/chat/models.py:52-71",
+        "apps/api/src/better_resume/llm_gateway/errors.py:8-12"
+      ],
+      "evidence": "55:     Kinds cover both taxonomies: llm-gateway's own (retryable/non_retryable/vendor) and\n56:     M3's resilience taxonomy (timeout/overloaded/unavailable/invalid). Missing a value\n57:     here used to crash the SSE producer into \"unknown\" — see PROBLEMS P8.\n61:     kind: Literal[\n62:         \"retryable\",\n63:         \"non_retryable\",\n64:         \"vendor\",\n65:         \"timeout\",\n--- llm_gateway/errors.py（同一份类别的一手定义）\n8: class FailureKind(StrEnum):\n9:     RETRYABLE = \"retryable\"\n10:     NON_RETRYABLE = \"non_retryable\"\n11:     VENDOR = \"vendor\"",
+      "why": "同一份「失败类别」知识存在三处：llm_gateway.FailureKind（3 值，errors.py:8-12）、ai_resilience.FailureKind（4 值 timeout/overloaded/unavailable/invalid，ai_resilience/errors.py:17-22）、chat 的字符串字面量（7 值 + 自己的 duplicate_request/unknown）。三处靠人肉对齐，docstring 自己记着账单：漏一个值曾把 SSE 生产者打崩成 \"unknown\"（PROBLEMS P8）。chat/service.py:146 再跨这两个互不相关的异常体系取 `failure.kind.value` 鸭子类型填进去（LlmError 与 AiResilienceError 的同名字段是两套枚举），新增一种失败要么漏在字面量里、要么在运行时才炸。",
+      "fix": "由一个共享 StrEnum 作唯一来源（chat 只再加自己的控制流值 duplicate_request/unknown），Literal 从枚举派生。"
+    },
+    {
+      "id": "conversation_chat-04",
+      "dim": "R8 透传方法",
+      "signals": [
+        "透传方法",
+        "重复"
+      ],
+      "severity": "中",
+      "title": "_is_duplicate 只转调 store.has_client_message_id，而幂等这条不变量在 append 里又实现了一遍",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:181-184",
+        "apps/api/src/better_resume/conversation/store.py:105-117"
+      ],
+      "evidence": "181:     async def _is_duplicate(\n182:         self, store: SqlConversationStore, session: SessionRef, client_message_id: str\n183:     ) -> bool:\n184:         return await store.has_client_message_id(session, client_message_id)\n--- store.py（append 内部已有同一份幂等规则）\n105:         \"\"\"Append a message and return its seq; re-sending the same client id is a no-op.\"\"\"\n108:         if client_message_id is not None:\n115:             replayed = existing.scalar_one_or_none()\n116:             if replayed is not None:\n117:                 return replayed",
+      "why": "服务层先探测（多一次 SELECT）再 append，而 append 自己已经实现了同一份「同 client_message_id 视为重放」的规则并返回原 seq。两个入口各自维护这条不变量：任何一侧改动（幂等键换成 (session, client_message_id, model)、加 TTL、改判重条件）都会出现「探测说新、append 说旧」的分歧，而 dup 分支已经 return，永远走不到 append。透传方法本身还让读者以为这里有服务层逻辑，得点进去才发现是纯转调。",
+      "fix": "删掉 _is_duplicate，让 append 返回 (seq, replayed)（或具名结果对象），服务层据 replayed 决定是否发 duplicate_request。"
+    },
+    {
+      "id": "conversation_chat-05",
+      "dim": "R9 透传变量",
+      "signals": [
+        "透传变量"
+      ],
+      "severity": "中",
+      "title": "answer/reasoning/usage/finish_reason 四个变量只是路过 _persist_aborted 到 _persist",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:148-160",
+        "apps/api/src/better_resume/chat/service.py:205-214"
+      ],
+      "evidence": "148:     async def _persist_aborted(\n149:         self,\n150:         session: SessionRef,\n151:         answer: str,\n152:         reasoning: str,\n153:         usage: TokenUsage | None,\n154:         finish_reason: str | None,\n155:     ) -> None:\n156:         write = asyncio.create_task(\n157:             self._persist(\n158:                 session, answer, reasoning, usage, finish_reason, error_message=CANCELLED_ERROR\n--- 被转交的目标签名\n205:     async def _persist(\n206:         self,\n207:         session: SessionRef,\n208:         answer: str,\n209:         reasoning: str,\n210:         usage: TokenUsage | None,\n211:         finish_reason: str | None,",
+      "why": "这四个字段在 stream_reply 的流式循环里逐条累积（115-121），然后原样穿过 _persist_aborted 进 _persist；中间那层完全不使用它们（只加一个 error_message），也不做任何判断。加第 5 个字段（tool_calls、citations、模型版本……）要改三处签名，类型检查只能在第二处报错；四个字段语义上就是「一次助手回合的产物」，却没有任何名字承载。",
+      "fix": "定义具名 dataclass（AssistantTurn：answer/reasoning/usage/finish_reason）在流式循环里累积，_persist(turn, *, error_message) 一个参数。"
+    },
+    {
+      "id": "conversation_chat-06",
+      "dim": "W4 注释只写难理解的内容",
+      "signals": [],
+      "severity": "中",
+      "title": "ChatService 类注释说「整轮只开一个 DB session」，实现里 _persist 另开一个",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:56-57",
+        "apps/api/src/better_resume/chat/service.py:215-216"
+      ],
+      "evidence": "56: class ChatService:\n57:     \"\"\"One instance per request; it owns the DB session it opens for the whole turn.\"\"\"\n--- 实际另起一个 session 的落库路径\n215:         async with self._session_factory() as db:\n216:             store = SqlConversationStore(db)",
+      "why": "事务边界是这段代码最难理解的部分：用户消息在 80 行的 request session 里 commit，助手消息在 215 行另一个 session 里 commit，取消路径还要靠 asyncio.shield 保证落地（148-164）。类注释给出的模型是错的——按它理解会以为 215 行复用同一条连接/同一个事务，从而错误判断回滚范围（例如以为助手消息会随请求回滚）。维护者必须先读 150 行才能推翻注释，注释反而成了误导源。",
+      "fix": "注释改成真实边界：「用户消息在请求事务里；助手消息总是另起短事务落库（含取消/GeneratorExit 路径），因为它必须活过被取消的生成器」。"
+    },
+    {
+      "id": "conversation_chat-07",
+      "dim": "D3 先写接口注释",
+      "signals": [
+        "实现文档污染接口"
+      ],
+      "severity": "中",
+      "title": "协议 append 的注释漏了幂等前置条件：实现里同一 client_message_id 不写入、只回旧 seq",
+      "where": [
+        "apps/api/src/better_resume/conversation/protocols.py:12-14",
+        "apps/api/src/better_resume/conversation/store.py:105-117"
+      ],
+      "evidence": "12:     async def append(self, session: SessionRef, msg: Message) -> int:\n13:         \"\"\"Append a message and return its sequence number.\"\"\"\n14:         ...\n--- store.py（实现里的幂等前置条件）\n105:         \"\"\"Append a message and return its seq; re-sending the same client id is a no-op.\"\"\"\n116:             if replayed is not None:\n117:                 return replayed",
+      "why": "协议是调用者唯一读得到的契约，但它（a）签名里没有 client_message_id 这个前置条件，（b）注释没写「可能什么都不追加、返回的是既有序号」这条不变量。而这两点是生产的默认用法（http/chat.py:188 传 client_message_id，service.py:93-95 落库）。按协议注释写调用方代码会假设「返回值一定大于上次」，也解释不了「失败重放为什么不计费」；两处注释一字之差，语义差一个写操作。",
+      "fix": "把幂等语义写进协议（签名 + 注释：同一 client_message_id 返回既有序号且不写入），并让协议覆盖生产真正使用的关键字参数。"
+    },
+    {
+      "id": "conversation_chat-08",
+      "dim": "W1 命名精确+一致",
+      "signals": [
+        "模糊的名称"
+      ],
+      "severity": "中",
+      "title": "Conversation.message_count 其实是「最后一条消息的 seq」，同时充当序号分配器",
+      "where": [
+        "apps/api/src/better_resume/conversation/store.py:119,136",
+        "apps/api/src/better_resume/conversation/models.py:59"
+      ],
+      "evidence": "119:         seq = row.message_count + 1\n136:         row.message_count = seq\n--- models.py（对外名字）\n59:     message_count: int = 0",
+      "why": "同一列既是对外暴露的「消息数」（ChatSessionView.message_count，前端直接显示，http/chat.py:55）又是下一个 seq 的来源。现在两者相等只是因为消息永远不会被删除；一旦加上删除/归档（或有清理任务），计数与 seq 立刻分叉，而下一次 append 会算出重复或跳号的 seq——名字让人以为它只是统计值，改动它的人不会想到自己在动序号分配器。",
+      "fix": "拆成 last_message_seq（分配器，配合 for_update 读）与 message_count（派生），或把字段直接改名 last_message_seq 并让展示层自己解释。"
+    },
+    {
+      "id": "conversation_chat-09",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "SessionRef.kind 由每个调用者手写，而 ChatService 只可能处理 kind=\"chat\"",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:70-79",
+        "apps/api/src/better_resume/http/chat.py:45-46"
+      ],
+      "evidence": "73:         session: SessionRef,\n74:         user_id: UserId,\n--- http/chat.py\n45: def _ref(session_id: str) -> SessionRef:\n46:     return SessionRef(kind=\"chat\", session_id=session_id)",
+      "why": "kind 的值由「你调的是哪个模块」完全决定（chat 的服务只能配 chat 会话，interview 另有一套），却要每个调用者手写一遍字面量；传错时不会立刻报错，而是被 store._fetch 的 kind 过滤变成 ConversationNotFoundError（store.py:176-177）——排障时看起来像「会话不存在」，实际是调用者把 kind 传错了。可自动算出的参数暴露给调用者，等于多一个静默的错误面，而且把「chat/interview 两类会话」这个 D09 的区分稀释成了随手写的字符串。",
+      "fix": "ChatService 接口收 session_id（或提供 chat_ref() 工厂），kind 在 chat 模块内部固定；SessionRef 只作为存储层内部寻址键。"
+    },
+    {
+      "id": "conversation_chat-10",
+      "dim": "R5 时间分解",
+      "signals": [
+        "时间分解"
+      ],
+      "severity": "中",
+      "title": "「落库助手消息」这份知识按执行时机拆成两条路径，靠 persisted 布尔量在 finally 里选",
+      "where": [
+        "apps/api/src/better_resume/chat/service.py:105-106,129-143",
+        "apps/api/src/better_resume/chat/service.py:148-164"
+      ],
+      "evidence": "105:             persisted = False\n129:                 await self._persist(\n135:                     error_message=_error_text(failure),\n136:                 )\n137:                 persisted = True\n138:             finally:\n141:                 if not persisted:\n142:                     await self._persist_aborted(session, answer, reasoning, usage, finish_reason)",
+      "why": "代码结构跟着「什么时候发生」走而不是「要记住什么」：同一个动作（把助手回合落地）有两条路径、一个布尔量和一条 finally 分支，两条路径的参数已经不完全一致（129 带 error_message、142 隐式写死 CANCELLED_ERROR）。读代码必须同时跟踪异常类型、CancelledError、GeneratorExit 三条时序才知道哪条会执行；要加「被截断也要标记 error_message」这类规则时，两条路径都要改，而漏改一条不会报错（只会让历史里少一个字段）。",
+      "fix": "把本次回合的最终状态累积成一个值对象，落库只在 finally 里发生一次，异常/取消只改变 error_message 字段。"
+    }
+  ]
+}

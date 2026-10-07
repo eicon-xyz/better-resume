@@ -1,0 +1,260 @@
+{
+  "unit": "http",
+  "title": "http（REST/SSE/WS 端点、错误映射、限流中间件）",
+  "scope": [
+    "apps/api/src/better_resume/http/**",
+    "apps/api/src/better_resume/main.py",
+    "apps/api/src/better_resume/db/session.py"
+  ],
+  "one_sentence": "把业务服务暴露成 REST/SSE/WS 端点，并统一错误语义与限流；给前端和运维用。最重要的三件事是：HTTP 状态码语义（404/409/422/502/503/504）、SSE/WS 的线上契约、以及不要把业务逻辑吸进路由。第三件正在失守——路由直接构造业务服务、直接读写 app.state、直接记 hot 缓存失效。",
+  "knowledge": "「一次请求 → 一个状态码 + 一个 kind」的错误分类知识，以及「哪个路由属于哪个限流桶」的路由分类知识。前者靠 main.py 里用 getattr 猜异常属性再实现一遍（没有类型声明），后者靠 http/ratelimit.py 里手写正则去匹配 http/*.py 里声明的路径字面量——两份知识都没有单一来源。",
+  "passes": [
+    {
+      "dim": "D7 接口注释含实现细节",
+      "note": "http/gateway.py 的模块 docstring 只说「选择供应商这件事移到这一层」，不讲场景解析器内部怎么缓存；http/ratelimit.py 的模块 docstring 交代了身份来源与 fail-open 策略，都是调用者该知道的。这是本单元唯一「接口注释写得对」的地方。"
+    },
+    {
+      "dim": "W3 错误靠定义规避",
+      "note": "main.py:185-221 的错误处理器按异常类逐条注册（AiTimeout→504、AiOverloaded/AiUnavailable→503+Retry-After、AiInvalid→502），把错误语义集中在装配层，业务代码不各自拼状态码——这一处是对的，问题只在 kind 的取法（见 http-09）。"
+    },
+    {
+      "dim": "W6 符合周围约定",
+      "note": "http/*.py 全部用 `Annotated` 之外的一致写法（`Depends(...)  # noqa: B008`）、一致的 router prefix/tags，ruff 与仓库风格一致。"
+    },
+    {
+      "dim": "R2 重要的 1~3 件事",
+      "note": "状态码语义与 SSE 头（chat.py:38-42 的 X-Accel-Buffering 注释、media.py:46-50 的关闭码/摘要注释）都出现在高频路径上，且注释讲的是「为什么」，符合要求。"
+    },
+    {
+      "dim": "W5 多返回值用具名字段类",
+      "note": "所有端点都返回 Pydantic 模型（ChatSessionView/AnswerSubmitView/TtsView 等），没有 tuple 解包返回。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "http-01",
+      "dim": "R8 透传方法",
+      "signals": [
+        "透传方法"
+      ],
+      "severity": "高",
+      "title": "db.get_session 是指定「全项目统一」的依赖，但全仓库没有调用者，真实写法是 29 处 request.app.state.session_factory()",
+      "where": [
+        "apps/api/src/better_resume/db/session.py:29-33",
+        "apps/api/src/better_resume/http/chat.py:81",
+        "apps/api/src/better_resume/http/interview.py:119",
+        "apps/api/src/better_resume/http/scenes.py:57"
+      ],
+      "evidence": "29  async def get_session(request: Request) -> AsyncIterator[AsyncSession]:\n30      \"\"\"Project-wide session dependency; the factory itself lives on app.state.\"\"\"\n31      factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory\n32      async with factory() as session:\n33          yield session\n\napps/api/src/better_resume/http/chat.py:81      async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/interview.py:119      async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/scenes.py:57      async with request.app.state.session_factory() as session:",
+      "why": "这是删除测试里最该删的一个：把 get_session 整个删掉，没有任何调用方变复杂——它已经零调用者（grep 全仓库只有定义处与 db/__init__ 的 re-export，连测试都没用）。它同时是一个不诚实的导航信号：docstring 写「项目统一」，而 5 个 HTTP 模块共 29 处绕过它自己开 session，读代码的人会以为自己漏看了某处 DI 装配。代价是「一次请求一个 session、谁负责 commit」这条知识没有任何地方强制，每个端点各写一遍 async with + commit。",
+      "fix": "二选一：要么让所有端点改走 Depends(get_session)（顺带把它变成真实的缝，store 构造也就有了落点），要么删掉 get_session 并修掉 docstring 里「项目统一」的说法。留着不动是最差选项。"
+    },
+    {
+      "id": "http-02",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露",
+        "透传变量"
+      ],
+      "severity": "高",
+      "title": "app.state 是 20 个 key 的字典总线：装配知识在 main.py，键名字符串知识散在 13 个模块，类型标注在传递中丢失",
+      "where": [
+        "apps/api/src/better_resume/main.py:70-134",
+        "apps/api/src/better_resume/http/chat.py:149-152",
+        "apps/api/src/better_resume/http/models.py:18",
+        "apps/api/src/better_resume/http/media.py:66-68"
+      ],
+      "evidence": "main.py:73    app.state.session_factory = build_session_factory(engine)\nmain.py:107   resilience: object = ResilientAiResilience(settings, metrics=metrics)\nmain.py:118   app.state.ai_resilience = resilience\n\nhttp/chat.py:149    state = request.app.state\n152    heartbeat = state.settings.sse_heartbeat_seconds\nhttp/models.py:18    registry: ModelRegistry = request.app.state.model_registry\nhttp/media.py:66  def _synthesizer(request: Request) -> EdgeTtsSynthesizer:\n68      return request.app.state.tts_synthesizer",
+      "why": "加了中间层的字符串字典：装配决策（谁创建、何时关闭、什么类型）写在 main.py，但「这个 key 叫什么、是什么类型」必须被每个消费方再写一遍（29 处读取，见 grep request.app.state）。main.py:107/123 把两个重量级服务声明成 `resilience: object` / `_build_question_locks(...) -> object`，从那一刻起类型检查对状态和锁完全失效，消费方只能自己写类型标注去补（http/models.py:18 那种），补错了编译器不管。测试也被迫重建整套字符串 key 空间（12 个测试文件直接操作 app.state）。",
+      "fix": "引入一个带类型的服务容器（dataclass/TypedDict）在 lifespan 里构建一次，端点通过一个 `deps` 依赖拿具体字段：键名与类型就此有单一真相，测试也只需要构造这一个对象。"
+    },
+    {
+      "id": "http-03",
+      "dim": "R5 时间分解",
+      "signals": [
+        "时间分解"
+      ],
+      "severity": "高",
+      "title": "7 条业务路由里有 7 处把业务服务内联构造（QuestionService/AnswerService/ReportService ×4），没有一处装配根",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:146-150",
+        "apps/api/src/better_resume/http/interview.py:257-261",
+        "apps/api/src/better_resume/http/interview.py:372",
+        "apps/api/src/better_resume/http/interview.py:432",
+        "apps/api/src/better_resume/http/interview.py:447",
+        "apps/api/src/better_resume/http/chat.py:151"
+      ],
+      "evidence": "interview.py:146    service = QuestionService(\n147        state.session_factory,\n148        resilience=state.ai_resilience,\n149        storage=ResumeStorage(state.settings.resume_storage_dir),\n150    )\ninterview.py:257    service = AnswerService(\n258        state.session_factory,\n259        resilience=state.ai_resilience,\n260        locks=state.question_locks,\n261    )\ninterview.py:432        result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(",
+      "why": "结构跟着「一个请求要现场拼出哪些零件」的执行顺序走，而不是跟着「谁拥有这些零件」走。AnswerService 的构造签名是放在 exec 顺序里被发现的，不是放在一个有名字的装配点里——加一个依赖要改 4 处 ReportService 调用、每处参数风格还不同（一处带 locks、一处带 storage）。工厂函数的存在意义（ResumeStorage(dir) 这种构建）也被摊进了路由。这是代码结构跟着执行顺序走的典型：真正稳定的知识（service → 依赖集合）没有落点。",
+      "fix": "给每个 service 一个 FastAPI 依赖工厂（或一个 `deps.py` 装配模块），路由只写 `service: QuestionService = Depends(...)`；构造签名只在装配点出现一次。"
+    },
+    {
+      "id": "http-04",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "SSE 心跳协议是路由自己写的（生产者任务 + 队列 + None 哨兵 + wait_for），复杂度没有下沉成一个可复用的渲染器",
+      "where": [
+        "apps/api/src/better_resume/http/chat.py:168-211",
+        "apps/api/src/better_resume/http/chat.py:141-165"
+      ],
+      "evidence": "142  @router.post(\"/sessions/{session_id}/stream\")\n143  async def stream_reply(\n144      session_id: str,\n145      payload: StreamRequest,\n146      request: Request,\n147      principal: Principal = Depends(current_principal),  # noqa: B008\n148  ) -> StreamingResponse:\n149      state = request.app.state\n150      gateway = await gateway_for(request, LlmScene.CHAT, model_ref=payload.model_ref)\n151      service = ChatService(state.session_factory, resilience=state.ai_resilience)\n152      heartbeat = state.settings.sse_heartbeat_seconds\n153  \n154      return StreamingResponse(\n155          _sse_frames(\n...\n161              heartbeat_seconds=heartbeat,\n162          ),\n163          media_type=\"text/event-stream\",\n164          headers=SSE_HEADERS,\n...\n168  async def _sse_frames(\n169      service: ChatService,\n170      *,\n171      session: SessionRef,\n172      user_id: str,\n173      payload: StreamRequest,\n174      gateway: Any,\n175      heartbeat_seconds: float,\n176  ) -> AsyncIterator[str]:\n177      \"\"\"Producer/queue split so a heartbeat timeout never cancels the model stream.\"\"\"\n178      queue: asyncio.Queue[Any] = asyncio.Queue()\n179  \n180      async def produce() -> None:\n181          try:\n182              async for event in service.stream_reply(\n183                  session=session,\n184                  user_id=user_id,\n185                  content=payload.content,\n186                  gateway=gateway,\n187                  model_ref=payload.model_ref,\n188                  client_message_id=payload.client_message_id,\n189              ):\n190                  await queue.put(event)\n191          except Exception:  # noqa: BLE001 - the stream must end cleanly for the client\n192              logger.exception(\"chat_stream_crashed\", session_id=session.session_id)\n193              await queue.put(\n194                  ChatErrorEvent(message=\"internal error while streaming\", kind=\"unknown\")\n195              )\n196          finally:\n197              await queue.put(None)\n198  \n199      producer = asyncio.create_task(produce())\n200      try:\n201          while True:\n202              try:\n203                  event = await asyncio.wait_for(queue.get(), timeout=heartbeat_seconds)\n204              except TimeoutError:\n205                  yield \": ping\\n\\n\"\n206                  continue\n207              if event is None:\n208                  break\n209              yield _encode(event)\n210      finally:\n211          producer.cancel()",
+      "why": "「怎么把异步事件流转成带心跳的 SSE，并且在心跳超时时不误杀上游」是一个完整且容易写错的知识（哨兵、取消、异常兜底），现在只以路由私有函数的形式存在。任何第二个流式端点都要重新发明一遍；而它已经踩过的坑（wait_for 取消 vs 上游取消的边界）不会随代码复用而传播。这是复杂度没有下沉：模块没有把它做成可测的、有名字的东西。",
+      "fix": "抽出一个 `sse_response(events, heartbeat_seconds)`（或一个 StreamResponder 类），把生产/消费分离、哨兵、心跳、异常兜底都收进去；路由只负责把 service 的事件流交给它。"
+    },
+    {
+      "id": "http-05",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "SSE 事件名 → 载荷形状的映射只存在于 _encode 的 isinstance 阶梯里，前后端各写一份，未知事件被静默降级",
+      "where": [
+        "apps/api/src/better_resume/http/chat.py:214-225",
+        "apps/web/src/api/sse.ts:74-113"
+      ],
+      "evidence": "chat.py:214  def _encode(event: Any) -> str:\n215      if isinstance(event, ContentDelta):\n216          return _frame(\"content\", {\"text\": event.text})\n...\n225      return _frame(\"meta\", {\"unexpected\": type(event).__name__})\n\nsse.ts:100    switch (event.event) {\n101      case \"content\":\n...\n110      default:\n111        break;",
+      "why": "线上契约（event: content/reasoning/meta/done/error 与各自 data 形状）没有任何单一来源：后端在 isinstance 阶梯里写，前端在 switch 里再写一遍，二者靠人脑同步。更糟的是两端的兜底都选择静默：后端把未映射事件伪装成 meta 塞进 `unexpected` 且不记日志（客户端会显示一条空 meta），前端 `default: break` 直接丢弃——新增第六种事件时，前后端都不报错、都悄悄少显示一段。",
+      "fix": "把事件序列化放进事件类自己（每个事件提供 `to_sse()`），未知类型抛错或至少 logger.warning；event 名清单集中一处，前端按它对齐。"
+    },
+    {
+      "id": "http-06",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "「哪些写操作要让 hot 缓存失效」是散在路由里的人际约定（同一行 ×4），没有任何地方强制",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:161",
+        "apps/api/src/better_resume/http/interview.py:272",
+        "apps/api/src/better_resume/http/interview.py:440",
+        "apps/api/src/better_resume/http/interview.py:450",
+        "apps/api/src/better_resume/http/interview.py:211-215"
+      ],
+      "evidence": "interview.py:161    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)\ninterview.py:272    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)\ninterview.py:211  async def _invalidate_hot(request: Request, *, user_id: str, session_id: str) -> None:\n212      \"\"\"Writes invalidate the hot view: a stale restore is worse than a slow one.\"\"\"\n213      hot = getattr(request.app.state, \"hot_state\", None)",
+      "why": "「写路径必须让热层失效」是 interview_engine 的知识，但它被复制到 HTTP 层用 4 次手写调用实现。缓存一致性的不变量由「每条新路由的作者都记得加一行」来保证；漏掉不会报错，只会让 restore 返回旧状态（正是注释自己说「比慢更糟」的那种 bug）。另外 http/media.py 的 TTS 写路径根本没有这个环节——因为它不用 hot 层，这说明该知识其实属于「谁写数据谁失效」的那一层，而不是路由。",
+      "fix": "把失效下沉到写路径本身（service 写成功后失效，或 store 层的写方法挂钩子），路由不再需要知道热层的存在。"
+    },
+    {
+      "id": "http-07",
+      "dim": "R15 模糊的名称",
+      "signals": [
+        "模糊的名称",
+        "透传方法"
+      ],
+      "severity": "中",
+      "title": "http/interview.py:417 的 _resolve_gateway 是 gateway_for 的同签名转调，只为换一个 scene 常量",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:417-419",
+        "apps/api/src/better_resume/http/interview.py:135",
+        "apps/api/src/better_resume/http/interview.py:252-255"
+      ],
+      "evidence": "interview.py:417  async def _resolve_gateway(request: Request, model_ref: str | None):\n418      \"\"\"Report summary scene (kept as a helper so the endpoint stays readable).\"\"\"\n419      return await gateway_for(request, LlmScene.REPORT_SUMMARY, model_ref=model_ref)\n\n同文件另两处直接写：\n135      gateway = await gateway_for(request, LlmScene.QUESTION_EXTRACTION, model_ref=model_ref)\n255      follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)",
+      "why": "危险信号「透传方法」：函数体就是转调同签名方法，唯一的值是换了一个常量——而换常量这件事 gateway_for 的一行调用已经足够清楚。结果是两条几乎相同的调用路径并存：读代码的人必须记住「用 _resolve_gateway 就等于 REPORT_SUMMARY」，而新增场景时（比如给 finish 加一个总结场景）改 gateway_for 语义会漏掉这个包了一层的地方。名字也没传递信息：resolve 什么、给谁 resolve 都没说。",
+      "fix": "删掉它，让 finish 的两个分支各写一行 `gateway_for(request, LlmScene.REPORT_SUMMARY, model_ref=...)`——与另外两处一致。"
+    },
+    {
+      "id": "http-08",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "信息泄露",
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "限流桶的路由分类靠中间件手写正则去匹配路由字面量，新增/改路径时（含 delete 会话）会静默落进 GENERAL 桶",
+      "where": [
+        "apps/api/src/better_resume/http/ratelimit.py:27-51",
+        "apps/api/src/better_resume/http/chat.py:36",
+        "apps/api/src/better_resume/http/chat.py:131"
+      ],
+      "evidence": "24  #: Always exempt: probes and the generated contract must never be throttled.\n25  WHITELIST = (\"/healthz\", \"/docs\", \"/redoc\", \"/openapi.json\", \"/favicon.ico\")\n26  \n27  _AI_CALL = (re.compile(r\"^/api/v1/chat/sessions/[^/]+/stream$\"),)\n28  _ANSWER = (re.compile(r\"^/api/v1/interview/sessions/[^/]+/answers$\"),)\n29  _HEAVY = (\n30      re.compile(r\"^/api/v1/interview/sessions$\"),  # parse resume + generate questions\n31      re.compile(r\"^/api/v1/interview/sessions/[^/]+/questions$\"),\n32      re.compile(r\"^/api/v1/interview/sessions/[^/]+/finish$\"),  # report generation\n33  )\n...\n36  def classify(method: str, path: str) -> Bucket | None:\n37      \"\"\"Return the bucket for this request, or None when it is not rate limited.\"\"\"\n38      if path.startswith(WHITELIST):\n39          return None\n40      for pattern in _AI_CALL:\n41          if pattern.match(path):\n42              return Bucket.AI_CALL\n43      for pattern in _ANSWER:\n44          if pattern.match(path):\n45              return Bucket.ANSWER\n46      for pattern in _HEAVY:\n47          if pattern.match(path):\n48              return Bucket.HEAVY\n49      if method in (\"GET\", \"HEAD\", \"OPTIONS\"):\n50          return Bucket.READ\n51      return Bucket.GENERAL\n\napps/api/src/better_resume/http/chat.py:36  router = APIRouter(prefix=\"/api/v1/chat\", tags=[\"chat\"])\n...\napps/api/src/better_resume/http/chat.py:131  @router.delete(\"/sessions/{session_id}\", status_code=status.HTTP_204_NO_CONTENT)\napps/api/src/better_resume/http/chat.py:132  async def delete_session(",
+      "why": "同一个设计决策（这条路由有多贵）出现在两个模块：http/chat.py 与 http/interview.py 声明路径，http/ratelimit.py 用字符串正则猜它的成本。二者不一致时没有任何测试会红——`classify` 是纯函数，测它用的是测试自己写的路径，不会去核对真实路由表。DELETE /sessions/{id} 就是个现成例子：按方法落进 GENERAL 桶，而它与 HEAVY 同级昂贵（要删整棵会话）。",
+      "fix": "让成本成为路由的属性（route 的 tag/metadata 或显式注册表），分类从 request.scope 里读；再加一条测试：遍历 app.routes，断言每条业务路由都被分到预期桶。"
+    },
+    {
+      "id": "http-09",
+      "dim": "W1 命名精确+一致",
+      "signals": [
+        "模糊的名称"
+      ],
+      "severity": "中",
+      "title": "错误分类字段 kind 从未被声明，靠 getattr(getattr(exc, \"kind\", None), \"value\", ...) 在 4 个处理器里各猜一次",
+      "where": [
+        "apps/api/src/better_resume/main.py:204-221"
+      ],
+      "evidence": "main.py:205    kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n211    kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n220    kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
+      "why": "调用者（错误处理器）必须先了解实现（哪类异常有 kind、kind 是枚举还是字符串、没有时该给什么默认值）才能写对三行几乎一样的代码。因为接口没约束异常长什么样，所以只能猜；因为只能猜，所以三处各猜一遍，默认值还不一样（timeout/unavailable/unknown——这是对的，但没人保证第四个处理器会猜对）。仓库对响应体形状极严（Pydantic response_schema 强校验），对异常形状却完全靠约定。",
+      "fix": "给韧性异常定义一个 `kind` 属性的基类/Protocol（或统一一个 `error_kind(exc) -> str` 函数），处理器只调用它，默认值集中一处。"
+    },
+    {
+      "id": "http-10",
+      "dim": "S4 通用/专用是否干净分开",
+      "signals": [
+        "通用专用混合体"
+      ],
+      "severity": "中",
+      "title": "单一 model_ref 参数同时决定 ANSWER_EVALUATION 与 FOLLOW_UP 两个场景的模型——服务要两个采购者，HTTP 只能表达一个",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:252-255",
+        "apps/api/src/better_resume/http/interview.py:262-270"
+      ],
+      "evidence": "interview.py:252    answer_gateway = await gateway_for(\n253        request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref\n254    )\n255    follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)",
+      "why": "AnswerService 的构造签名声明「我需要两个独立的模型采购者」（评分一个、出追问一个），这是专属于它的知识；而 HTTP 契约只提供一个 model_ref，于是这一层必须把同一个值喂给两者，并顺带让「用户选模型」这件事在两个场景上强行一致。通用机制（场景绑定 + 可选覆盖）与某个调用者的专用逻辑（评分/追问拆开）混在这一层：调用者读到两个 gateway 参数无法知道它们是否可以不同，也无法表达「只覆盖评分模型」。",
+      "fix": "要么承认它们是同一件事（让服务只接受一个 gateway，场景差异留在服务内部按 scene 取），要么在请求模型里显式给两个可选 ref（evaluation_model_ref / follow_up_model_ref），别用一个值冒充两个决策。"
+    },
+    {
+      "id": "http-11",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "POST /sessions/{id}/finish 的行为随服务端开关分叉，并且只在同步分支用 model_ref——参数被静默忽略",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:427",
+        "apps/api/src/better_resume/http/interview.py:430-451"
+      ],
+      "evidence": "interview.py:427      model_ref: str | None = Query(default=None),\n430      if state.settings.jobs_enabled:\n...\n445      # The synchronous path needs the gateway here; the queued path resolves it in the worker.\n446      gateway = await _resolve_gateway(request, model_ref)",
+      "why": "同一个请求参数（model_ref）是否生效取决于部署配置 jobs_enabled：开着时它被完全忽略（用户在评价页选的模型对报告总结无效），关着时它生效。接口的行为随服务端开关改变，调用者无法从签名看出来。要么把「排队版不支持选模型」写进响应/契约（例如返回一个 flag 或 422），要么让排队路径也带上 model_ref。",
+      "fix": "排队路径把 model_ref 一起写进 job payload（队列本来就是通用的键值载荷），参数语义在所有分支一致。"
+    },
+    {
+      "id": "http-12",
+      "dim": "R7 多类症",
+      "signals": [
+        "多类症"
+      ],
+      "severity": "低",
+      "title": "Router 的暴露靠 http/__init__.py 逐个 re-export + main.py 逐个 include_router，新增一个路由要改三个文件",
+      "where": [
+        "apps/api/src/better_resume/http/__init__.py:1-19",
+        "apps/api/src/better_resume/main.py:26-35",
+        "apps/api/src/better_resume/main.py:163-170"
+      ],
+      "evidence": "http/__init__.py:1  from .chat import router as chat_router\n...\n8  from .scenes import router as scenes_router\n\nmain.py:26  from .http import (\n27      RateLimitMiddleware,\n28      chat_router,\n...\n34      scenes_router,\n35  )\n主文件\nmain.py:163      app.include_router(health_router)\n...\n170      app.include_router(interview_router)",
+      "why": "「有哪些 router」这份知识在仓库里存了三份（路由定义处、__init__ 的 re-export 清单、main.py 的 import 与 include 清单）。八个名字平铺在一个 import 里，读 main.py 无法一眼看出 HTTP 面的形状，新增端点要在两处清单里各加一行——漏了任何一处都不报错（只是路由不存在）。",
+      "fix": "http/__init__.py 暴露一个 `routers()`（或 `ALL_ROUTERS` 元组），main.py 只写一行循环 include；清单只有一份。"
+    },
+    {
+      "id": "http-13",
+      "dim": "R13 注释重复了代码",
+      "signals": [
+        "注释重复了代码",
+        "多类症"
+      ],
+      "severity": "低",
+      "title": "同一份 __all__ 在 http/interview.py 里出现两次（299-305 与 468-476），是编辑残留",
+      "where": [
+        "apps/api/src/better_resume/http/interview.py:299-305",
+        "apps/api/src/better_resume/http/interview.py:468-476"
+      ],
+      "evidence": "interview.py:299  __all__ = [\n300      \"MAX_RESUME_BYTES\",\n301      \"AnswerSubmitView\",\n302      \"InterviewSessionView\",\n303      \"QuestionBatchView\",\n304      \"router\",\n305  ]\n\ninterview.py:468  __all__ = [\n469      \"MAX_RESUME_BYTES\",\n...\n476  ]",
+      "why": "两个 __all__ 里覆盖的名字不同（第一个少了 RestoreResponseView/InterviewReportView 等），后一个生效、前一个纯噪声，且位置在文件中间——像一个已经写完的模块被继续追加内容时留下的痕迹。判据「删掉它读者不损失任何信息」成立；它也说明这个文件（476 行、7 条路由、8 个视图模型、3 个 service 的装配）已经超出一次能读懂的规模。",
+      "fix": "删掉第一个 __all__；顺带考虑按资源（sessions / questions / answers / report）把文件拆开，或至少把视图模型挪到同目录的 models 模块。"
+    }
+  ]
+}

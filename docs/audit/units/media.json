@@ -1,0 +1,243 @@
+{
+  "unit": "media",
+  "title": "media（转写/TTS 缝 + 句池归并 + 适配器）",
+  "scope": [
+    "apps/api/src/better_resume/media/**",
+    "apps/api/tests/media/**",
+    "apps/api/tests/test_media_ws.py"
+  ],
+  "one_sentence": "media 给上层（http/media.py 的 WS 端点、http/media.py 的 TTS 端点）提供两件东西：一个把音频喂进供应商、按 replace|archive|final 吐出归一化事件的 TranscriptionChannel，和一个按文本+音色做内容寻址缓存的 TtsSynthesizer；最重要的三件事是句池归并（assembler）、供应商差异（5 个适配器）、通道的失败语义——第三件目前没有进协议，靠适配器各自的属性约定。",
+  "knowledge": "media 独占两份知识：(1) 增量转写的句池归并算法——xunfei AST 的 pgs(apd/rpl)/rg/bg/ed/seg_id 语义、时间重叠 ≥0.6 + 前缀演化 ≥0.8 的同一句判定、尾字重复消除，以及由此产出的三级快照（display/committed/live + revision）；(2) 供应商的线上协议细节（讯飞 HMAC-SHA1 签名与 cn.st.rt[].ws[].cw[].w 取字、百炼 batch 的 data URI wav 与实时 WS 的 run-task/finish-task 帧、edge-tts 的 mp3 流）。第二份知识按设计只应存在于 adapters/*；但 pgs/rg 的字段定义落在通用值对象 models.py:25-41，且 assembler 的通用循环也按 PgsKind 分派（见 media-12）。",
+  "passes": [
+    {
+      "dim": "D1 一句话",
+      "note": "边界一句话说得清：protocols.py:1「transcription is a channel, synthesis is a task」，三级快照语义在 models.py:18 与 assembler.py:144 各有一句定义。"
+    },
+    {
+      "dim": "D4 更少通用方法覆盖专用方法",
+      "note": "TranscriptionChannel 只有 start/feed/stop/wait 四个方法，三个适配器（流式/批量/脚本）都靠这四个成立，没有为了批量语义给协议加专用方法（qwen 的 stop() 触发唯一一次请求）。"
+    },
+    {
+      "dim": "W3 错误靠定义规避",
+      "note": "事件 kind 与 PgsKind 是 Literal/StrEnum，非法值在构造期被 pydantic 挡住（models.py:20、25-29；tests/media/test_xunfei_ast.py:153 断言 pgs=\"weird\" 归一为 None），适配器不必到处 if 校验字符串。"
+    },
+    {
+      "dim": "C3 性能改动测量过",
+      "note": "帧切分与缓存策略都有出处：xunfei_ast.py:6「frames are pushed at 1280 bytes / 40 ms」、paraformer_rt.py:44-45「100 ms of 16 kHz mono s16le」、qwen_asr.py:9「Wire format verified against the live endpoint」，真机数字落在 docs/tickets。"
+    },
+    {
+      "dim": "R1 删除测试",
+      "note": "删掉 TtsCache 会让 digest 计算、原子写、路径布局散回 http/media.py:86-87/115 与 scripts/media_smoke.py 三处，调用方只会更复杂；它不是透传。"
+    }
+  ],
+  "issues": [
+    {
+      "id": "media-01",
+      "dim": "R11 重复",
+      "signals": [
+        "重复"
+      ],
+      "severity": "高",
+      "title": "assembler 更新 → TranscriptEvent 的事件映射在 xunfei 与 scripted 两个适配器里逐行重复",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:283-293",
+        "apps/api/src/better_resume/media/adapters/scripted.py:97-105"
+      ],
+      "evidence": "283:     async def _emit_update(self, update: TranscriptUpdate) -> None:\n286:         if update.final_packet:\n287:             if len(update.committed) > len(self._committed_seen):\n288:                 newly = update.committed[len(self._committed_seen) :]\n289:                 self._committed_seen = update.committed\n290:                 await self._emit(TranscriptEvent(kind=\"archive\", text=newly))\n291:             return\n292:         if update.changed:\n293:             await self._emit(TranscriptEvent(kind=\"replace\", text=update.live))\n--- scripted.py（同一份规则的副本）\n97:         update = self._assembler.apply(packet)\n98:         if update.final_packet:\n99:             if len(update.committed) > len(self._committed_seen):\n102:                 await self._emit(TranscriptEvent(kind=\"archive\", text=newly))\n105:             await self._emit(TranscriptEvent(kind=\"replace\", text=update.live))",
+      "why": "同一份知识（final 包只把新增的 committed 前缀当 archive 发、非 final 包仅在 changed 时发 replace、_committed_seen 单调推进）在适配器层有两份实现，连 _committed_seen 这个状态都各存一份。scripted 是 BR_MEDIA__TRANSCRIPTION_ADAPTER 的默认值（settings/config.py:70），也就是 CI 与本地唯一跑得起来的通道：改真机映射时 CI 不会红，改 scripted 时真机不受影响，两份可以无限漂移。维护者必须知道「这两段必须等价」这个只存在于脑子里的假设；这正是 AGENTS.md 里 P28/P30「转写合并有三层、改一层漏一层」的同构问题，只是这次发生在同一模块内的两个适配器之间。",
+      "fix": "把「TranscriptUpdate → TranscriptEvent」抽成 media 层单一函数（或让 assembler 直接产出事件序列），xunfei/scripted 只负责把包喂进 assembler。"
+    },
+    {
+      "id": "media-02",
+      "dim": "D5 复杂度下沉 or 推给使用者",
+      "signals": [
+        "信息泄露",
+        "过度暴露"
+      ],
+      "severity": "高",
+      "title": "通道的失败面没进 TranscriptionChannel 协议：端点只能 getattr 摸 channel.failure",
+      "where": [
+        "apps/api/src/better_resume/media/protocols.py:16-24",
+        "apps/api/src/better_resume/http/media.py:164-168"
+      ],
+      "evidence": "16:     async def stop(self) -> None: ...\n18:     async def wait(self) -> None:\n19:         \"\"\"Block until the channel ends; raise its failure if it failed.\n--- http/media.py\n164:         with contextlib.suppress(BaseException):\n165:             await channel.stop()\n166:         # A batch channel (qwen-asr) can only fail during stop(), after the watcher was\n167:         # cancelled: pick the failure up from the channel itself.\n168:         failure = failure or getattr(channel, \"failure\", None)",
+      "why": "协议对失败只承诺「wait() 会抛」，三个实现却给了三种 stop() 语义：xunfei 的 stop() 吞掉一切（xunfei_ast.py:192-205），paraformer 的 stop() 会 raise 失败（paraformer_rt.py:180-181），qwen 的 stop() 既 raise 又把异常存进 .failure（qwen_asr.py:161-169）。于是端点必须 (a) 用 suppress(BaseException) 包住 stop()，(b) 再用 getattr 去摸一个协议里不存在的属性名——属性名写错就从 4411 静默退回 1000（http/media.py:171-179），客户端把半截转写当成功。调用者被迫了解「哪个适配器在哪个阶段失败」这份实现知识，而吸收供应商差异本该是 media 的职责。",
+      "fix": "把失败语义写进协议：wait()/stop() 收敛为返回统一终态，或让协议显式声明 failure 属性；端点不再 getattr/suppress。"
+    },
+    {
+      "id": "media-03",
+      "dim": "W6 符合周围约定",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "xunfei 的 WS 连接参数没按仓库硬约束显式给全，隔壁 paraformer 给全了并写了理由",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:238",
+        "apps/api/src/better_resume/media/adapters/paraformer_rt.py:68-84"
+      ],
+      "evidence": "238:                 async with connect(url, max_size=None, open_timeout=10) as connection:\n--- paraformer_rt.py\n68:     websockets >= 14 renamed extra_headers and grew a proxy argument, and a malformed\n69:     NO_PROXY on this machine must not take the channel down (P20) — hence the fallbacks.\n70:     close_timeout is bounded because the vendor stalls the close handshake (~10 s\n71:     observed live): the transcript is already complete, so we must not wait for it.\n77:             \"additional_headers\": headers,\n78:             \"open_timeout\": open_timeout,\n79:             \"close_timeout\": 1,\n80:             \"proxy\": None,",
+      "why": "AGENTS.md §开发规范是明文硬约束：「WS/HTTP 客户端连接参数一律显式：open_timeout、close_timeout（供应商会拖关闭握手，默认 10s 会让松手→final 变 10 秒，P24）、proxy=None 或 trust_env=False 兜底（P20）」。这份知识在 paraformer_rt 已经落成兼容层并附了实测理由，xunfei 只给了 open_timeout=10：close 走 websockets 默认（10s，P24 已实测供应商会拖），proxy 继续读环境（P20 本机 NO_PROXY 含裸 IPv6）。代价由用户按松手后的等待时间支付，而且两个通道的行为不一致，排障时得先知道用的是哪个适配器。",
+      "fix": "把 paraformer_rt.open_connection 提到 adapters 公共处，xunfei 复用它；不要在供应商适配器里各写一份连接兼容层。"
+    },
+    {
+      "id": "media-04",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露"
+      ],
+      "severity": "高",
+      "title": "「单通道」排他性只存在进程内，而同类跨副本状态在 identity 走 Redis，部署形态明确 --scale api=2",
+      "where": [
+        "apps/api/src/better_resume/media/registry.py:6-14",
+        "apps/api/src/better_resume/identity/tickets.py:63-65"
+      ],
+      "evidence": "6: class ChannelRegistry:\n7:     def __init__(self) -> None:\n8:         self._active: set[str] = set()\n10:     def try_acquire(self, key: str) -> bool:\n11:         if key in self._active:\n12:             return False\n--- identity/tickets.py\n63: class RedisWsTicketStore:\n64:     def __init__(self, redis_source: RedisSource) -> None:\n65:         self._client = redis_client(redis_source, decode_responses=True)",
+      "why": "「哪些状态必须跨副本一致」这条设计决策在本仓已有答案：README.md:109 写「可 --scale api=2，进程内锁/热状态/单飞走 Redis」，identity 的一次性 WS ticket 与会话都落在 Redis（正是因为--scale 下必须共享）。media 的通道排他性却是一个进程内 set（main.py:76 装配），而 nginx 用 DNS 轮询分发 api（deploy/nginx.conf:9-12，没有 ip_hash）→ 同一用户的第二路 WS 只要落到另一个副本就会被接受，「第二路 4409」的承诺（docs/tickets/m4/T3-ws-ticket-and-endpoint.md:20）在双实例下静默失效，后果是同一用户同时开两条供应商转写流、事件流互相覆盖。",
+      "fix": "把 acquire/release 挪到 Redis（与 ticket 同一套 client + TTL 兜底），或至少在 registry 注释与部署文档里写明「只在单实例下成立」并钉死单实例形态。"
+    },
+    {
+      "id": "media-05",
+      "dim": "S4 通用/专用是否干净分开",
+      "signals": [
+        "通用专用混合体",
+        "信息泄露"
+      ],
+      "severity": "中",
+      "title": "media 级配置错误类 MediaConfigError 定义在讯飞适配器里，另两个适配器与 factory 都要 import 它",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:42-43",
+        "apps/api/src/better_resume/media/adapters/qwen_asr.py:27,208-218"
+      ],
+      "evidence": "42: class MediaConfigError(RuntimeError):\n43:     \"\"\"Missing or unusable media configuration (never silently degrade to fake data).\"\"\"\n--- qwen_asr.py\n27: from .xunfei_ast import MediaConfigError\n208:         except httpx.HTTPError as exc:\n209:             raise MediaConfigError(f\"qwen-asr request failed: {exc}\") from exc\n218:             raise MediaConfigError(f\"qwen-asr returned {response.status_code}: {body}{hint}\")",
+      "why": "「媒体层缺配置/不可用」是通用知识，却被放进某一个供应商的模块：qwen_asr.py:27、paraformer_rt.py:37、factory.py:9 都 `from .xunfei_ast import MediaConfigError`，删掉讯飞支持要改另外两个适配器和工厂。更糟的是语义被拉宽：qwen 把 ReadTimeout 与 401 也塞进这个「配置错误」（208-218），调用者无法用它区分「我配错了」和「对面挂了」，与仓库「依赖不可用 → 503 + 点名缺失变量」的错误语义对不上。",
+      "fix": "把 MediaConfigError（或拆成 Config / Unavailable 两个）提到 media 层的 errors 模块，adapters 只依赖它，不再依赖 xunfei_ast 这个具体模块。"
+    },
+    {
+      "id": "media-06",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露",
+        "重复"
+      ],
+      "severity": "中",
+      "title": "TTS 音频的对外 URL 模板同时写在 TTS 适配器和 HTTP 端点里",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/edge_tts.py:66-70",
+        "apps/api/src/better_resume/http/media.py:97-102"
+      ],
+      "evidence": "66:         return AudioRef(\n67:             url=f\"/api/v1/media/tts/{digest}.mp3\",\n68:             path=str(self._cache.path_for(digest)),\n69:             mime_type=\"audio/mpeg\",\n--- http/media.py\n97:     return TtsView(\n98:         url=reference.url or f\"/api/v1/media/tts/{digest}.mp3\",",
+      "why": "路由形状（前缀 + `{digest}.mp3` 扩展名）是 HTTP 层的知识，现在 media 适配器也必须知道，端点里还留了一份「兜底」副本；改路由前缀、加 API 版本、把格式换成 .m4a 时要同步两处，漏一处就会出现「真机返回的 URL 打不开、只有兜底路径能用」。TTS 适配器本该只交回「摘要 + 磁盘位置」，对外 URL 由端点拼；tests/media/test_tts.py:56-58 已把这个耦合固化成断言。",
+      "fix": "AudioRef 不携带对外 URL（或由端点注入 URL 前缀），路由模板只留在 http/media.py 一处。"
+    },
+    {
+      "id": "media-07",
+      "dim": "R6 过度暴露",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "AstTranscriptionAssembler.pool 是公开属性，内部 SentencePool 的 12 个方法都进了模块接口",
+      "where": [
+        "apps/api/src/better_resume/media/assembler.py:146-147",
+        "apps/api/scripts/assembler_real_probe.py:147-149"
+      ],
+      "evidence": "146:     def __init__(self) -> None:\n147:         self.pool = SentencePool()\n--- apps/api/scripts/assembler_real_probe.py\n147:     committed = assembler.pool.committed_text()\n148:     display = assembler.pool.display_text()\n149:     pooled = len(assembler.pool.ordered())",
+      "why": "读结果本来只需要 snapshot()（committed/display/live 都在返回里），但真机探针 apps/api/scripts/assembler_real_probe.py:147-149 与 tests/media/test_assembler.py 共 9 处都直接摸 pool → upsert/append/replace_range/next_segment_id/ordered… 全变成必须保持兼容的接口面，任何「段存储换 key/换结构」的内部重构都会同时打断探针与测试，而它们本该只依赖 TranscriptUpdate。跨模块证据：探针在 media 之外，说明这份内部结构已经泄漏到脚本层。",
+      "fix": "pool 改私有（_pool），探针所需的段数/committed 通过 snapshot() 或一个只读视图方法暴露。"
+    },
+    {
+      "id": "media-08",
+      "dim": "S3 重复（知识重复）",
+      "signals": [
+        "重复"
+      ],
+      "severity": "中",
+      "title": "seg_id 在事件契约里是 str 且恒为 None，在包/句池里是 int —— 同一份「句子标识」两套类型",
+      "where": [
+        "apps/api/src/better_resume/media/models.py:20-22",
+        "apps/api/src/better_resume/media/models.py:32-45"
+      ],
+      "evidence": "20:     kind: Literal[\"replace\", \"archive\", \"final\"]\n21:     text: str\n22:     seg_id: str | None = None\n--- models.py:32-45（同一份知识的另一套类型）\n35:     text: str = \"\"\n36:     seg_id: int | None = None\n44: class Sentence(BaseModel):\n45:     seg_id: int",
+      "why": "三个适配器 emit TranscriptEvent 时都不传 seg_id（xunfei_ast.py:290/293、paraformer_rt.py:279/284 只有 kind/text）→ 每个 WS 事件都带一个永远为 null 的字段，而它的类型（str）与内部真正的段号（int）不一致；对外契约把这具尸体固化了（tests/test_media_ws.py:61 断言 `{\"kind\": \"replace\", \"text\": \"我负责\", \"seg_id\": None}`）。接线的人会以为它能定位句子，传字符串进去也不会立刻报错，读者则要花时间确认它何时有值。",
+      "fix": "删掉 TranscriptEvent.seg_id（或改成 int 并由 update.segment_id 赋值），让「句子标识」只有一种类型。"
+    },
+    {
+      "id": "media-09",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "M0 占位类留在生产包里，只有合同测试在用，文件注释还写着「M4 才落地」",
+      "where": [
+        "apps/api/src/better_resume/media/placeholder.py:1-11",
+        "apps/api/tests/contracts/test_domain_contracts.py:100-101"
+      ],
+      "evidence": "1  \"\"\"Explicit M0 placeholders; Xunfei AST / edge-tts adapters land with M4.\"\"\"\n...\n7  _TRANSCRIPTION_REASON = \"TranscriptionChannel (Xunfei AST adapter) is implemented in M4.\"\n8  _TTS_REASON = \"TtsSynthesizer (edge-tts adapter) is implemented in M4.\"\n9  \n10  \n11  class UnimplementedTranscriptionChannel:\n\napps/api/tests/contracts/test_domain_contracts.py:1  \"\"\"Contract smoke tests for interview-engine / resume-parser / media (§12.2 signatures).\"\"\"\n...\napps/api/tests/contracts/test_domain_contracts.py:100      assert isinstance(UnimplementedTranscriptionChannel(), TranscriptionChannel)\napps/api/tests/contracts/test_domain_contracts.py:101      assert isinstance(UnimplementedTtsSynthesizer(), TtsSynthesizer)",
+      "why": "AGENTS.md §开发规范清洁度：「不留临时文件、注释掉的死代码、'默认关闭没人跑'的分支——要么真机跑通并设为默认，要么删掉」。xunfei/edge-tts 适配器早在 M4 就落地并被 media/__init__.py:38 导出，这两个占位类全仓无生产调用，唯一消费者是合同测试的 isinstance 断言 → 一份永不执行、注释还过期的实现留在包里，读者会以为存在「未实现的默认适配器」这条分支，也会以为 M4 还没做完（本文件其余部分的注释同样停留在 M0 视角）。",
+      "fix": "删 placeholder.py，合同测试直接对 XunfeiAstAdapter / EdgeTtsSynthesizer 做 isinstance。"
+    },
+    {
+      "id": "media-10",
+      "dim": "D6 可自动算出的配置参数",
+      "signals": [
+        "过度暴露"
+      ],
+      "severity": "中",
+      "title": "timeout_seconds 一个参数承担 paraformer 的三种时序，factory 还把同一个 settings 值喂给两个语义不同的适配器",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/paraformer_rt.py:117,196,200,238",
+        "apps/api/src/better_resume/media/factory.py:44,55"
+      ],
+      "evidence": "117:         timeout_seconds: float = 30.0,\n196:             connection = await self._connect(self.ws_url, self._headers(), self._timeout)\n200:                 frame = await asyncio.wait_for(connection.recv(), timeout=self._timeout)\n238:                 elif not finish_sent and now - last_message_at > self._timeout:\n--- factory.py（同一个 settings 值喂两条链路）\n44:             timeout_seconds=media.asr_timeout_seconds,\n55:             timeout_seconds=media.asr_timeout_seconds,",
+      "why": "同一个 self._timeout 同时是 WS 握手超时、任务启动首帧超时和「供应商静默多久算死」的阈值；而「静默」本可从帧语义推导（一帧约 100ms，静默 N 帧即死），却和连接余量绑成一个数字——调大握手余量会同时放宽装死判定（两侧都是 30s，等于最短 30 秒才会发现通道已死）。factory 还把这个同一个 settings 值分别喂给 HTTP 批量适配器与 WS 实时适配器（44/55），一个旋钮同时改两条链路的时序，调用者无法从名字判断该调哪个、改了会动哪条路径。",
+      "fix": "拆成语义参数（connect_timeout / first_frame_timeout / silence_timeout），默认值按帧语义在适配器内推导，settings 只暴露真正需要人工调的那个。"
+    },
+    {
+      "id": "media-11",
+      "dim": "W6 符合周围约定",
+      "signals": [],
+      "severity": "中",
+      "title": "_TERMINAL_CODES 是死常量：定义了「哪些错误码是终态」，但错误路径完全不看它",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:39",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:96-99",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:251-253"
+      ],
+      "evidence": "39  _TERMINAL_CODES = {\"10165\", \"10160\", \"10161\", \"10163\", \"10170\"}\n...\n96      code = payload.get(\"code\")\n97      if code not in (None, 0, \"0\"):\n98          message = str(payload.get(\"desc\") or payload.get(\"message\") or code)\n99          raise AiUnavailable(f\"xunfei AST error {code}: {message}\", stage=Stage.EXTRACTION)\n...\n251              except AiUnavailable as exc:\n252                  self.failure = exc\n253                  return",
+      "why": "grep 全仓只有定义处引用它（无任何使用者）。任何非零 vendor code 都直接抛 AiUnavailable，而 _receive_loop 对 AiUnavailable 立即 return、不进重连预算（251-253）→ 一个本可重试的瞬时错误码与「appId 无效」得到同等待遇，用户看到的是通道直接失败。常量本身说明作者知道要区分终态码，但这份知识没落到代码里；读者看到它还得自己 grep 验证它是不是死代码——充好代码里的死分支正是 AGENTS.md 清洁度禁止的形态。",
+      "fix": "要么用它做判定（命中终态码 → 不重试，其余走重连预算），要么删掉它，别让「终态」这个概念只活在一个集合里。"
+    },
+    {
+      "id": "media-12",
+      "dim": "R4 信息泄露",
+      "signals": [
+        "信息泄露",
+        "实现文档污染接口"
+      ],
+      "severity": "中",
+      "title": "pgs/rg 这份协议知识归谁，三处 docstring 各说一套且互相矛盾",
+      "where": [
+        "apps/api/src/better_resume/media/models.py:1",
+        "apps/api/src/better_resume/media/models.py:25-41",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:1"
+      ],
+      "evidence": "media/models.py:1  \"\"\"media value objects: transcript events are normalized, protocol details stay in adapters.\"\"\"\nmedia/models.py:25  class PgsKind(StrEnum):\nmedia/models.py:26      \"\"\"xunfei AST packet generation strategy: apd appends, rpl rewrites an interval.\"\"\"\nmedia/models.py:33      \"\"\"One incremental packet from the vendor (the only place these fields exist).\"\"\"\nadapters/xunfei_ast.py:1  \"\"\"Xunfei AST adapter: the only place that knows about pgs/rg/signatures (§4.4).",
+      "why": "同一个设计决策（pgs/rg/bg/ed 归谁）在三处被声明了三次且不相容：models.py:1 说协议细节留在 adapter，models.py:25-41 却把 PgsKind/AstPacket 定义在通用值对象里，xunfei_ast.py:1 又自称「唯一知道 pgs/rg 的地方」，而 assembler 的通用归并循环也在按 PgsKind.APPEND/REPLACE 分派并直接消费 rg（assembler.py:175-183）——三处都声称自己是边界。改一个 xunfei 字段要动几个文件没有公认答案，新人无法从注释判断该把协议知识放哪，只能靠试。",
+      "fix": "选定一处（建议 xunfei 专用值对象放回 adapters/xunfei_ast.py，assembler 只吃归一化后的包），另两处 docstring 改成指向它。"
+    },
+    {
+      "id": "media-13",
+      "dim": "W5 多返回值用具名字段类",
+      "signals": [],
+      "severity": "低",
+      "title": "parse_event 返回裸三元组，两个调用点都丢弃两项、靠字符串常量分派",
+      "where": [
+        "apps/api/src/better_resume/media/adapters/paraformer_rt.py:93-103",
+        "apps/api/src/better_resume/media/adapters/paraformer_rt.py:201,248"
+      ],
+      "evidence": "93: def parse_event(frame: str) -> tuple[str, str, bool]:\n94:     \"\"\"(event, sentence_text, sentence_end) for a server frame; unparsable -> (\"?\", \"\", False).\"\"\"\n98:         return \"?\", \"\", False\n103:     return str(header.get(\"event\", \"?\")), text.strip(), end\n--- 调用点\n201:                 event, _text, _end = parse_event(frame)\n248:                 event, text, end = parse_event(frame)",
+      "why": "三个返回值的含义只活在 docstring 里，调用点用 `_text/_end` 明确表示「这两项这次不用」；事件名是裸字符串（\"?\" 表示解析失败，\"task-started\"/\"result-generated\"/\"task-finished\"/\"task-failed\" 靠 if 链比较），拼错不会被任何检查拦住，读者必须回看 docstring 才知道第三项是什么。",
+      "fix": "换成具名结构（小 dataclass 或 StrEnum 事件名 + text/sentence_end 字段），按事件类型分派。"
+    }
+  ]
+}
