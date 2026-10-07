@@ -82,8 +82,14 @@ class MediaSettings(BaseModel):
     tts_max_chars: int = 500
 
 
+#: Bucket names as they appear in BR_RATE_LIMIT__SHARED_BUCKETS. Literals live here because
+#: settings must not import ai_resilience (that would close an import cycle);
+#: tests/ai_resilience/test_ratelimit_routing.py pins them against the Bucket enum.
+_RATE_LIMIT_BUCKETS = ("general", "read", "answer", "heavy", "ai_call")
+
+
 class RateLimitSettings(BaseModel):
-    """M3 in-process flow limiting (old project's flow-limit matrix)."""
+    """M3 flow limiting (old project's flow-limit matrix); P7 adds the shared backend."""
 
     enabled: bool = True
     general_per_second: float = 20.0
@@ -94,6 +100,34 @@ class RateLimitSettings(BaseModel):
     heavy_per_second: float = 2.0
     ai_call_per_second: float = 2.0
     burst_multiplier: float = 2.0
+
+    # P7 / D19: where bucket state lives. "memory" is the pre-P7 behaviour (one quota per
+    # replica); "redis" shares one quota across replicas for the buckets named below.
+    # Compose sets redis; local runs and CI keep memory so tests stay hermetic.
+    backend: Literal["memory", "redis"] = "memory"
+    #: Only the vendor-cost buckets are shared — they cap what we spend upstream.
+    #: GENERAL/READ cap our own capacity, which grows with the replica count, so per-replica
+    #: limiting is the correct semantics there (and keeps the cheap path off Redis).
+    shared_buckets: str = "ai_call,answer,heavy"
+    #: Hard ceiling for one Redis round trip: a blip must not add latency to every request.
+    redis_socket_timeout_ms: float = 50.0
+    #: After a failure, serve from the in-process bucket this long without retrying Redis.
+    degraded_cooldown_seconds: float = 30.0
+
+    @field_validator("shared_buckets")
+    @classmethod
+    def _known_buckets_only(cls, value: str) -> str:
+        names = [part.strip() for part in value.split(",") if part.strip()]
+        unknown = sorted(set(names) - set(_RATE_LIMIT_BUCKETS))
+        if unknown:
+            raise ValueError(
+                "unknown bucket in BR_RATE_LIMIT__SHARED_BUCKETS: " + ", ".join(unknown)
+            )
+        return ",".join(names)
+
+    @property
+    def shared_bucket_names(self) -> frozenset[str]:
+        return frozenset(part.strip() for part in self.shared_buckets.split(",") if part.strip())
 
 
 class Settings(BaseSettings):

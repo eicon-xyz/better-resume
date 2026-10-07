@@ -218,7 +218,7 @@ async def section_breaker() -> None:
     print(f"after half-open    : {resilience.stats()['breakers']['evaluation']['state']}")
 
 
-def section_rate_limit() -> None:
+async def section_rate_limit() -> None:
     banner("4. rate limiting (token buckets on a manual clock)")
     clock = ManualClock()
     limiter = RateLimiter(
@@ -226,12 +226,15 @@ def section_rate_limit() -> None:
         clock=clock,
         metrics=ResilienceMetrics(),
     )
-    decisions = [limiter.check(Bucket.READ, "session:demo") for _ in range(3)]
+    decisions = [await limiter.check(Bucket.READ, "session:demo") for _ in range(3)]
     for index, decision in enumerate(decisions):
-        print(f"request {index}: allowed={decision.allowed} retry_after={decision.retry_after:.2f}")
+        print(
+            f"request {index}: allowed={decision.allowed} retry_after={decision.retry_after:.2f} "
+            f"scope={decision.scope.value}"
+        )
 
     clock.advance(0.5)
-    print(f"after 0.5s: allowed={limiter.check(Bucket.READ, 'session:demo').allowed}")
+    print(f"after 0.5s: allowed={(await limiter.check(Bucket.READ, 'session:demo')).allowed}")
     assert [decision.allowed for decision in decisions] == [True, True, False]
 
 
@@ -240,7 +243,7 @@ async def main() -> None:
     await section_concurrency()
     real_ok = await section_real_vendor()
     await section_breaker()
-    section_rate_limit()
+    await section_rate_limit()
 
     banner("5. stats snapshot")
     settings = Settings(_env_file=None)

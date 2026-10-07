@@ -65,7 +65,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if limiter is not None and limiter.enabled:
                 bucket = classify(request.method, request.url.path)
                 if bucket is not None:
-                    decision = limiter.check(bucket, _identity(request, self._settings))
+                    decision = await limiter.check(bucket, _identity(request, self._settings))
         except Exception:  # noqa: BLE001 - limiting is not correctness: fail open
             logger.exception("ratelimit_failed_open", path=request.url.path)
             decision = None
@@ -90,6 +90,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "Retry-After": str(retry_after),
                     "X-RateLimit-Bucket": decision.bucket.value,
                     "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Scope": decision.scope.value,
                 },
             )
 
@@ -98,6 +99,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Bucket"] = decision.bucket.value
             response.headers["X-RateLimit-Limit"] = str(decision.capacity)
             response.headers["X-RateLimit-Remaining"] = str(decision.remaining)
+            # P7/D19: "shared" = Redis holds this quota; "instance" = this replica does
+            # (configured that way, or degraded because the shared store was unavailable).
+            response.headers["X-RateLimit-Scope"] = decision.scope.value
         return response
 
 

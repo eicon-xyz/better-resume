@@ -16,9 +16,10 @@ from .ai_resilience import (
     AiTimeout,
     AiUnavailable,
     DistributedAiResilience,
-    RateLimiter,
     RedisFlight,
+    ResilienceMetrics,
     ResilientAiResilience,
+    build_rate_limiter,
 )
 from .conversation import ConversationConflictError, ConversationNotFoundError
 from .db import build_engine, build_session_factory
@@ -100,7 +101,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
     )
     # M3: single flight + circuit breaker + bulkhead + deadlines behind one method.
-    resilience: object = ResilientAiResilience(settings)
+    # P7: the limiter shares these counters, so /resilience/stats also reports how much
+    # traffic ran against the degraded (per-replica) bucket.
+    metrics = ResilienceMetrics()
+    resilience: object = ResilientAiResilience(settings, metrics=metrics)
     if settings.resilience.distributed:
         resilience = DistributedAiResilience(
             resilience,
@@ -113,12 +117,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     app.state.ai_resilience = resilience
     app.state.llm_gateway_factory = build_llm_gateway
-    app.state.rate_limiter = RateLimiter(settings.rate_limit)
+    # P7/D19: shared (Redis) quota for the cost buckets, per-process otherwise.
+    app.state.rate_limiter = build_rate_limiter(settings, metrics=metrics)
     # Process-local question locks; M6 swaps them for Redis behind the same seam.
     app.state.question_locks = _build_question_locks(settings)
     try:
         yield
     finally:
+        await app.state.rate_limiter.aclose()
         await app.state.ai_resilience.aclose()
         await app.state.question_locks.aclose()
         await app.state.hot_state.aclose()

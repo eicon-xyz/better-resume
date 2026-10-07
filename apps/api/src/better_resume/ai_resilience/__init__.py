@@ -1,6 +1,14 @@
 from .breaker import BreakerPolicy, BreakerRegistry, BreakerState, CircuitBreaker
 from .bulkhead import Bulkhead, BulkheadRegistry
-from .clock import Clock, ManualClock, SystemClock
+from .clock import (
+    Clock,
+    ManualClock,
+    ManualWallClock,
+    SystemClock,
+    SystemWallClock,
+    WallClock,
+)
+from .degraded import DegradingBucketStore
 from .distributed import DistributedAiResilience, RedisFlight
 from .errors import (
     AiInvalid,
@@ -18,7 +26,17 @@ from .passthrough import DirectAiResilience
 from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
 from .protocols import AiResilience
-from .ratelimit import Bucket, RateLimitDecision, RateLimiter, TokenBucket
+from .ratelimit import (
+    Bucket,
+    BucketScope,
+    BucketStore,
+    InProcessBucketStore,
+    RateLimitDecision,
+    RateLimiter,
+    TokenBucket,
+)
+from .ratelimit_factory import build_rate_limiter
+from .redis_buckets import RedisBucketStore
 from .resilient import ResilientAiResilience
 from .singleflight import Flight, FlightState, SingleFlight
 from .stream import StreamBroadcast
@@ -35,18 +53,24 @@ __all__ = [
     "BreakerRegistry",
     "BreakerState",
     "Bucket",
+    "BucketScope",
+    "BucketStore",
     "Bulkhead",
     "BulkheadRegistry",
     "CircuitBreaker",
     "Clock",
+    "DegradingBucketStore",
     "DirectAiResilience",
     "DistributedAiResilience",
     "FailureKind",
     "Flight",
     "FlightState",
+    "InProcessBucketStore",
     "ManualClock",
+    "ManualWallClock",
     "RateLimitDecision",
     "RateLimiter",
+    "RedisBucketStore",
     "RedisFlight",
     "ResilienceMetrics",
     "ResilientAiResilience",
@@ -56,10 +80,13 @@ __all__ = [
     "StagePolicy",
     "StreamBroadcast",
     "SystemClock",
+    "SystemWallClock",
     "TokenBucket",
+    "WallClock",
     "with_timeout",
     "wrap_stream_timeout",
     "UnimplementedAiResilience",
+    "build_rate_limiter",
     "classify",
     "wrap",
 ]

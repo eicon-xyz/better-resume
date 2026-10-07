@@ -58,6 +58,36 @@ check() { # check <exit-code> <label>
   if [ "$1" -eq 0 ]; then printf 'PASS: %s\n' "$2"; else printf 'FAIL: %s\n' "$2"; FAILED=1; fi
 }
 
+# P7/D19: 共享配额探针。用全新身份（新会话 → 新桶）连打同一个成本桶端点 7 次（> 2 × capacity）：
+#   · 共享配额（Redis）→ 放行数 ≈ capacity（answer 2/s × burst 2 = 4），且每个响应 scope=shared；
+#   · 每副本一份配额 → 放行数可到 2 × capacity，且 scope=instance、Redis 里没有 br:rl: 键。
+# 这里**故意不调 rate**：探针与演练共用同一个桶，钉小 rate 会把演练自己的答题打成 429（实际踩过）。
+shared_quota_probe() { # shared_quota_probe <base-url> <label> [capacity]
+  local base="$1" label="$2" capacity="${3:-4}"
+  local requests=7 jar user allowed=0 scopes="" status headers i=0
+  jar="$(mktemp)"
+  user="probe-$$-$(date +%s%N)"
+  curl -sS -o /dev/null -c "$jar" -H 'content-type: application/json' \
+    -d "{\"user_id\": \"$user\"}" "$base/api/v1/auth/session"
+  while [ "$i" -lt "$requests" ]; do
+    headers="$(curl -sS -D - -o /dev/null -b "$jar" -H 'content-type: application/json' \
+      -d '{}' "$base/api/v1/interview/sessions/probe-missing/answers" | tr -d '\r')"
+    status="$(printf '%s\n' "$headers" | awk 'NR==1 {print $2}')"
+    scopes="$scopes$(printf '%s\n' "$headers" | awk 'tolower($1) == "x-ratelimit-scope:" {print $2; exit}') "
+    if [ "$status" != "429" ]; then allowed=$((allowed + 1)); fi
+    i=$((i + 1))
+  done
+  rm -f "$jar"
+  local unique_scopes keys
+  unique_scopes="$(printf '%s' "$scopes" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ',')"
+  keys="$(docker compose exec -T redis redis-cli --raw --scan --pattern 'br:rl:answer*' | tr -d '\r' | grep -c 'br:rl:' || true)"
+  printf '%s: allowed=%s/%s (capacity=%s) scope=%s redis_keys=%s\n' \
+    "$label" "$allowed" "$requests" "$capacity" "$unique_scopes" "$keys"
+  [ "$allowed" -ge 1 ] && [ "$allowed" -le $((capacity + 1)) ] && \
+    [ "$unique_scopes" = "shared," ] && [ "$keys" -ge 1 ]
+}
+
+
 step "compose config is valid"
 docker compose config --quiet
 check $? "docker compose config"
@@ -129,6 +159,10 @@ step "worker health (Redis heartbeat) and job path"
 docker compose ps worker
 docker compose exec -T redis redis-cli --raw KEYS 'br:jobs:health' | grep -q br:jobs:health
 check $? "worker heartbeat key exists"
+
+step "shared rate limit: two replicas, one quota (P7 / D19)"
+shared_quota_probe "$BASE" "shared quota"
+check $? "a fresh identity's 7 requests release ~capacity (not 2x) with X-RateLimit-Scope: shared"
 
 printf '\n== summary\n'
 if [ "$FAILED" -eq 0 ]; then

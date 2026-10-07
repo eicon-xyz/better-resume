@@ -23,6 +23,10 @@ x-api-environment: &api-environment
   # M6: several api containers share locks, hot state and the job stream through Redis.
   BR_LOCK_BACKEND: redis
   BR_HOT_STATE_BACKEND: redis
+  # P7/D19: the vendor-cost buckets (ai_call/answer/heavy) share one quota through Redis.
+  # The answer rate stays tunable so the smoke can pin capacity to 1 for its sharing probe.
+  BR_RATE_LIMIT__BACKEND: ${BR_RATE_LIMIT__BACKEND:-redis}
+  BR_RATE_LIMIT__ANSWER_PER_SECOND: ${BR_RATE_LIMIT__ANSWER_PER_SECOND:-2.0}
   BR_JOBS_ENABLED: "1"
   # Vendor keys come from the environment / gitignored .env — never from the repo.
   BR_DEEPSEEK_API_KEY: ${BR_DEEPSEEK_API_KEY:-}

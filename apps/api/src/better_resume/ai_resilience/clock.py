@@ -23,6 +23,43 @@ class SystemClock:
             await asyncio.sleep(seconds)
 
 
+@runtime_checkable
+class WallClock(Protocol):
+    """Wall-clock **milliseconds** — the only time base several processes can compare (P7).
+
+    `Clock` is monotonic on purpose (durations inside one process), so two replicas cannot
+    compare their readings. Bucket state lives in Redis and is written by whichever replica
+    arrives first, so the value written into that state must come from a clock every replica
+    reads the same way. Assumption: replicas share a roughly synced wall clock (containers on
+    one host share the host clock; NTP elsewhere). At 2 tokens/s a 100ms skew is 0.2 tokens.
+    """
+
+    def now_ms(self) -> int: ...
+
+
+class SystemWallClock:
+    def now_ms(self) -> int:
+        return int(time.time() * 1000)
+
+
+class ManualWallClock:
+    """Deterministic wall clock for tests: no sleeping, just advance_ms()."""
+
+    def __init__(self, start_ms: int = 0) -> None:
+        self._now_ms = start_ms
+
+    def now_ms(self) -> int:
+        return self._now_ms
+
+    def advance_ms(self, milliseconds: int) -> None:
+        if milliseconds < 0:
+            raise ValueError("time does not run backwards")
+        self._now_ms += milliseconds
+
+    def advance(self, seconds: float) -> None:
+        self.advance_ms(int(seconds * 1000))
+
+
 class ManualClock:
     """Deterministic clock: advance() releases every sleeper whose deadline has passed."""
 
