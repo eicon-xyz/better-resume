@@ -6,6 +6,9 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from better_resume.main import create_app
+from better_resume.settings import Settings
+
 
 def login(client: TestClient) -> str:
     user_id = f"resilience-{uuid.uuid4().hex[:8]}"
@@ -30,3 +33,26 @@ def test_stats_report_the_guard_chain(client: TestClient, migrated_database: str
     assert set(payload["policies"]) == {"chat", "extraction", "evaluation", "followup", "tts"}
     assert payload["singleflight"]["entries"] == 0
     assert "singleflight_leader" in payload["metrics"]
+
+
+def test_stats_survive_the_distributed_singleflight_wrapper(
+    migrated_database: str, redis_url: str
+) -> None:
+    """P8 / settings_observability-03: turning the Redis single flight on wrapped the chain in an
+    object that had run() and aclose() but no stats(), so a logged-in caller got a 500 from the
+    guard chain's own endpoint. The wrapper answers for the chain it wraps."""
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        log_level="WARNING",
+        database_url=migrated_database,
+        redis_url=redis_url,
+        resilience={"distributed": True},
+    )
+
+    with TestClient(create_app(settings)) as client:
+        login(client)
+        response = client.get("/api/v1/resilience/stats")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["enabled"] is True
