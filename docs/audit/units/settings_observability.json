@@ -88,7 +88,19 @@
       ],
       "evidence": "main.py:106-118\n106:     metrics = ResilienceMetrics()\n107:     resilience: object = ResilientAiResilience(settings, metrics=metrics)\n108:     if settings.resilience.distributed:\n109:         resilience = DistributedAiResilience(\n118:     app.state.ai_resilience = resilience\n---\nhttp/resilience.py:19-22\n19:     from ..ai_resilience import ResilientAiResilience\n21:     service: ResilientAiResilience = request.app.state.ai_resilience\n22:     return service.stats()",
       "why": "变量被声明成 object 之后，类型检查器再也无法验证第 109 行的包装对象是否具备第 128 行 aclose() 与 http/resilience.py:22 stats() 所需的方法；DistributedAiResilience 只有 run/aclose（ai_resilience/distributed.py:274-292），所以只要有人按 config.py:58 打开开关，GET /api/v1/resilience/stats 就会 AttributeError → 500。测试也没覆盖这个形状：tests/test_resilience_api.py 走默认 settings（distributed=False），只测了未包装的那条路径。这是典型的「本可在定义层排除、却留给运行时」——类型标注本可以立刻发现它。",
-      "fix": "把标注改成协议类型（AiResilience + stats/aclose，见 ai_resilience 单元 ai-04）并让 DistributedAiResilience 实现 stats()（委托给 inner）；同时补一条 distributed=true 的 /resilience/stats 用例。"
+      "fix": "把标注改成协议类型（AiResilience + stats/aclose，见 ai_resilience 单元 ai-04）并让 DistributedAiResilience 实现 stats()（委托给 inner）；同时补一条 distributed=true 的 /resilience/stats 用例。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "包装类替它所包的链路作答：补 stats() 并给装配点一个真类型",
+        "approach": "打开 BR_RESILIENCE__DISTRIBUTED=true 后 app.state.ai_resilience 换成 DistributedAiResilience，它只有 run/aclose、没有 stats()，而 main.py 把该变量标注成 object 抹掉了类型信息 → GET /resilience/stats 必 500。补 stats() 委托 inner；新增 AiResilienceSnapshot 协议（stats + aclose）并把装配点标注改成它。注意：没有给 AiResilience（run-only 契约）加方法 —— 那会让 UnimplementedAiResilience 不再满足 tests/contracts/test_core_contracts.py::test_ai_resilience_shape（第一版这么改，被全量跑抓红）。",
+        "files": [
+          "apps/api/src/better_resume/ai_resilience/distributed.py",
+          "apps/api/src/better_resume/ai_resilience/protocols.py",
+          "apps/api/src/better_resume/main.py",
+          "apps/api/tests/test_resilience_api.py"
+        ],
+        "evidence": "修前红：AttributeError: 'DistributedAiResilience' object has no attribute 'stats'（真 app + 真 PG/Redis + 真登录，pytest 1 failed）。修后 tests/test_resilience_api.py + tests/ai_resilience + tests/test_distributed_flight.py + tests/test_healthz.py = 117 passed / 0 failed。"
+      }
     },
     {
       "id": "so-04",
@@ -177,7 +189,7 @@
       "title": "「.env.example 覆盖 Settings」的契约测试是单向的、且对嵌套块完全失效，配合 extra=ignore 让拼错的变量名静默生效",
       "where": [
         "apps/api/src/better_resume/settings/config.py:136-143",
-        "apps/api/tests/test_settings.py:69-80",
+        "apps/api/tests/test_settings.py:69-102",
         ".env.example:23-29"
       ],
       "evidence": "config.py:136-143\n136:     model_config = SettingsConfigDict(\n137:         env_prefix=\"BR_\",\n140:         extra=\"ignore\",\n142:         env_nested_delimiter=\"__\",\n---\ntest_settings.py:69-80\n69:  def test_env_example_covers_settings_fields() -> None:\n70:     \"\"\"Contract: every BR_* key in .env.example maps to a real Settings field.\"\"\"\n73:         line.split(\"=\", 1)[0].strip() for line in lines if \"=\" in line and not line.startswith(\"#\")\n80:         assert key[3:].lower() in Settings.model_fields, f\"{key} has no matching Settings field\"\n---\n.env.example:26-29（全部以 # 开头，因此被第 73 行过滤掉）\n26:  # BR_RATE_LIMIT__BACKEND=memory|redis\n27:  # BR_RATE_LIMIT__SHARED_BUCKETS=ai_call,answer,heavy",
@@ -194,7 +206,7 @@
       "title": "讯飞 WS 端点同时是 settings.media.xunfei_ws_url 与 media 的 DEFAULT_WS_URL（跨模块）",
       "where": [
         "apps/api/src/better_resume/settings/config.py:79",
-        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:36"
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:36-37"
       ],
       "evidence": "config.py:79\n79:     xunfei_ws_url: str = \"wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1\"\n---\nxunfei_ast.py:36（media 模块）\n36:  DEFAULT_WS_URL = \"wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1\"\n---\nmedia/factory.py:36\n36:         ws_url=media.xunfei_ws_url,",
       "why": "同一个供应商端点常量写了两份，而装配点 media/factory.py:36 永远传 settings 那份（settings 的默认值就是同一个字符串），media 侧的 DEFAULT_WS_URL 只作为适配器直接构造时的兜底（xunfei_ast.py:70/140 的默认参数）。两份都是「真」的：直接构造适配器的测试/脚本用 media 那份，生产用 settings 那份——供应商换域名时只改一处，另一条路径会继续连旧端点。跨模块：settings/config.py ↔ media/adapters/xunfei_ast.py（装配点 media/factory.py）。",

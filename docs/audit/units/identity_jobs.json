@@ -63,7 +63,18 @@
       ],
       "evidence": "# apps/api/src/better_resume/redis_client.py:40-47\n40:         sentinels = tuple(\n41:             entry.strip() for entry in settings.redis_sentinels.split(\",\") if entry.strip()\n42:         )\n43:         return cls(\n44:             url=settings.redis_url,\n45:             sentinels=sentinels,\n46:             master_name=settings.redis_master_name.strip(),\n47:         )\n\n# apps/api/src/better_resume/settings/config.py:234-238\n234:     def _validate_sentinel_pair(self) -> Settings:\n235:         \"\"\"Fail loudly instead of silently degrading to a single URL nobody can fail over.\"\"\"\n236:         has_sentinels = bool(self.redis_sentinels.strip())\n237:         has_master_name = bool(self.redis_master_name.strip())\n238:         if has_sentinels != has_master_name:",
       "why": "缝的注释自称 from_settings 是『唯一读 BR_REDIS_SENTINELS / BR_REDIS_MASTER_NAME 的地方』，但 Settings._validate_sentinel_pair 也读这两个字段，而且两条判据不等价：校验器只看 `bool(self.redis_sentinels.strip())`，运行时看的是过滤空项之后的 `bool(self.sentinels and self.master_name)`（redis_client.py:49-51）。于是一个只写了分隔符的值（BR_REDIS_SENTINELS=\",\" 或 \" , \"）能通过『必须成对』的启动校验，from_settings 却产出空 tuple → uses_sentinel=False → redis_client 走 from_url(redis_url) 单节点，无异常、无日志。这正是校验器 docstring 起誓要防的『silently degrading to a single URL nobody can fail over』：多副本部署里主挂了不会切换，故障只在演练时才被发现；日后改判据的人也得同时想到两处。",
-      "fix": "把『成对且至少一个有效地址』的判据收进 RedisTopology（from_settings 里校验并抛错），Settings 的 validator 直接调用它，删掉第二份 bool(...strip()) 判断。"
+      "fix": "把『成对且至少一个有效地址』的判据收进 RedisTopology（from_settings 里校验并抛错），Settings 的 validator 直接调用它，删掉第二份 bool(...strip()) 判断。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "哨兵「成对且可用」的判据收敛成 settings 里的一份",
+        "approach": "Settings 校验只看 bool(strip())，RedisTopology.from_settings 则过滤空项后判空 —— 两份判据不等价，于是只含分隔符的值（一个逗号、或空格加逗号）能过启动校验、运行时静默退回单节点（无异常无日志，多副本下主挂了不切）。新增 settings.config.parse_sentinel_addresses 作为唯一判据（redis_client 复用），并在校验里补「原始值非空但解析不出地址 → 启动即拒」。",
+        "files": [
+          "apps/api/src/better_resume/settings/config.py",
+          "apps/api/src/better_resume/redis_client.py",
+          "apps/api/tests/test_settings.py"
+        ],
+        "evidence": "修前红：三个分隔符参数化用例全部 DID NOT RAISE ValidationError。修后 tests/test_settings.py + test_redis_client.py + test_distributed_flight.py + test_identity.py = 39 passed / 0 failed。地址语法仍归 redis_client._sentinel_address（x:abc 本来就抛）。"
+      }
     },
     {
       "id": "identity_jobs-02",
@@ -92,9 +103,9 @@
       "where": [
         "apps/api/src/better_resume/worker.py:43-68",
         "apps/api/src/better_resume/main.py:52-60",
-        "apps/api/src/better_resume/main.py:224"
+        "apps/api/src/better_resume/main.py:224-225"
       ],
-      "evidence": "# apps/api/src/better_resume/worker.py:43-54\n43:  def build_worker_runtime(settings: Settings) -> dict[str, Any]:\n44:     \"\"\"Minimal runtime for background work (the HTTP app builds its own, richer one).\"\"\"\n45:     engine = build_engine(settings.database_url)\n46:     session_factory = build_session_factory(engine)\n47:     resilience = ResilientAiResilience(settings)\n48:     resolver = SceneResolver(\n49:         session_factory,\n50:         gateway_builder=lambda: (\n51:             __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\n52:         ),\n53:         cache_ttl_seconds=settings.scene_binding_cache_seconds,\n54:     )\n\n# apps/api/src/better_resume/main.py:59-59\n59:     build_llm_gateway,\n\n# apps/api/src/better_resume/main.py:224-224\n224:  app = create_app()",
+      "evidence": "# apps/api/src/better_resume/worker.py:43-54\n43:  def build_worker_runtime(settings: Settings) -> dict[str, Any]:\n44:     \"\"\"Minimal runtime for background work (the HTTP app builds its own, richer one).\"\"\"\n45:     engine = build_engine(settings.database_url)\n46:     session_factory = build_session_factory(engine)\n47:     resilience = ResilientAiResilience(settings)\n48:     resolver = SceneResolver(\n49:         session_factory,\n50:         gateway_builder=lambda: (\n51:             __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\n52:         ),\n53:         cache_ttl_seconds=settings.scene_binding_cache_seconds,\n54:     )\n\n# apps/api/src/better_resume/main.py:59-59\n59:     build_llm_gateway,\n\n# apps/api/src/better_resume/main.py:225-225\n225:  app = create_app()",
       "why": "worker.py:50-52 去 better_resume.main 拿 build_llm_gateway，而那只是 llm_gateway 的同一个对象在 main.py:59 被 re-export（worker.py:24-31 本来就从 llm_gateway 导入一堆同级符号）。导入 main 会执行第 224 行的模块级 `app = create_app()`：worker 进程启动时白建一个 FastAPI app，并顺带跑 configure_logging / get_settings，只为拿一个可以直接 `from .llm_gateway import build_llm_gateway` 的函数。同时 engine/session_factory/ModelRegistry/SceneResolver+两个 register_factory/ResilientAiResilience 这份装配清单在 main.py:71-121 与 worker.py:43-68 各写一遍：新增一种 AdapterKind 或给韧性链加 DistributedAiResilience（main.py:108-117 只在 app 侧）时，两条路径会静默漂移，而 worker 正是报告叙述的唯一执行者。",
       "fix": "把运行时装配抽成一个共享的 build_runtime(settings) 给 app 与 worker 用；gateway_builder 直接 from .llm_gateway import build_llm_gateway，删掉 __import__ hack。"
     },

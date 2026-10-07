@@ -91,12 +91,22 @@
       "title": "会话状态词表有三份拷贝（StrEnum + ORM CheckConstraint + 迁移 CHECK），而 alembic check 看不到 CHECK 文本",
       "where": [
         "apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54",
-        "apps/api/src/better_resume/interview_engine/orm.py:36-41",
+        "apps/api/src/better_resume/interview_engine/orm.py:33-43",
         "apps/api/src/better_resume/interview_engine/session_fsm.py:10-16"
       ],
-      "evidence": "# apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54\n49:         sa.CheckConstraint(\n50:             \"status IN (\"\n51:             \"'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'\"\n52:             \")\",\n53:             name=\"ck_interview_sessions_status\",\n54:         ),\n\n# apps/api/src/better_resume/interview_engine/orm.py:36-41\n36:         CheckConstraint(\n37:             \"status IN (\"\n38:             \"'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'\"\n39:             \")\",\n40:             name=\"ck_interview_sessions_status\",\n41:         ),\n\n# apps/api/src/better_resume/interview_engine/session_fsm.py:10-16\n10:  class SessionStatus(StrEnum):\n11:     DRAFT = \"draft\"\n12:     RESUME_UPLOADING = \"resume_uploading\"\n13:     READY = \"ready\"\n14:     IN_PROGRESS = \"in_progress\"\n15:     FINISHED = \"finished\"\n16:     ABANDONED = \"abandoned\"",
+      "evidence": "# apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54\n49:         sa.CheckConstraint(\n50:             \"status IN (\"\n51:             \"'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'\"\n52:             \")\",\n53:             name=\"ck_interview_sessions_status\",\n54:         ),\n\n# apps/api/src/better_resume/interview_engine/orm.py:33-43\n33: _STATUS_CHECK = \"status IN (\" + \", \".join(f\"'{status.value}'\" for status in SessionStatus) + \")\"\n43:         CheckConstraint(_STATUS_CHECK, name=\"ck_interview_sessions_status\"),\n\n# apps/api/src/better_resume/interview_engine/session_fsm.py:10-16\n10:  class SessionStatus(StrEnum):\n11:     DRAFT = \"draft\"\n12:     RESUME_UPLOADING = \"resume_uploading\"\n13:     READY = \"ready\"\n14:     IN_PROGRESS = \"in_progress\"\n15:     FINISHED = \"finished\"\n16:     ABANDONED = \"abandoned\"",
       "why": "SessionStatus 的 6 个值是权威词表，但同一串字面量又抄进 ORM 的 CheckConstraint（orm.py:36-41）和迁移的 CHECK（c28d77ba4f32:49-54）。alembic env.py:43 只开了 compare_type=True，`alembic check` 不会比对 CHECK 文本，所以给状态机加一个值（如 paused）而忘了改另外两份时，CI 全绿、本地全绿，直到往库里写这个新状态才 IntegrityError。同一模式还出现在 ck_conversation_messages_role / ck_conversations_kind 与 conversation/models.py:13 的 SessionKind。跨模块：interview_engine/、conversation/。",
-      "fix": "从一个来源生成 CHECK 文本（例如用 SessionStatus 值拼出约束字符串，迁移与 ORM 共用同一常量），或加一条断言三处一致的测试。"
+      "fix": "从一个来源生成 CHECK 文本（例如用 SessionStatus 值拼出约束字符串，迁移与 ORM 共用同一常量），或加一条断言三处一致的测试。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "ORM 的 CHECK 文本由枚举派生，并加一条会变红的跨层一致性守卫",
+        "approach": "会话状态词表原有三份手写拷贝（SessionStatus / ORM CheckConstraint / 迁移 CHECK），而 alembic check 对 CHECK 文本完全盲（实测：内存里改写或删除 ORM 约束 → compare_metadata 0 op；多加一列 → 1 op）。ORM 侧改为由 SessionStatus 派生（_STATUS_CHECK），迁移文本不动；新增守卫从 Postgres 读回 pg_get_constraintdef，比对枚举 ↔ ORM ↔ 数据库三处的字面量集合。",
+        "files": [
+          "apps/api/src/better_resume/interview_engine/orm.py",
+          "apps/api/tests/test_migrations.py"
+        ],
+        "evidence": "守卫 + 变异证明：bash scripts/verify_mutation.sh 把枚举里 ABANDONED 的值改掉 → 该用例变红；恢复后变绿且 sha256 与 HEAD 一致（基线绿 → 变异红 → 恢复绿）。tests/test_migrations.py = 2 passed / 0 failed。"
+      }
     },
     {
       "id": "resume_parser_db-04",

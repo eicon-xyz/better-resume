@@ -58,9 +58,20 @@
         "apps/api/src/better_resume/chat/service.py:168-179",
         "apps/api/src/better_resume/conversation/store.py:61-72"
       ],
-      "evidence": "171:         await store.require_owner(session, user_id)\n172:         conversations = await store.list_for_user(user_id, limit=200)\n173:         for conversation in conversations:\n174:             if conversation.id == session.session_id:\n175:                 return conversation\n176:         # require_owner passed but the row was filtered out: treat as missing.\n179:         raise ConversationNotFoundError(session.session_id)\n--- store.py（_load 想用的那个方法不存在）\n62:         self, user_id: UserId, *, limit: int = 50, offset: int = 0",
+      "evidence": "168:     async def _load(\n169:         self, store: SqlConversationStore, session: SessionRef, user_id: UserId\n170:     ) -> Conversation:\n173:         return await store.get_owned(session, user_id)\n--- store.py（_load 想用的那个方法不存在）\n62:         self, user_id: UserId, *, limit: int = 50, offset: int = 0",
       "why": "两个代价都落在调用者身上：(1) 上限是硬编码 200 —— 会话数超过 200 的用户打开旧会话会拿到 404，而 require_owner 刚刚证明它存在，注释把这个矛盾写成了「treat as missing」；(2) 每次发消息要先查一次归属、再捞 200 行头表；HTTP 层 list_messages 同样是 require_owner + history 各查一次（http/chat.py:112-113），而 history 内部还会第三次 _fetch（store.py:161）。「取一条属于某人的会话」是存储层最自然的能力（_fetch 已实现，store.py:175-184），却被推给每个调用者自己拼，拼法还各不相同。",
-      "fix": "store 增加 get_owned(session, user_id) -> Conversation（复用 _fetch，一次带 for_update 的查询），_load 直接调用；history/append 接受已校验的会话，避免一请求三次取行。"
+      "fix": "store 增加 get_owned(session, user_id) -> Conversation（复用 _fetch，一次带 for_update 的查询），_load 直接调用；history/append 接受已校验的会话，避免一请求三次取行。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "store 增加 get_owned：一次查询同时完成归属校验与取行",
+        "approach": "ChatService._load 原来先 require_owner 通过、再翻 list_for_user(limit=200) 线性找目标，会话数超过一页的老用户因此打不开自己的旧会话（实测症状是 HTTP 200 + SSE error 帧，不是 404）。改为 conversation/store.py 新增 get_owned(session, user_id)（复用 _fetch），_load 直接委托。",
+        "files": [
+          "apps/api/src/better_resume/conversation/store.py",
+          "apps/api/src/better_resume/chat/service.py",
+          "apps/api/tests/test_chat_service.py"
+        ],
+        "evidence": "修前红：201 条会话时新用例抛 ConversationNotFoundError；修后 tests/test_chat_service.py + test_chat_api.py + test_conversation_store.py = 27 passed / 0 failed（带 BR_* 真库）。"
+      }
     },
     {
       "id": "conversation_chat-03",
@@ -88,8 +99,8 @@
       "severity": "中",
       "title": "_is_duplicate 只转调 store.has_client_message_id，而幂等这条不变量在 append 里又实现了一遍",
       "where": [
-        "apps/api/src/better_resume/chat/service.py:181-184",
-        "apps/api/src/better_resume/conversation/store.py:105-117"
+        "apps/api/src/better_resume/chat/service.py:175-184",
+        "apps/api/src/better_resume/conversation/store.py:105-128"
       ],
       "evidence": "181:     async def _is_duplicate(\n182:         self, store: SqlConversationStore, session: SessionRef, client_message_id: str\n183:     ) -> bool:\n184:         return await store.has_client_message_id(session, client_message_id)\n--- store.py（append 内部已有同一份幂等规则）\n105:         \"\"\"Append a message and return its seq; re-sending the same client id is a no-op.\"\"\"\n108:         if client_message_id is not None:\n115:             replayed = existing.scalar_one_or_none()\n116:             if replayed is not None:\n117:                 return replayed",
       "why": "服务层先探测（多一次 SELECT）再 append，而 append 自己已经实现了同一份「同 client_message_id 视为重放」的规则并返回原 seq。两个入口各自维护这条不变量：任何一侧改动（幂等键换成 (session, client_message_id, model)、加 TTL、改判重条件）都会出现「探测说新、append 说旧」的分歧，而 dup 分支已经 return，永远走不到 append。透传方法本身还让读者以为这里有服务层逻辑，得点进去才发现是纯转调。",
@@ -118,8 +129,8 @@
       "severity": "中",
       "title": "ChatService 类注释说「整轮只开一个 DB session」，实现里 _persist 另开一个",
       "where": [
-        "apps/api/src/better_resume/chat/service.py:56-57",
-        "apps/api/src/better_resume/chat/service.py:215-216"
+        "apps/api/src/better_resume/chat/service.py:56-210",
+        "apps/api/src/better_resume/chat/service.py:56-216"
       ],
       "evidence": "56: class ChatService:\n57:     \"\"\"One instance per request; it owns the DB session it opens for the whole turn.\"\"\"\n--- 实际另起一个 session 的落库路径\n215:         async with self._session_factory() as db:\n216:             store = SqlConversationStore(db)",
       "why": "事务边界是这段代码最难理解的部分：用户消息在 80 行的 request session 里 commit，助手消息在 215 行另一个 session 里 commit，取消路径还要靠 asyncio.shield 保证落地（148-164）。类注释给出的模型是错的——按它理解会以为 215 行复用同一条连接/同一个事务，从而错误判断回滚范围（例如以为助手消息会随请求回滚）。维护者必须先读 150 行才能推翻注释，注释反而成了误导源。",

@@ -103,11 +103,21 @@
       "where": [
         "apps/web/src/chat/store.ts:5-15",
         "apps/web/src/chat/selectors.ts:6-17",
-        "apps/web/src/chat/selectors.ts:32-42"
+        "apps/web/src/chat/selectors.ts:32-68"
       ],
-      "evidence": "store.ts:5  export interface ChatMessage {\n6    /** Stable local key: client_message_id for user turns, request id for assistant drafts. */\n7    key: string;\n8    role: \"user\" | \"assistant\";\n...\n13    clientMessageId: string | null;\n14    seq: number | null;\n15  }\n\nselectors.ts:8    key: view.client_message_id ?? `server:${view.seq}`,\n...\n40      if (message.role === \"assistant\" && !message.streaming && serverAssistantContent.has(message.content)) {\n41        return false; // draft already replayed from history",
+      "evidence": "store.ts:5  export interface ChatMessage {\n6    /** Stable local key: client_message_id for user turns, request id for assistant drafts. */\n7    key: string;\n8    role: \"user\" | \"assistant\";\n...\n13    clientMessageId: string | null;\n14    seq: number | null;\n15  }\n\nselectors.ts:8    key: view.client_message_id ?? `server:${view.seq}`,\n...\nselectors.ts:38      // Which user turns history already answers: the first assistant row after that turn's message.\nselectors.ts:39      const answeredClientIds = new Set<string>();\nselectors.ts:45      answeredClientIds.add(serverTurn);\nselectors.ts:68      if (!answeredClientIds.has(localTurn)) {",
       "why": "一个消息需要三个字段才说得清「你是谁」，而接口注释必须花一句话解释 key 是按角色取不同来源——「难以描述」直接命中。缺的那一项是关键：后端 ChatMessageView 明明有全局主键 id，本地消息却不带它，于是 selectors.ts:32-42 只能用「assistant 回答的文本内容是否与历史里某条完全相同」来判定草稿是否已落库。同一句回答出现两次（连续两次「你好」「你好！有什么可以帮你的吗？」是完全可能的重放），第二次会静默消失。命名起不出来不是命名问题，是身份定义没定下来。",
-      "fix": "让 ChatMessage 带上服务端 id（appendUser/startAssistant 时先为空，落库后由 merge 填），去重改为按 id；key 只留一个含义（渲染 key），不再按角色换来源。"
+      "fix": "让 ChatMessage 带上服务端 id（appendUser/startAssistant 时先为空，落库后由 merge 填），去重改为按 id；key 只留一个含义（渲染 key），不再按角色换来源。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "回答的身份锚在它那一轮的 client_message_id 上",
+        "approach": "mergeHistory 用「回答文本内容相等」判断草稿是否已落库：连续两条回答内容相同时，第二条在 refetch 落地前被静默吞掉（refetch 失败则永久不回）。改为按「回答所属那一轮」去重——先算历史里已被回答的用户轮（该轮之后的第一条 assistant 行），本地草稿只在它自己那一轮尚未被回答时保留；内容比较降级为「草稿前没有用户轮」时的兜底。未采用提案里的「ChatMessage 带服务端 id」：SSE done 帧不带 seq，那要改传输协议。",
+        "files": [
+          "apps/web/src/chat/selectors.ts",
+          "apps/web/src/chat/selectors.test.ts"
+        ],
+        "evidence": "修前红：Tests 1 failed | 5 passed（新用例「第二条相同回答必须留下」）。修后前端 177 passed（24 文件）、eslint 与 tsc --noEmit 干净。"
+      }
     },
     {
       "id": "web-05",

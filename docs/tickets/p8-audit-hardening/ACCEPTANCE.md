@@ -36,7 +36,7 @@
 
 ## 3. 全量收口
 
-（见 §3.1 数字，最终由本条命令产出）
+**结果：ALL PASS（15 条命令，2m19s）**，evidence = `var/evidence/20261007T131053Z-all`。
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"; export UV_CACHE_DIR='/root/better resume/.cache/uv'
@@ -49,12 +49,17 @@ python3 scripts/verify_audit_evidence.py --strict
 
 ### 3.1 数字（本次实测）
 
-| 项 | 基线（本轮开工前） | 现在 |
+| 项 | 基线（本轮开工前，实测） | 现在（实测） |
 | --- | --- | --- |
-| `verify.sh --layer all` | ALL PASS（15 条命令，1m41s） | （待填） |
-| 后端 pytest（带 BR_*） | 865 passed / 0 failed / 0 skipped | （待填） |
-| 后端 pytest（不导出 BR_*） | 729 passed / **136 skipped** | （待填） |
-| 前端 vitest | 175 passed | （待填） |
+| `bash scripts/verify.sh --layer all` | **ALL PASS**（15 条命令，1m41s） | **ALL PASS**（15 条命令，2m19s） |
+| 后端 pytest（**带** `BR_*`） | 865 passed / 0 failed / **0 skipped** | **879 passed / 0 failed / 0 skipped** |
+| 后端 pytest（**不导出** `BR_*`） | 729 passed / **136 skipped**（DB 用例静默消失，`verify.sh` 照样 ALL PASS） | 未复跑（本轮收口一律带 `BR_*`；此项作为该陷阱的基线记录） |
+| 前端 vitest | 175 passed（24 文件） | **177 passed（24 文件）** |
+| ruff / alembic / 契约三件套 | 干净 | **干净**（`alembic check` = No new upgrade operations） |
+| 审计引证（`--strict`，逐字级） | verifiable 109 / partial **0** | verifiable **122** / partial **0**（重锚后） |
+
+> 面板口径：上表全部来自同一条 `verify.sh --layer all` 的原始输出（`var/evidence/20261007T131053Z-all/`），
+> 前端 177 与后端 879 都是它内部那两步的读数，不是我另跑一遍拼出来的。
 
 ## 4. 未验证项（诚实清单）
 

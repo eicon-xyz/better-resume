@@ -29,15 +29,27 @@
       "severity": "高",
       "title": "失败的答案行与成功的答案行不可区分：同 request_id 重试会被幂等闸门当成「已作答」重放，分数永远拿不回来",
       "where": [
-        "apps/api/src/better_resume/interview_engine/answer_service.py:118-121",
-        "apps/api/src/better_resume/interview_engine/answer_service.py:368-377",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:118-124",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:368-401",
         "apps/api/src/better_resume/interview_engine/answer_repo.py:58-67",
-        "apps/api/src/better_resume/interview_engine/orm.py:98-100",
+        "apps/api/src/better_resume/interview_engine/orm.py:98-102",
         "apps/api/tests/interview_engine/test_answer_service.py:234-268"
       ],
-      "evidence": "answer_service.py（幂等闸门）\n118:             # Second check inside the lock: the previous holder may have finished this turn.\n119:             existing = await AnswerRepository(db).find_by_request(session_id, request_id)\n120:             if existing is not None:\n121:                 return await self._replay(db, existing, session_id)\nanswer_service.py（失败回滚写入同一 request_id）\n368:         \"\"\"Record the failed attempt and put the flow back so the question can be retried.\"\"\"\n371:                 await AnswerRepository(db).add(\n374:                     request_id=request_id,\n376:                     error_message=str(error) or error.__class__.__name__,\nanswer_repo.py（查找不过滤失败行）\n58:     async def find_by_request(self, session_id: str, request_id: str) -> AnswerRecord | None:\n61:                 select(InterviewAnswerRow).where(\n62:                     InterviewAnswerRow.session_id == session_id,\n63:                     InterviewAnswerRow.request_id == request_id,\norm.py（唯一约束把 request_id 钉成一次请求一行）\n99:         # The idempotency gate: one row per client request, replay instead of re-charging.\n100:         UniqueConstraint(\"session_id\", \"request_id\", name=\"uq_interview_answers_session_request\"),\ntests/interview_engine/test_answer_service.py（失败后换了一个 request_id 才重试）\n244:             request_id=\"ans-fail\",\n266:             request_id=\"ans-fail-retry\",",
+      "evidence": "answer_service.py（幂等闸门）\n118:             # Second check inside the lock: the previous holder may have finished this turn.\n119:             existing = await AnswerRepository(db).find_by_request(session_id, request_id)\n123:             if existing is not None and existing.error_message is None:\n124:                 return await self._replay(db, existing, session_id)\nanswer_service.py（失败回滚写入同一 request_id）\n391:         \"\"\"Record the failed attempt and put the flow back so the question can be retried.\"\"\"\n394:                 message = str(error) or error.__class__.__name__\n396:                     await AnswerRepository(db).add(\n399:                         request_id=request_id,\n401:                         error_message=message,\nanswer_repo.py（查找不过滤失败行）\n58:     async def find_by_request(self, session_id: str, request_id: str) -> AnswerRecord | None:\n61:                 select(InterviewAnswerRow).where(\n62:                     InterviewAnswerRow.session_id == session_id,\n63:                     InterviewAnswerRow.request_id == request_id,\norm.py（唯一约束把 request_id 钉成一次请求一行）\n99:         # The idempotency gate: one row per client request, replay instead of re-charging.\n100:         UniqueConstraint(\"session_id\", \"request_id\", name=\"uq_interview_answers_session_request\"),\ntests/interview_engine/test_answer_service.py（失败后换了一个 request_id 才重试）\n244:             request_id=\"ans-fail\",\n266:             request_id=\"ans-fail-retry\",",
       "why": "三条各自合理的设计合起来是一个洞：(a) request_id 是「客户端的幂等键」（models.py:74），(b) 评分失败也要留痕，于是用同一个 request_id 写一行 score=NULL、error_message 非空的行（368-377），(c) 幂等闸门只按 (session_id, request_id) 查、不复核是否成功（answer_repo.py:58-67），查到的行交给 _replay 直接当成答案返回。结果是：客户端拿合规的幂等语义重试同一个 request_id 时，会收到 replayed=True、score=None 的「成功」响应，题目永远不会被评分；而唯一约束（orm.py:100）又保证它不可能再写一行进去——这个答案被永久吞掉。测试只覆盖了「换 request_id 重试」那条路（244 行失败、266 行换了新 id），所以本地全绿。",
-      "fix": "让失败attempt不占用成功答案的幂等键（失败行 request_id 置空/加 attempt 维度/单独表），或在 find_by_request 里显式排除 error_message IS NOT NULL 并补一条「同 request_id 重试必须重新评分」的测试。"
+      "fix": "让失败attempt不占用成功答案的幂等键（失败行 request_id 置空/加 attempt 维度/单独表），或在 find_by_request 里显式排除 error_message IS NOT NULL 并补一条「同 request_id 重试必须重新评分」的测试。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "失败的一次作答不再占用成功幂等键：命中失败行时原地重评",
+        "approach": "用户拍板 (b)：幂等闸门只在命中**成功**行时 replay（existing.error_message is None）；命中失败行则走完整评分并用 AnswerRepository.overwrite 原地覆写该行（唯一约束下仍是一行）。连带缺陷一并修：重试再次失败时原实现会用同一 request_id 再 add 一行、撞 uq_interview_answers_session_request，把供应商错误掩盖成 IntegrityError —— 现按 resume_of 分支复用同一行并刷新失败原因。",
+        "files": [
+          "apps/api/src/better_resume/interview_engine/answer_service.py",
+          "apps/api/src/better_resume/interview_engine/answer_repo.py",
+          "apps/api/tests/interview_engine/test_answer_service.py",
+          "apps/api/tests/test_interview_answers_api.py"
+        ],
+        "evidence": "修前红：服务层 replayed=True（断言消息 a failed attempt must not be replayed as a finished answer）；HTTP 面同 request_id 重试 = 201 + score=None、换新 id 才拿到 84.0。修后 20 passed / 0 failed，含三条新用例（同 id 重试拿分、重试再失败仍一行、HTTP 同 id 重试拿分）。语义变更：幂等键可重入直到成功。"
+      }
     },
     {
       "id": "IE-02",
@@ -144,7 +156,7 @@
       "severity": "中",
       "title": "同一条「网关返回的 parsed 不是期望类型」防御分支有四种写法，其中两种把模型契约问题报成 404",
       "where": [
-        "apps/api/src/better_resume/interview_engine/answer_service.py:217-222",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:217-228",
         "apps/api/src/better_resume/interview_engine/question_service.py:163-168",
         "apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98",
         "apps/api/src/better_resume/interview_engine/report_service.py:293-296"
@@ -180,9 +192,9 @@
       "severity": "中",
       "title": "三处「留给未来调用者 / 为了让 import 不算未使用」的死代码，带 pragma 所以覆盖率也不会报警",
       "where": [
-        "apps/api/src/better_resume/interview_engine/answer_service.py:405-406",
+        "apps/api/src/better_resume/interview_engine/answer_service.py:405-444",
         "apps/api/src/better_resume/interview_engine/report_service.py:375-380",
-        "apps/api/src/better_resume/interview_engine/answer_repo.py:143-144"
+        "apps/api/src/better_resume/interview_engine/answer_repo.py:143-179"
       ],
       "evidence": "answer_service.py\n405: async def _noop() -> None:  # pragma: no cover - keeps asyncio import used in type-checking paths\n406:     await asyncio.sleep(0)\nreport_service.py\n375: async def _noop() -> None:  # pragma: no cover - keeps asyncio import meaningful for type checkers\n376:     await asyncio.sleep(0)\n379: def _new_id() -> str:  # pragma: no cover - helper for future callers\n380:     return str(uuid.uuid4())\nanswer_repo.py\n143: def _as_dict(value: Any) -> dict[str, Any]:  # pragma: no cover - helper kept for symmetry\n144:     return value if isinstance(value, dict) else {}",
       "why": "AGENTS §清洁度写得很直白：「不留临时文件、注释掉的死代码、『默认关闭没人跑』的分支——要么真机跑通并设为默认，要么删掉」。这里三处都是没人调用的函数，其中 answer_service 与 report_service 的两个 _noop 的唯一作用是让 `import asyncio` 不触发 ruff 的未使用告警——正确修法恰恰是删掉 import；_new_id 与 _as_dict 的注释自认「给未来调用者/为对称保留」。因为都带 # pragma: no cover，覆盖率地板也不会发现，只能靠人读出来；它们还传递了错误信号（似乎 asyncio/uuid 有别的用途）。",
