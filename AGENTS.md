@@ -11,7 +11,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D22），术语表在 `GLOSSARY.md`，**与本文冲突时以 DECISIONS.md 为准**。
+- 决议记录在 `docs/DECISIONS.md`（D01–D22），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
 
 ## 技术栈
 
@@ -19,7 +19,7 @@
 - **数据**：Postgres（关系表 + JSONB，GIN 索引）+ Redis 双件套；不引第三存储（D03）。
 - **LLM 编排**：自研轻量——表驱动状态机 + 追问裁决纯函数 + OpenAI 兼容 SDK 直连 + Pydantic response_schema 强校验；**不引 LangChain**（D04）。两层结构：
   - `llm_gateway`：场景绑定（DB 行 + 运行时切换）+ 模型注册（DeepSeek / 百炼 / fake）+ OpenAI 兼容 adapter。
-  - `ai_resilience`：单飞 + 熔断 + 舱壁 + 超时 + 进程内限流 token bucket + Redis 分布式单飞；所有供应商调用必须走这条链。
+  - `ai_resilience`：单飞（进程内 + Redis 分布式）+ 熔断 + 舱壁 + 超时 + 限流（**Redis 共享配额**，Redis 不可用时降级回进程内桶并做成可观测量，D19）；所有供应商调用必须走这条链。
 - **语音**：`media` 模块，`TranscriptionChannel`（start/feed/stop/wait → `replace|archive|final` 事件）+ `TtsSynthesizer` 两个缝：
   - ASR：讯飞 AST（流式句池归并 pgs/rg/seg_id）、百炼 Qwen-Audio 批量（`qwen-asr`）、百炼 Paraformer 实时（`paraformer-rt`，边说边出字）。
   - TTS：edge-tts + 缓存。适配器由 `BR_MEDIA__TRANSCRIPTION_ADAPTER` 选择（scripted 为 CI/本地默认）。
@@ -28,14 +28,14 @@
 - **实时通道**：转写走 WebSocket（一次性 ticket 握手）、对话走 SSE；认证是 HttpOnly Cookie session（Redis，30 天滑动）+ WS ticket（D11）。
 - **测试**：pytest（**只 mock 系统边界**：LLM/时钟/Redis/讯飞/浏览器音频/IPC）+ Vitest；假上游 `apps/api/scripts/fake_openai.py`。
 - **部署**：单机 docker compose——nginx（宿主 :8080，唯一入口）+ api×N（`--scale`）+ worker（Redis Stream 任务）+ postgres + redis + 一次性 migrate 服务（D07）。无 K8s。
-- **CI**：GitHub Actions 双 job——backend（ruff + pytest + alembic check）/ frontend（eslint + tsc + vitest）。
+- **CI**：GitHub Actions 双 job，两步都走 `scripts/verify.sh` 的**同一份分层命令**（本地绿 = CI 绿）——backend：`--layer unit / contract / coverage / scripts`；frontend：`--layer unit / contract`。
 
-## 环境准备（本机陷阱，踩过的别再踩）
+## 环境准备（只留会**静默**把事情做错的坑）
 
 - `uv` 在 `~/.local/bin`：新 shell 先 `export PATH="$HOME/.local/bin:$PATH"`。
 - 子智能体等沙箱里 `uv` 默认写工作区外的 `/root/.cache/uv` → 权限拒绝；先 `export UV_CACHE_DIR='/root/better resume/.cache/uv'`。
   症状：`uv run pytest` 报 cache 错，而 `./.venv/bin/python -m pytest` 照跑（曾让 `test_real_layer` 两例假红）。
-- pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped（不是失败）：
+- pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped（不是失败，实测能一次吞掉 136 例）：
 
   ```bash
   cd apps/api
@@ -43,72 +43,37 @@
   export BR_REDIS_URL='redis://127.0.0.1:6379/0'
   ```
 
-  端口：**原生测试库 Postgres 5433 / Redis 6379；compose 内网 postgres 5432（不发布）、nginx 宿主 8080**。
 - pytest 输出被 `-q` 压掉摘要：**一律 `--junitxml` 读数，且先 rm 旧 xml**（否则读到陈旧结果）。
-- Docker 构建：`build.network: host` + shell 带 `HTTPS_PROXY=http://127.0.0.1:7897`；`.env` 里有镜像站前缀（Docker Hub 直连不通）；**不要**往 `~/.docker/config.json` 写 proxies。
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
-- 本机 `NO_PROXY` 含裸 IPv6：新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`，P20/P24）。
-- GitHub 走 SSH；`gh` API 偶发 SSL EOF——命令前带代理变量 `export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=…`，失败重试。
-  - **该代理（7897）不一定在跑**：没起时直连 HTTPS 被本机 Watt Toolkit 的中间人证书（CN=SteamTools Certificate）拦截，
-    系统 CA 不认 → `gh` **误报「token invalid」**。修法：`openssl s_client -connect api.github.com:443 -servername
-    api.github.com -showcerts </dev/null | awk '/BEGIN CERT/,/END CERT/' > /tmp/chain.pem`，再 `export SSL_CERT_FILE=/tmp/chain.pem`
-    （`git push` 走 ssh.github.com:443，不受影响）。
-- **改过 volume 挂载的文件（如 `deploy/nginx.conf`）后 `restart` 会失败**（WSL2 bind-mount inode 失效："no such file or directory"）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，不要重启引擎。
-- **出网 22 端口可能被拒**：`git push` 报「检查权限/仓库存在」时先 `ssh -T git@github.com`；被拒就走 443：`git push ssh://git@ssh.github.com:443/<owner>/<repo>.git <branch>`。
-- **Docker Desktop 的 WSL 集成会掉线**（症状：`docker` 命令突然消失，`/mnt/wsl/docker-desktop` 挂载没了）：用
-  `powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'` 拉起，
-  等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次）。
-- 真机凭据**只进仓库根 gitignored `.env`**；`.env.example` 只写变量名。目前有 `BR_DEEPSEEK_API_KEY`、`BR_DASHSCOPE_API_KEY`（LLM+ASR 共用）、`BR_ARK_API_KEY`（弃用）。
+- 新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`）——本机 `NO_PROXY` 含裸 IPv6（P20/P24）。
+- 真机凭据**只进仓库根 gitignored `.env`**；`.env.example` 只写变量名，任何密钥不得出现在代码/测试/票据/日志摘录里。
+
+> 端口表、Docker 构建代理与镜像站前缀、WSL 掉线恢复、出网 22 端口、`gh` 的中间人证书怪癖、改过 volume 挂载的文件要 `--force-recreate`——见 **`docs/HANDOFF.md` §4**（环境事实的单一真相源，本文不再抄第二份）。
 
 ## 常用命令
 
+> 全部分层与命令：`bash scripts/verify.sh --list`；怎么把整套栈跑起来、真机探针与演练清单：`docs/HANDOFF.md` §3。
+> 这里只留**看 `--list` 看不出来**的几条。
+
 ```bash
 # 单一入口（CI 与本地跑同一份命令，P2-T1）——先 --list 看全层
-bash scripts/verify.sh --list
-bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts
-bash scripts/verify.sh --layer real --dry-run # 真机清单+预算（不花钱）
+bash scripts/verify.sh --list                 # 全部层与命令（CI 与本地同一份）
+bash scripts/verify.sh --layer all            # 本地收口：unit+contract+scripts（15 条命令）
+bash scripts/verify.sh --layer real --dry-run # 真机清单 + 预算（不花钱）
 
 # 变异证明：断言「这段测试真的钉住了这段实现」——基线绿 → 变异红 → 恢复绿，脚本真看退出码
 bash scripts/verify_mutation.sh --test "..." --file <path> --find "<锚点>" --replace "<变异>"
 
-# 后端全量测试（863 例；不导出 BR_* 会静默 skip）
+# 后端全量测试（例数看 --junitxml 读数；不导出 BR_* 会静默 skip 136 例）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
-# 前端测试（175 例）——必须从仓库根跑
+# 前端测试——必须从仓库根跑
 cd '/root/better resume' && pnpm -C apps/web test --run
 
-# 契约三件套：改过 REST 模型后必须一起跑（漏一步 = 本地绿 CI 红，M6 P16）
+# 契约三件套：改过 REST 模型后必须一起跑 —— 漏一步的症状是「本地全绿、CI 直接红」（M6 P16）
 cd apps/api && uv run python scripts/export_openapi.py
 pnpm -C apps/web gen:api
 uv run python scripts/extract_api_index.py --check
-
-# compose 栈（nginx :8080 唯一入口；改前端后必须 --build nginx 才上新 bundle）
-export BR_SMOKE_KEY=smoke-fake-key BR_SSE_HEARTBEAT_SECONDS=1
-docker compose up -d --build --wait --scale api=2
-docker compose --profile smoke down -v   # 停栈
-
-# P5 演练拓扑：Redis 哨兵 ×3 + 副本 ×1（默认不启，只在 drill profile）
-#   应用要走哨兵必须同时给两个变量——compose 无法按 profile 改 env：
-BR_REDIS_SENTINELS=redis://redis-sentinel-1:26379,redis://redis-sentinel-2:26379,redis://redis-sentinel-3:26379 \
-  BR_REDIS_MASTER_NAME=br-master docker compose --profile drill up -d
-docker compose --profile drill down -v   # 恢复拓扑必须整体重建：redis 容器换了 IP，哨兵仍记着旧目标
-
-# 验收脚本（会自己起栈）
-bash scripts/compose_smoke.sh            # 部署面：REST/SSE/WS/非 root/双实例轮询/worker 心跳
-bash scripts/kill_instance_drill.sh      # kill 正在服务的实例，状态/报告一致
-bash scripts/fault_injection_drill.sh    # 5 个故障实验 + 浸泡（--quick 2 分钟浸泡）
-
-# P1-D 生产形态演练（恢复动作在 finally，可安全重跑；各约 1 分钟）
-uv run python -m scripts.fault_probe fault --scenario redis-partition --seconds 20
-uv run python -m scripts.fault_probe fault --scenario redis-failover  --seconds 20
-# P1 真机探针（各 1 次真调用）
-uv run python scripts/assembler_real_probe.py        # 真机增量包回放句池（提交语义 + 已知边界）
-
-# 真机冒烟（需 .env 凭据；不属于 CI）
-uv run python -m scripts.real_model_smoke            # 四条 LLM 链路 + 失败面
-uv run python scripts/media_smoke.py --paraformer-rt-real --wav ../../data/audio/v3-sample-16k.wav   # 实时 ASR
-uv run python scripts/media_smoke.py --qwen-asr-real --wav ../../data/audio/v3-sample-16k.wav        # 批量 ASR
-uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）：增量帧时序 + 关闭码
 ```
 
 ## 代码结构
@@ -138,7 +103,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 │   ├── src/audio/                   # capture/pcm/player/transcriptStore/transcriptionSocket
 │   ├── src/pages/ + scenes/         # 页面（面试间/聊天/报告/设置）与查询
 │   └── src/stream/                  # SSE 渲染
-├── docs/                            # HANDOFF.md、DECISIONS.md、tickets/（m0..m6、v1-verification、p1-post-v）、perf/
+├── docs/                            # HANDOFF.md、DECISIONS.md、tickets/<stage>/（一阶段一目录）、perf/
 │   └── audit/                       # 模块设计审计：MODULE-AUDIT.html（渲染产物）/ units/*.json（数据）/ FIXES.md（修复台账）
 ├── GLOSSARY.md                      # 领域词汇表（单上下文；产品域 + 工程过程词，D21）
 ├── skills/                          # repo-map + modules/<模块>/SKILL.md + api-index（生成）
@@ -152,7 +117,8 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 ## 核心协作模式：grill → spec → implement → review → retro
 
 **流程（用户明确要求，永久生效）**：五个阶段。阶段边界处（"这块做完了"）按技能 `ask-matt` 的五问决定：
-继续 / 新会话 / handoff / 子代理 / compact——**不要在阶段中途 compact**。配置在 `docs/agents/`（`/setup-matt-pocock-skills` 生成）。
+继续 / 新会话 / handoff / 子代理 / compact——**不要在阶段中途 compact**。配置在 `docs/agents/`。
+> 表里的斜杠命令来自 Matt Pocock 技能包；本机没装时（`ls ~/.dsh/skills/`）按「产物」列手工执行，流程与三条闸门不变。
 
 | 阶段 | 怎么起 | 做什么 | 产物 |
 | --- | --- | --- | --- |
@@ -169,8 +135,6 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 3. **交验收包、由你验收**：`ACCEPTANCE.md` / `<ticket>-EVIDENCE.md`——可复跑命令 + 原始输出 + 数字 + **未验证项（诚实清单）** + 与提案的偏差；AI 不自行宣布完成、**不擅自合并 PR / 删分支**；难题即时记 `PROBLEMS.md`。
 
 **上下文卫生**：grill → spec 留在**同一个不中断的会话**（spec 要的是推理原文，不是摘要）；每个 `/implement` 之间**开新会话**（票据自包含，上一个的上下文可丢）。
-
-**契约三件套（改过 REST 模型后必须一起跑）**：`export_openapi.py` → `pnpm -C apps/web gen:api` → `extract_api_index.py --check`。漏一步的症状是"本地全绿、CI 直接红"（M6 P16）。
 
 ## Agent skills
 
@@ -201,6 +165,8 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - 设置新增走 `settings/config.py`（`BR_` 前缀；嵌套用 `__`）；compose 需要透传的新变量同步加到 `compose.yaml` 与 `.env.example`（只写变量名）。
 - 部署形态变更（compose/nginx）必须同步更新对应验收脚本并在票据里留证据；nginx upstream 用变量 + resolver，否则 `--scale` 不生效（M6 P12）。
 - 清洁度：不留临时文件、注释掉的死代码、"默认关闭没人跑"的分支——要么真机跑通并设为默认，要么删掉。
+- **测试的共享状态自己还原**：用例动了跨进程可见的东西（如场景绑定表）必须由 fixture 快照还原——否则「全量跑绿、单跑子集红」。实测：一个用例留下 `chat=xingyun`，让另一个文件的 6 条用例假红（P8-N1）。
+- **审计与验证证据**：设计审计在 `docs/audit/`（`units/*.json` 是数据、`FIXES.md` 是台账）；`verify_audit_evidence.py` 分两级——CI 只跑结构级（`--structural`，不因代码漂移变红），逐字级（`--strict`）与 `verify_mutation.sh` 是收口手段（D22）。**改过被引用的文件后，引证行号要重锚**，否则逐字级门槛会红。
 
 ## 贡献指南（提交前检查清单）
 
@@ -209,7 +175,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
 - 动了部署面（compose/nginx/worker）跑 `bash scripts/compose_smoke.sh`；动了韧性/分布式跑 `kill_instance_drill.sh`。
 - 新阶段/票据/验收包放 `docs/tickets/<stage>/`；`docs/HANDOFF.md` 在阶段收口时同步更新；`skills/` 索引用生成脚本刷新，不手改。
 - 可选：启用仓库内 git hooks（提交前跑 shell 语法 + 暂存 Python 的 ruff）——`git config core.hooksPath .githooks`，跳过用 `--no-verify`。
-- 真机凭据只进 `.env`；任何密钥/令牌不得出现在代码、测试、票据、日志摘录里。
+- 人工测试（浏览器手测、录音这类 AI 验不了的部分）：唯一入口 `docs/MANUAL-TESTING.md`（§1 为必测），结果回填同一文件。
 
 ## AI 智能体须知（关键上下文）
 
@@ -225,5 +191,5 @@ uv run python scripts/v3_ws_probe.py --realtime      # 端到端（穿 nginx）�
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
 - **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**（P29：不发头=浏览器启发式缓存 HTML，部署后还在跑旧 bundle；compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
 - **派活约定**：用子智能体做审计/评审/并行修复时的操作约定见 `docs/agents/subagents.md`（共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
-- **harness 事实**：run_code 里内联 `python3 - <<EOF` 长文本易被转义弄坏 → 先 `write` 成文件再跑；`run_code` 的 `timeoutMs` 上限 120000，等待更久要分多次 `wait_agent`。
+- **harness 事实**：`run_code` 的 JS 模板字符串里**别出现反引号**（会截断字符串，报错形如 `Expected ',', got 'ident'`）——要反引号时用 `String.fromCharCode(96)` 或数组 `join`；长文本先 `write` 成文件再跑。`run_code` 的 `timeoutMs` 上限是 **600000**（不是 120000）。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
