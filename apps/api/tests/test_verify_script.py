@@ -65,6 +65,24 @@ def test_all_layer_actually_runs_unit_contract_coverage_and_scripts() -> None:
         assert not missing, f"--layer all skips the {layer} layer: {sorted(missing)}"
 
 
+def test_the_list_map_does_not_advertise_the_manual_strict_gate() -> None:
+    """D22 + P31: --strict (byte-level citation checking) is a manual close-out step, while the
+    scripts layer deliberately runs --structural. The hand-written map in --list said --strict,
+    so a reader would think CI checks citations byte-level — the label/expansion drift again."""
+    listing = run_verify("--list").stdout
+    # Only command lines matter: a note *about* the strict gate is fine, a command that runs it
+    # as part of a layer is the drift this pins.
+    commands = [
+        line.strip()
+        for line in listing.splitlines()
+        if line.strip().startswith(("api:", "web:", "all:"))
+    ]
+
+    offenders = [line for line in commands if "--strict" in line]
+    assert not offenders, f"the layer map advertises the manual strict gate: {offenders}"
+    assert any("verify_audit_evidence.py --structural" in line for line in commands), commands
+
+
 def test_the_all_label_names_every_layer_it_runs() -> None:
     """The label is what a human (and AGENTS.md) reads before trusting the run (P31 again)."""
     listing = run_verify("--list").stdout

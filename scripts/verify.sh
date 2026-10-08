@@ -75,9 +75,10 @@ real:
   all: (T4) budget-guarded real-machine suite; refuses until implemented
 scripts:
   api: cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py
-  all: bash -n scripts/*.sh
-  all: python -c "ast.parse" over apps/api/scripts + scripts (syntax sweep)
-  all: cd apps/api && uv run python scripts/verify_audit_evidence.py --strict
+  all: for f in scripts/*.sh; do bash -n "$f" || exit 1; done
+  all: uv run --project apps/api python scripts/check_scripts.py   (both script dirs, SyntaxWarning = error)
+  all: uv run --project apps/api python scripts/verify_audit_evidence.py --structural
+       (byte-level checking stays the manual --strict close-out step, never a layer — D22)
 all:
   = unit + contract + coverage + scripts
 MAP
