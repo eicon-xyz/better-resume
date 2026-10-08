@@ -1,8 +1,8 @@
-# 交接文档（better-resume · P7 阶段收口）
+# 交接文档（better-resume · P7 已收口，P8 在飞）
 
 > 写给下一个窗口/接手的人：先读仓库根 **`GLOSSARY.md`**（域词汇表/术语）与 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
-> 再读当前阶段票据 `docs/tickets/p7-shared-rate-limit/README.md`。
-> 最后更新：**2026-10-07**（M0–M6/V/P1–P7 已合并，main = `f915f20`；审计/文档线由 PR #19 落地）。
+> 再读**在飞阶段**的票据 `docs/tickets/p8-audit-hardening/README.md`（提案 + 8 条候选实测判定表）；已收口阶段的证据在各自目录的 `ACCEPTANCE.md`。
+> 最后更新：**2026-10-08**（M0–M6/V/P1–P7 已合并，main = `d1b764c`；PR #19 落审计/文档线，#20 落 P7 收口）。
 
 ## 1. 一句话状态
 
@@ -19,7 +19,9 @@
 **审计/文档线已合并**——**PR #19**（`audit/gates-and-glossary` → `main`，merge `f915f20`，2026-10-07）：模块设计审计（122 条问题，`docs/audit/`）
 + ai-02 修复 + 验证工具链（`verify_mutation.sh` / `check_scripts.py` / 引证两级核对）+ `GLOSSARY.md` + 决议 D20/D21/D22。
 
-**当前 `main` = `f915f20`（CI 绿），没有挂起的 PR、没有在飞的阶段**——下一次开工要么开新阶段提案，要么从 `docs/audit/FIXES.md` 台账里挑一条。
+**当前 `main` = `d1b764c`（CI 绿）**，没有挂起的 PR。**在飞（未推送、待用户验收）**：`p8/audit-hardening`（审计高危项硬化：
+5 修复 + 3 守卫；验收包 `docs/tickets/p8-audit-hardening/ACCEPTANCE.md`；实测后端 879 / 前端 177 / `verify.sh --layer all` ALL PASS）与
+`docs/agents-md-drift`（只改本文与 `AGENTS.md` 的文档漂移）。下一次开工要么开新阶段提案，要么从 `docs/audit/FIXES.md` 台账里挑一条。
 
 > **教训（PR #17 踩的）**：把 PR 的 base 选在阶段分支，合并只会落在阶段分支上（#17 因此只进了 `p7/shared-rate-limit`，
 > 直到 #19 才真正进 main）。阶段分支只用来收口一个阶段；跨阶段的内容直接对 `main` 开 PR。
@@ -44,7 +46,7 @@ export UV_CACHE_DIR='/root/better resume/.cache/uv'
 cd '/root/better resume/apps/api'
 export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
 export BR_REDIS_URL='redis://127.0.0.1:6379/0'
-uv run pytest -q          # 863 例；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
+uv run pytest -q          # 865 例（2026-10-08 实测，main）；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
 
 # 前端
 cd '/root/better resume' && pnpm -C apps/web test --run     # 必须从仓库根；在 apps/api 下用 -C ../web
@@ -101,6 +103,9 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手�
 
 ## 4. 本机环境事实与坑（踩过的，别再踩）
 
+> 本节是**环境事实的单一真相源**：`AGENTS.md` 只留会「静默把事情做错」的几条（uv cache、BR_* 导出、junitxml、ffmpeg、httpx 兜底），
+> 其余（端口表、构建代理与镜像前缀、WSL 掉线、22 端口、`gh` 证书、volume remount）以本节为准。
+
 | 事实 | 影响 / 做法 |
 | --- | --- |
 | **本地 `main` 可能过期** | `git pull --ff-only` 在没有 upstream 时只打印提示、**不会拉取**（2026-10-07 实际踩过：以为在 main 上，其实落后 20+ 个提交，收尾分支建在了旧树上）。收口前先 `git fetch && git merge --ff-only origin/main`，或先 `git branch --set-upstream-to=origin/main main` |
@@ -114,6 +119,8 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手�
 | 本机 `NO_PROXY` 含裸 IPv6 | httpx 构造时可能抛 `InvalidURL: Invalid port ':1]'`；所有新建 httpx client 都要兜底（`trust_env=False`），M3/V3 各踩一次 |
 | 测试/脚本需 hermetic | 代理变量、PATH、DB 地址都算环境：断言不能依赖 shell 里恰好有什么（见 P15） |
 | 端口 | 原生测试库 Postgres **5433** / Redis **6379**；compose 内网 postgres 5432（不发布）、nginx 宿主 **8080** |
+| **改过 volume 挂载的文件后 `restart` 会失败** | WSL2 bind-mount inode 失效（`no such file or directory`）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，**不要**重启 Docker 引擎（2026-10 实测：改过 `deploy/nginx.conf` 之后） |
+| **`gh` 报「token invalid」多半是证书问题** | 代理（7897）没起时直连 HTTPS 被本机 Watt Toolkit 的中间人证书（CN=SteamTools Certificate）拦截、系统 CA 不认。修法：用 `openssl s_client -connect api.github.com:443 -servername api.github.com -showcerts` 的输出里抽出 `BEGIN CERT`→`END CERT` 段存成 `/tmp/chain.pem`，再 `export SSL_CERT_FILE=/tmp/chain.pem`（`git push` 走 ssh.github.com:443，不受影响） |
 
 ## 5. 凭据与密钥（务必遵守）
 
@@ -284,7 +291,7 @@ apps/api/src/better_resume/
   jobs/queue.py + worker.py             Redis Stream 队列 + worker（心跳、重试、死信、接管）
   media/adapters/{xunfei_ast,qwen_asr,paraformer_rt,edge_tts,scripted}.py  语音适配器（paraformer_rt=实时，默认）
 apps/api/scripts/                       real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / assembler_real_probe / make_fixture_audio / check_coverage_floors / fake_openai / export_openapi / extract_api_index
-apps/api/tests/                         863 例；test_source_hygiene.py 拦语法警告与转义反引号
+apps/api/tests/                         865 例（2026-10-08 实测，main）；test_source_hygiene.py 拦语法警告与转义反引号
 scripts/verify.sh                       单一验证入口（P2-T1；CI 与本地同一份命令）
 scripts/compose_smoke.sh                部署面验收（含 P29 缓存头断言）
 scripts/kill_instance_drill.sh          §12.4 硬验收
