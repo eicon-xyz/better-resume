@@ -54,14 +54,24 @@ def _dry_run_commands(layer: str) -> set[str]:
     }
 
 
-def test_all_layer_actually_runs_unit_contract_and_scripts() -> None:
-    """P31: --list and AGENTS.md advertise "all = unit + contract + scripts"; pin the real
-    expansion instead of trusting the label. The contract layer silently went missing once,
-    which is exactly how a formatting failure stayed invisible locally until CI."""
+def test_all_layer_actually_runs_unit_contract_coverage_and_scripts() -> None:
+    """P31 + P8-retro: --list and AGENTS.md call "all" the local closure; pin the real expansion
+    instead of trusting the label. The contract layer silently went missing once (a formatting
+    failure stayed invisible locally until CI), and the coverage floors turned out to sit outside
+    "all" the same way — a broken floor would have been locally green and CI red."""
     all_commands = _dry_run_commands("all")
-    for layer in ("unit", "contract", "scripts"):
+    for layer in ("unit", "contract", "coverage", "scripts"):
         missing = _dry_run_commands(layer) - all_commands
         assert not missing, f"--layer all skips the {layer} layer: {sorted(missing)}"
+
+
+def test_the_all_label_names_every_layer_it_runs() -> None:
+    """The label is what a human (and AGENTS.md) reads before trusting the run (P31 again)."""
+    listing = run_verify("--list").stdout
+    label = next(line for line in listing.splitlines() if line.strip().startswith("= "))
+
+    for layer in ("unit", "contract", "coverage", "scripts"):
+        assert layer in label, f"--list advertises all without {layer}: {label!r}"
 
 
 def test_soak_layer_writes_its_evidence_where_the_workflow_collects_it() -> None:

@@ -71,7 +71,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序
 
 # 单一入口（P2-T1；CI 与本地同一份命令）
 bash scripts/verify.sh --list          # 全部层与命令
-bash scripts/verify.sh --layer all     # 本地收口（unit+contract+scripts = 15 条命令）
+bash scripts/verify.sh --layer all     # 本地收口（unit+contract+coverage+scripts = 16 条命令）
 bash scripts/verify.sh --layer scripts # 4 条：shell 逐文件语法 + 脚本语法 + 审计结构校验 + 脚本回归
 python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手动跑：逐字核对引文（partial 也算失败）
 ```

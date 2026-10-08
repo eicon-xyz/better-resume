@@ -6,7 +6,7 @@
 #
 # Usage:
 #   scripts/verify.sh --list
-#   scripts/verify.sh --layer unit|contract|deploy|fault|soak|real|scripts|all \
+#   scripts/verify.sh --layer unit|contract|coverage|deploy|fault|soak|real|scripts|all \
 #     [--scope api|web|all] [--dry-run]
 set -euo pipefail
 
@@ -62,6 +62,7 @@ contract:
   web: pnpm -C apps/web typecheck
   web: pnpm -C apps/web check:api
 coverage:
+  api: (the same pytest command as unit: api — it writes coverage-api.json)
   all: cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json
 deploy:
   all: bash scripts/compose_smoke.sh
@@ -78,14 +79,14 @@ scripts:
   all: python -c "ast.parse" over apps/api/scripts + scripts (syntax sweep)
   all: cd apps/api && uv run python scripts/verify_audit_evidence.py --strict
 all:
-  = unit + contract + scripts
+  = unit + contract + coverage + scripts
 MAP
   exit 0
 fi
 
 case "$LAYER" in
   unit|contract|coverage|deploy|fault|soak|real|scripts|all) ;;
-  "") echo "no --layer given; usage: verify.sh --layer unit|contract|deploy|fault|soak|real|scripts|all" >&2; exit 2 ;;
+  "") echo "no --layer given; usage: verify.sh --layer unit|contract|coverage|deploy|fault|soak|real|scripts|all" >&2; exit 2 ;;
   *) echo "unknown layer: $LAYER (see --list)" >&2; exit 2 ;;
 esac
 
@@ -98,6 +99,11 @@ declare -a cmds=()
 
 add_api_unit() { cmds+=("cd apps/api && uv run pytest --cov=better_resume --cov-report=json:coverage-api.json --cov-report=term"); }
 add_web_unit() { cmds+=("pnpm -C apps/web exec vitest run"); }
+add_coverage() {
+  # The floor check reads coverage-api.json, which add_api_unit() writes (the same pytest command
+  # CI's coverage step runs first). So "all" adds the judgement, not a second full run.
+  cmds+=("cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json")
+}
 add_api_contract() {
   cmds+=("cd apps/api && uv run ruff check .")
   cmds+=("cd apps/api && uv run ruff format --check .")
@@ -144,8 +150,9 @@ case "$LAYER" in
     cmds+=("bash scripts/fault_injection_drill.sh")
     ;;
   coverage)
-    cmds+=("cd apps/api && uv run pytest --cov=better_resume --cov-report=json:coverage-api.json --cov-report=term")
-    cmds+=("cd apps/api && uv run python scripts/check_coverage_floors.py --json coverage-api.json")
+    # CI runs this as its own step, so it needs its own data: produce it, then judge it.
+    add_api_unit
+    add_coverage
     ;;
   soak)
     # P39: this runs with cwd=apps/api, so a relative `var/evidence/...` landed in
@@ -236,9 +243,11 @@ case "$LAYER" in
     add_scripts
     ;;
   all)
-    # P31: the advertised local closure. Every fast layer joins through its own builder so the
-    # label in --list cannot drift from what actually runs.
+    # P31 + P8-retro: the advertised local closure. Every fast layer joins through its own builder
+    # so the label in --list cannot drift from what actually runs. The coverage floors used to sit
+    # outside this list entirely — a broken floor was locally green and CI red.
     add_api_unit
+    add_coverage
     add_web_unit
     add_api_contract
     add_web_contract
