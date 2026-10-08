@@ -29,6 +29,7 @@ from websockets.asyncio.client import connect
 
 from ...ai_resilience import AiUnavailable, Stage
 from ..assembler import AstTranscriptionAssembler
+from ..event_map import TranscriptEventMapper
 from ..models import AstPacket, ChannelCtx, PgsKind, TranscriptEvent, TranscriptUpdate
 
 logger = structlog.get_logger("better_resume.media.xunfei")
@@ -156,7 +157,7 @@ class XunfeiAstAdapter:
         self._clock = clock
         self._buffer = bytearray()
         self._assembler = AstTranscriptionAssembler()
-        self._committed_seen = ""
+        self._event_mapper = TranscriptEventMapper()
         self._tasks: list[asyncio.Task[None]] = []
         self._receive_task: asyncio.Task[None] | None = None
         self._connection: Any = None
@@ -281,16 +282,9 @@ class XunfeiAstAdapter:
         await self._emit_update(update)
 
     async def _emit_update(self, update: TranscriptUpdate) -> None:
-        # Protocol: non-final packets rewrite the live area; a final packet only appends
-        # the newly committed sentence (clients clear their live area on archive).
-        if update.final_packet:
-            if len(update.committed) > len(self._committed_seen):
-                newly = update.committed[len(self._committed_seen) :]
-                self._committed_seen = update.committed
-                await self._emit(TranscriptEvent(kind="archive", text=newly))
-            return
-        if update.changed:
-            await self._emit(TranscriptEvent(kind="replace", text=update.live))
+        # The rule lives in one place now (P8 / media-01): this adapter only feeds packets.
+        for event in self._event_mapper.events(update):
+            await self._emit(event)
 
     async def _emit(self, event: TranscriptEvent) -> None:
         result = self._on_event(event)

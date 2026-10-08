@@ -25,7 +25,7 @@ from .models import Stage
 from .passthrough import DirectAiResilience
 from .placeholder import UnimplementedAiResilience
 from .policy import StagePolicies, StagePolicy
-from .protocols import AiResilience
+from .protocols import AiResilience, AiResilienceSnapshot
 from .ratelimit import (
     Bucket,
     BucketScope,
@@ -47,6 +47,7 @@ __all__ = [
     "AiOverloaded",
     "AiResilience",
     "AiResilienceError",
+    "AiResilienceSnapshot",
     "AiTimeout",
     "AiUnavailable",
     "BreakerPolicy",

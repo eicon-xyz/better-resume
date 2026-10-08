@@ -4,6 +4,7 @@ from .config import (
     ResilienceSettings,
     Settings,
     get_settings,
+    parse_sentinel_addresses,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "ResilienceSettings",
     "Settings",
     "get_settings",
+    "parse_sentinel_addresses",
 ]

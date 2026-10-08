@@ -117,8 +117,12 @@ class AnswerService:
             await repo.get_for_user(session_id, user_id)
             # Second check inside the lock: the previous holder may have finished this turn.
             existing = await AnswerRepository(db).find_by_request(session_id, request_id)
-            if existing is not None:
+            # A failed attempt is on record but is NOT a finished answer (P8/IE-01): the same
+            # idempotency key must still produce a score once the vendor recovers, so the retry
+            # re-scores that row in place instead of replaying score=None at the client.
+            if existing is not None and existing.error_message is None:
                 return await self._replay(db, existing, session_id)
+            resume_of = existing.id if existing is not None else None
             session = await repo.require_status(
                 session_id, ANSWERABLE_STATUSES, message="interview is not answerable"
             )
@@ -147,6 +151,7 @@ class AnswerService:
                 request_id=request_id,
                 answer=answer,
                 error=exc,
+                resume_of=resume_of,
             )
             raise
 
@@ -160,6 +165,7 @@ class AnswerService:
                 answer=answer,
                 score=score,
                 gateway=gateway,
+                resume_of=resume_of,
             )
         except Exception as exc:
             # A failed follow-up (or any write error) must leave the question answerable.
@@ -169,6 +175,7 @@ class AnswerService:
                 request_id=request_id,
                 answer=answer,
                 error=exc,
+                resume_of=resume_of,
             )
             raise
 
@@ -235,6 +242,7 @@ class AnswerService:
         self,
         *,
         follow_up_gateway: LlmGateway | None = None,
+        resume_of: str | None = None,
         session_id: str,
         user_id: str,
         question_no: str,
@@ -289,18 +297,32 @@ class AnswerService:
                 next_status = FlowStatus.ASKING if next_question_no else FlowStatus.COMPLETED
                 follow_up_count = 0
 
-            record = await answers.add(
-                session_id=session_id,
-                question_no=question_no,
-                request_id=request_id,
-                answer=answer,
-                score=score.score,
-                feedback=score.feedback,
-                missing_points=list(score.missing_points),
-                follow_up_needed=decision.need_follow_up,
-                follow_up_reason=decision.reason_code.value,
-                rule_version=decision.rule_version,
-            )
+            if resume_of is None:
+                record = await answers.add(
+                    session_id=session_id,
+                    question_no=question_no,
+                    request_id=request_id,
+                    answer=answer,
+                    score=score.score,
+                    feedback=score.feedback,
+                    missing_points=list(score.missing_points),
+                    follow_up_needed=decision.need_follow_up,
+                    follow_up_reason=decision.reason_code.value,
+                    rule_version=decision.rule_version,
+                )
+            else:
+                # The retry reused a failed attempt's request_id: re-score that row (P8/IE-01).
+                record = await answers.overwrite(
+                    resume_of,
+                    answer=answer,
+                    score=score.score,
+                    feedback=score.feedback,
+                    missing_points=list(score.missing_points),
+                    follow_up_needed=decision.need_follow_up,
+                    follow_up_reason=decision.reason_code.value,
+                    rule_version=decision.rule_version,
+                    error_message=None,
+                )
 
             flow = await FlowStateStore(db).mutate(
                 session_id,
@@ -364,17 +386,33 @@ class AnswerService:
         request_id: str,
         answer: str,
         error: Exception,
+        resume_of: str | None = None,
     ) -> None:
         """Record the failed attempt and put the flow back so the question can be retried."""
         async with self._session_factory() as db:
             try:
-                await AnswerRepository(db).add(
-                    session_id=session_id,
-                    question_no=question_no,
-                    request_id=request_id,
-                    answer=answer,
-                    error_message=str(error) or error.__class__.__name__,
-                )
+                message = str(error) or error.__class__.__name__
+                if resume_of is None:
+                    await AnswerRepository(db).add(
+                        session_id=session_id,
+                        question_no=question_no,
+                        request_id=request_id,
+                        answer=answer,
+                        error_message=message,
+                    )
+                else:
+                    # The retry failed too: one row per request_id, with a refreshed reason.
+                    await AnswerRepository(db).overwrite(
+                        resume_of,
+                        answer=answer,
+                        score=None,
+                        feedback=None,
+                        missing_points=[],
+                        follow_up_needed=None,
+                        follow_up_reason=None,
+                        rule_version=None,
+                        error_message=message,
+                    )
                 flow = await FlowStateStore(db).load(session_id)
                 if flow is not None and flow.status is FlowStatus.EVALUATING:
                     await FlowStateStore(db).mutate(

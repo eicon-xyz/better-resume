@@ -2,12 +2,63 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from alembic import command
+from sqlalchemy import CheckConstraint, text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
+from better_resume.interview_engine.orm import InterviewSessionRow
+from better_resume.interview_engine.session_fsm import SessionStatus
 from better_resume.settings import get_settings
 
 from .db_utils import alembic_config
+
+
+def _literals(definition: str) -> set[str]:
+    return set(re.findall(r"'([^']*)'", definition))
+
+
+async def test_the_status_vocabulary_agrees_across_code_the_orm_and_the_database(
+    migrated_database: str,
+) -> None:
+    """P8 / resume_parser_db-03: alembic check is blind to CHECK text (measured: rewrite or drop
+    the constraint in memory -> 0 operations, while an extra column -> 1). So a drift between the
+    enum, the ORM and the migration would stay green until the first write of the new value blew
+    up with a CheckViolationError. This reads the constraint back from Postgres instead.
+    """
+    expected = {status.value for status in SessionStatus}
+
+    orm_text = next(
+        str(constraint.sqltext)
+        for constraint in InterviewSessionRow.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+        and constraint.name == "ck_interview_sessions_status"
+    )
+    assert _literals(orm_text) == expected, "the ORM constraint must be derived from the enum"
+
+    engine = create_async_engine(migrated_database, poolclass=NullPool)
+    try:
+        async with engine.connect() as connection:
+            definitions = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                            "WHERE conname = 'ck_interview_sessions_status'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+    finally:
+        await engine.dispose()
+
+    assert len(definitions) == 1, "the database must still carry the status constraint"
+    assert _literals(definitions[0]) == expected, "the migrated constraint drifted from the enum"
 
 
 def test_alembic_upgrade_and_check(migrated_database: str, monkeypatch: pytest.MonkeyPatch) -> None:

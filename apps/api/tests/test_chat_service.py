@@ -189,6 +189,25 @@ async def test_foreign_session_is_not_found(store_factory) -> None:
             pass
 
 
+async def test_a_session_outside_the_first_page_is_still_readable(store_factory) -> None:
+    """P8 / conversation_chat-02: the service found the session by paging list_for_user(limit=200),
+    so a user with more conversations than that could not open their older ones — the stream died
+    with an internal error even though the row was right there and owned by the caller."""
+    service, ref = await make_service(store_factory)
+
+    async with store_factory() as session:
+        store = SqlConversationStore(session)
+        for index in range(200):
+            await store.create(kind="chat", user_id=USER, title=f"filler-{index}")
+        await session.commit()
+
+    events = await drain(service, ref, FakeGateway([ContentDelta(text="还在")]))
+
+    assert [type(event).__name__ for event in events] == ["ContentDelta"]
+    stored = await history(store_factory, ref)
+    assert [m.content for m in stored] == ["你好", "还在"]
+
+
 async def test_cancellation_persists_partial_answer(store_factory) -> None:
     service, ref = await make_service(store_factory)
     gateway = FakeGateway([ContentDelta(text="被中断的半句")], delay=0.05)

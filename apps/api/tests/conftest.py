@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import redis.asyncio as aioredis
 from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from better_resume.main import create_app
 from better_resume.settings import Settings, get_settings
@@ -105,3 +108,41 @@ def app(settings: Settings) -> FastAPI:
 def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+async def restore_scene_bindings(migrated_database: str) -> AsyncIterator[None]:
+    """P8-N1: put the shared scene-binding table back after a test that switches providers.
+
+    The table lives outside the process and is shared by the whole run, so one forgotten restore
+    makes an unrelated file fail while the full suite stays green (the store test resets the
+    table before that file runs). Snapshot the rows instead of hard-coding the seed so a case
+    that adds or deletes a row is covered too.
+    """
+    engine = create_async_engine(migrated_database, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def snapshot() -> list[tuple[str, str, str]]:
+        async with factory() as session:
+            rows = (
+                await session.execute(
+                    text("SELECT scene, adapter, target_ref FROM llm_scene_bindings")
+                )
+            ).all()
+        return [(scene, adapter, target_ref) for scene, adapter, target_ref in rows]
+
+    before = await snapshot()
+    yield
+    if await snapshot() != before:
+        async with factory() as session:
+            await session.execute(text("DELETE FROM llm_scene_bindings"))
+            for scene, adapter, target_ref in before:
+                await session.execute(
+                    text(
+                        "INSERT INTO llm_scene_bindings (scene, adapter, target_ref) "
+                        "VALUES (:scene, :adapter, :target_ref)"
+                    ),
+                    {"scene": scene, "adapter": adapter, "target_ref": target_ref},
+                )
+            await session.commit()
+    await engine.dispose()

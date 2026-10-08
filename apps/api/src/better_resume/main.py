@@ -13,6 +13,7 @@ from .ai_resilience import (
     AiInvalid,
     AiOverloaded,
     AiResilienceError,
+    AiResilienceSnapshot,
     AiTimeout,
     AiUnavailable,
     DistributedAiResilience,
@@ -104,7 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # P7: the limiter shares these counters, so /resilience/stats also reports how much
     # traffic ran against the degraded (per-replica) bucket.
     metrics = ResilienceMetrics()
-    resilience: object = ResilientAiResilience(settings, metrics=metrics)
+    resilience: AiResilienceSnapshot = ResilientAiResilience(settings, metrics=metrics)
     if settings.resilience.distributed:
         resilience = DistributedAiResilience(
             resilience,

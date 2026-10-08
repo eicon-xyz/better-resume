@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from better_resume.redis_client import RedisTopology
 from better_resume.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -54,6 +55,27 @@ def test_half_configured_sentinel_is_rejected() -> None:
 
     with pytest.raises(ValidationError, match="BR_REDIS_SENTINELS"):
         Settings(_env_file=None, redis_master_name="br-master")
+
+
+@pytest.mark.parametrize("value", [",", " , ", " , , "])
+def test_separator_only_sentinels_are_rejected_at_startup(value: str) -> None:
+    """P8 / identity_jobs-01: a separator-only value is "some text", so it passed the pairing
+    check and then parsed to zero addresses — the app kept talking to a single node while the
+    operator believed failover was configured, with no error and no log."""
+    with pytest.raises(ValidationError, match="BR_REDIS_SENTINELS"):
+        Settings(_env_file=None, redis_sentinels=value, redis_master_name="br-master")
+
+
+def test_the_topology_reads_sentinels_the_same_way_settings_validate_them() -> None:
+    """The validator and the client must share one reading of BR_REDIS_SENTINELS."""
+    settings = Settings(
+        _env_file=None, redis_sentinels=" sentinel-a:26379 , ", redis_master_name="br-master"
+    )
+
+    topology = RedisTopology.from_settings(settings)
+
+    assert topology.sentinels == ("sentinel-a:26379",)
+    assert topology.uses_sentinel is True
 
 
 def test_invalid_database_url_is_rejected() -> None:

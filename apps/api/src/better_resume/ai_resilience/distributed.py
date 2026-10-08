@@ -288,6 +288,10 @@ class DistributedAiResilience:
             ),
         )
 
+    def stats(self) -> dict[str, Any]:
+        """Answer for the chain this wraps (P8 / settings_observability-03)."""
+        return self._inner.stats()
+
     async def aclose(self) -> None:
         await self._inner.aclose()
         await self._flight.aclose()

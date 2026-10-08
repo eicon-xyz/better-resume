@@ -76,6 +76,17 @@ class SqlConversationStore:
         if row.user_id != user_id:
             raise ConversationNotFoundError(f"conversation {session.session_id} not found")
 
+    async def get_owned(self, session: SessionRef, user_id: UserId) -> Conversation:
+        """Ownership check and lookup in one query (P8 / conversation_chat-02).
+
+        Callers that need the row itself used to page through list_for_user() and scan the page,
+        which silently failed for any conversation outside that page.
+        """
+        row = await self._fetch(session)
+        if row.user_id != user_id:
+            raise ConversationNotFoundError(f"conversation {session.session_id} not found")
+        return _to_conversation(row)
+
     async def update_title(self, session: SessionRef, user_id: UserId, title: str) -> None:
         row = await self._fetch(session, for_update=True)
         if row.user_id != user_id:

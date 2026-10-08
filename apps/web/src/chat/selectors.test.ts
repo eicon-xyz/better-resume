@@ -62,6 +62,50 @@ describe("mergeHistory", () => {
     expect(merged.map((message) => message.key)).toEqual(["server:2", "req-live"]);
   });
 
+  it("keeps a second identical answer while history is still behind (P8 / web-04)", () => {
+    // Two answers with the same text: the older draft is replayed by history, the newer one is
+    // not there yet. Matching on content dropped the newer one too, so the reply the user just
+    // watched appear vanished until the refetch landed (and stayed gone if it failed).
+    const server = [
+      view({ seq: 1, role: "user", content: "你好", client_message_id: "cm-1" }),
+      view({ seq: 2, role: "assistant", content: "你好，我是助手" }),
+    ];
+    const localMessages = [
+      local({ key: "cm-1", role: "user", content: "你好", clientMessageId: "cm-1" }),
+      local({ key: "req-1", role: "assistant", content: "你好，我是助手" }),
+      local({ key: "cm-2", role: "user", content: "你好", clientMessageId: "cm-2" }),
+      local({ key: "req-2", role: "assistant", content: "你好，我是助手" }),
+    ];
+
+    const merged = mergeHistory(server, localMessages);
+
+    expect(merged.map((message) => message.key)).toEqual(["cm-1", "server:2", "cm-2", "req-2"]);
+  });
+
+  it("drops both copies once history has caught up", () => {
+    const server = [
+      view({ seq: 1, role: "user", content: "你好", client_message_id: "cm-1" }),
+      view({ seq: 2, role: "assistant", content: "你好，我是助手" }),
+      view({ seq: 3, role: "user", content: "你好", client_message_id: "cm-2" }),
+      view({ seq: 4, role: "assistant", content: "你好，我是助手" }),
+    ];
+    const localMessages = [
+      local({ key: "cm-1", role: "user", content: "你好", clientMessageId: "cm-1" }),
+      local({ key: "req-1", role: "assistant", content: "你好，我是助手" }),
+      local({ key: "cm-2", role: "user", content: "你好", clientMessageId: "cm-2" }),
+      local({ key: "req-2", role: "assistant", content: "你好，我是助手" }),
+    ];
+
+    const merged = mergeHistory(server, localMessages);
+
+    expect(merged.map((message) => message.key)).toEqual([
+      "cm-1",
+      "server:2",
+      "cm-2",
+      "server:4",
+    ]);
+  });
+
   it("keeps a not-yet-persisted user turn at the end", () => {
     const server = [view({ seq: 1, role: "user", content: "第一问", client_message_id: "cm-1" })];
     const localMessages = [

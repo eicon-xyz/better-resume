@@ -45,7 +45,19 @@
       ],
       "evidence": "283:     async def _emit_update(self, update: TranscriptUpdate) -> None:\n286:         if update.final_packet:\n287:             if len(update.committed) > len(self._committed_seen):\n288:                 newly = update.committed[len(self._committed_seen) :]\n289:                 self._committed_seen = update.committed\n290:                 await self._emit(TranscriptEvent(kind=\"archive\", text=newly))\n291:             return\n292:         if update.changed:\n293:             await self._emit(TranscriptEvent(kind=\"replace\", text=update.live))\n--- scripted.py（同一份规则的副本）\n97:         update = self._assembler.apply(packet)\n98:         if update.final_packet:\n99:             if len(update.committed) > len(self._committed_seen):\n102:                 await self._emit(TranscriptEvent(kind=\"archive\", text=newly))\n105:             await self._emit(TranscriptEvent(kind=\"replace\", text=update.live))",
       "why": "同一份知识（final 包只把新增的 committed 前缀当 archive 发、非 final 包仅在 changed 时发 replace、_committed_seen 单调推进）在适配器层有两份实现，连 _committed_seen 这个状态都各存一份。scripted 是 BR_MEDIA__TRANSCRIPTION_ADAPTER 的默认值（settings/config.py:70），也就是 CI 与本地唯一跑得起来的通道：改真机映射时 CI 不会红，改 scripted 时真机不受影响，两份可以无限漂移。维护者必须知道「这两段必须等价」这个只存在于脑子里的假设；这正是 AGENTS.md 里 P28/P30「转写合并有三层、改一层漏一层」的同构问题，只是这次发生在同一模块内的两个适配器之间。",
-      "fix": "把「TranscriptUpdate → TranscriptEvent」抽成 media 层单一函数（或让 assembler 直接产出事件序列），xunfei/scripted 只负责把包喂进 assembler。"
+      "fix": "把「TranscriptUpdate → TranscriptEvent」抽成 media 层单一函数（或让 assembler 直接产出事件序列），xunfei/scripted 只负责把包喂进 assembler。",
+      "fix_record": {
+        "status": "fixed",
+        "title": "映射规则与它的记忆抽成一份，并加源码警报",
+        "approach": "assembler 快照 → TranscriptEvent 的映射在 xunfei_ast._emit_update 与 scripted._apply 里逐行重复（各带一份 _committed_seen），两份当时等价但没有任何测试要求它们一致。抽成 media/event_map.py 的 TranscriptEventMapper.events()，两个适配器只喂包。",
+        "files": [
+          "apps/api/src/better_resume/media/event_map.py",
+          "apps/api/src/better_resume/media/adapters/xunfei_ast.py",
+          "apps/api/src/better_resume/media/adapters/scripted.py",
+          "apps/api/tests/media/test_event_map.py"
+        ],
+        "evidence": "新增用例：两句四个包 → [replace, archive, replace, archive]（此前无人钉住多句切片）、重复 final 不重复 archive、以及「适配器里不许再出现 update.committed[」的源码警报。tests/media + test_media_ws.py + test_media_tts_api.py = 79 passed / 0 failed。paraformer_rt.py 是同一规则的第三份实现（按供应商 sentence_end 驱动、不经 assembler），未动。"
+      }
     },
     {
       "id": "media-02",
@@ -73,7 +85,7 @@
       "severity": "高",
       "title": "xunfei 的 WS 连接参数没按仓库硬约束显式给全，隔壁 paraformer 给全了并写了理由",
       "where": [
-        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:238",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:238-239",
         "apps/api/src/better_resume/media/adapters/paraformer_rt.py:68-84"
       ],
       "evidence": "238:                 async with connect(url, max_size=None, open_timeout=10) as connection:\n--- paraformer_rt.py\n68:     websockets >= 14 renamed extra_headers and grew a proxy argument, and a malformed\n69:     NO_PROXY on this machine must not take the channel down (P20) — hence the fallbacks.\n70:     close_timeout is bounded because the vendor stalls the close handshake (~10 s\n71:     observed live): the transcript is already complete, so we must not wait for it.\n77:             \"additional_headers\": headers,\n78:             \"open_timeout\": open_timeout,\n79:             \"close_timeout\": 1,\n80:             \"proxy\": None,",
@@ -199,7 +211,7 @@
       "severity": "中",
       "title": "_TERMINAL_CODES 是死常量：定义了「哪些错误码是终态」，但错误路径完全不看它",
       "where": [
-        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:39",
+        "apps/api/src/better_resume/media/adapters/xunfei_ast.py:39-40",
         "apps/api/src/better_resume/media/adapters/xunfei_ast.py:96-99",
         "apps/api/src/better_resume/media/adapters/xunfei_ast.py:251-253"
       ],

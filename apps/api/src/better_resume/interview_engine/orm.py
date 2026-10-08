@@ -24,6 +24,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
+from .session_fsm import SessionStatus
+
+#: P8 / resume_parser_db-03: the vocabulary lives in three places — the SessionStatus enum, this
+#: constraint and the migration that created the table. Deriving the text from the enum removes
+#: one copy; tests/test_migrations.py reads the constraint back out of Postgres to pin the last
+#: one (alembic check cannot see CHECK text: it reports 0 operations for a changed definition).
+_STATUS_CHECK = "status IN (" + ", ".join(f"'{status.value}'" for status in SessionStatus) + ")"
 
 
 def _utcnow() -> datetime:
@@ -33,12 +40,7 @@ def _utcnow() -> datetime:
 class InterviewSessionRow(Base):
     __tablename__ = "interview_sessions"
     __table_args__ = (
-        CheckConstraint(
-            "status IN ("
-            "'draft', 'resume_uploading', 'ready', 'in_progress', 'finished', 'abandoned'"
-            ")",
-            name="ck_interview_sessions_status",
-        ),
+        CheckConstraint(_STATUS_CHECK, name="ck_interview_sessions_status"),
         Index("ix_interview_sessions_user_id_status", "user_id", "status"),
     )
 

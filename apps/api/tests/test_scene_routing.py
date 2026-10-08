@@ -17,6 +17,11 @@ from .interview_engine.test_parser_helpers import build_resume_pdf
 from .test_interview_answers_api import FakeGateway as SchemaAnsweringGateway
 from .test_interview_api import FakeGateway, batch
 
+# P8-N1: every case here switches providers through the real endpoint, and the binding table is
+# shared by the whole run — restore the snapshot after each case instead of trusting five manual
+# restores (the missing sixth one is what made tests/test_chat_api.py fail on its own).
+pytestmark = pytest.mark.usefixtures("restore_scene_bindings")
+
 
 class RecordingFactory:
     """A second provider that records which binding it was asked to serve."""
@@ -184,3 +189,24 @@ def test_explicit_model_ref_still_overrides_the_binding(
         assert response.status_code == 200
         assert openai_calls, "the explicit model_ref must win over the scene binding"
         assert factory.bindings == []
+
+
+def test_every_scene_is_back_on_its_default_when_this_file_ends(
+    client: TestClient, migrated_database: str
+) -> None:
+    """P8-N1: the cases above switch providers through the real endpoint; this file must put
+    every row back before it ends.
+
+    The binding table is shared by the whole run, so one forgotten restore makes an unrelated
+    file fail (tests/test_chat_api.py sees a leftover xingyun binding and reports "missing
+    XINGCHEN_API_KEY") while the full suite stays green — the store test happens to reset the
+    table before that file runs. This case is last on purpose: it asserts what the *previous*
+    cases left behind, which is the only place the leak is observable.
+    """
+    login(client)
+    views = {view["scene"]: view for view in client.get("/api/v1/scenes").json()}
+
+    for scene, view in views.items():
+        assert view["is_default"] is True, (
+            f"{scene} was left on {view['adapter']}:{view['target_ref']}"
+        )

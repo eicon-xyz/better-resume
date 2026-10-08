@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from ..assembler import AstTranscriptionAssembler
+from ..event_map import TranscriptEventMapper
 from ..models import AstPacket, ChannelCtx, TranscriptEvent, TranscriptUpdate
 
 EventSink = Callable[[TranscriptEvent], Awaitable[None] | None]
@@ -44,7 +45,7 @@ class ScriptedTranscriptionChannel:
     _received: int = field(default=0, init=False)
     _cursor: int = field(default=0, init=False)
     _stopped: bool = field(default=False, init=False)
-    _committed_seen: str = field(default="", init=False)
+    _event_mapper: TranscriptEventMapper = field(default_factory=TranscriptEventMapper, init=False)
     _assembler: AstTranscriptionAssembler = field(
         default_factory=AstTranscriptionAssembler, init=False
     )
@@ -95,14 +96,9 @@ class ScriptedTranscriptionChannel:
             final=step.final,
         )
         update = self._assembler.apply(packet)
-        if update.final_packet:
-            if len(update.committed) > len(self._committed_seen):
-                newly = update.committed[len(self._committed_seen) :]
-                self._committed_seen = update.committed
-                await self._emit(TranscriptEvent(kind="archive", text=newly))
-            return
-        if update.changed:
-            await self._emit(TranscriptEvent(kind="replace", text=update.live))
+        # The rule lives in one place now (P8 / media-01): this adapter only feeds packets.
+        for event in self._event_mapper.events(update):
+            await self._emit(event)
 
     async def _emit(self, event: TranscriptEvent) -> None:
         result = self.on_event(event)
