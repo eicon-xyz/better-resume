@@ -58,6 +58,10 @@ done
 declare -a cmds=()
 declare -a tags=()
 
+# Expanded once, here, so every command string is final text by the time it is printed: the
+# map and the dry-run then show the same characters, not one shown with a variable left in it.
+evidence_dir="${VERIFY_EVIDENCE_DIR:-var/evidence}"
+
 add() { # add <api|web|all> <command>
   cmds+=("$2")
   tags+=("$1")
@@ -88,7 +92,7 @@ add_web_contract() {
   add web "pnpm -C apps/web typecheck"
   add web "pnpm -C apps/web check:api"
 }
-add_scripts() {
+build_scripts() {
   add api "cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py"
   # The drill scripts above are tested by pytest; the shell scripts next to them were not
   # (retro 2026-10-06: a proof script that always exited 0 shipped through a green CI).
@@ -103,18 +107,18 @@ add_scripts() {
   # moved 4 citations to partial and --strict exits 1, --structural exits 0).
   add all "uv run --project apps/api python scripts/verify_audit_evidence.py --structural"
 }
-add_deploy() {
+build_deploy() {
   add all "bash scripts/compose_smoke.sh"
   add all "bash scripts/kill_instance_drill.sh"
 }
-add_fault() { add all "bash scripts/fault_injection_drill.sh"; }
-add_soak() {
+build_fault() { add all "bash scripts/fault_injection_drill.sh"; }
+build_soak() {
   # P39: this runs with cwd=apps/api, so a relative json path landed in apps/api/var/evidence/
   # (which does not exist): the 60-minute soak finished, passed, and then died writing its
   # evidence. Point --json at the repo root, where the weekly workflow collects var/evidence/.
   # Quoted: the checkout path can contain spaces ("/root/better resume"), and the command goes
   # through `bash -c`, which would otherwise split the path into two arguments.
-  add all "mkdir -p ${VERIFY_EVIDENCE_DIR:-var/evidence} && cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json \"$ROOT/${VERIFY_EVIDENCE_DIR:-var/evidence}/soak-60m.json\""
+  add all "mkdir -p $evidence_dir && cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json \"$ROOT/$evidence_dir/soak-60m.json\""
 }
 
 # P2-T4: the real layer is a budget-guarded, stage-closure MANDATORY suite. Its steps are data
@@ -128,7 +132,7 @@ declare -a real_steps=(
   "4|cd apps/api && uv run python scripts/v3_ws_probe.py --realtime"
 )
 real_total=0
-add_real() {
+build_real() {
   real_total=0
   local step
   for step in "${real_steps[@]}"; do
@@ -156,11 +160,6 @@ build_coverage() {
   add_api_unit
   add_coverage
 }
-build_deploy() { add_deploy; }
-build_fault() { add_fault; }
-build_soak() { add_soak; }
-build_real() { add_real; }
-build_scripts() { add_scripts; }
 build_all() {
   # P31 + P8-retro: the advertised local closure. Every layer joins through its own builder so
   # the label in --list cannot drift from what actually runs. The coverage floors used to sit
@@ -171,7 +170,7 @@ build_all() {
   add_web_unit
   add_api_contract
   add_web_contract
-  add_scripts
+  build_scripts
 }
 
 LAYER_ORDER=(unit contract coverage deploy fault soak real scripts)
@@ -219,20 +218,9 @@ case "$LAYER" in
   *) echo "unknown layer: $LAYER (see --list)" >&2; exit 2 ;;
 esac
 
-build_layer() {
-  case "$LAYER" in
-    unit) build_unit ;;
-    contract) build_contract ;;
-    coverage) build_coverage ;;
-    deploy) build_deploy ;;
-    fault) build_fault ;;
-    soak) build_soak ;;
-    scripts) build_scripts ;;
-    real) build_real ;;
-    all) build_all ;;
-  esac
-}
-build_layer
+# One builder per accepted layer, named build_<layer>: the case above already validated $LAYER,
+# so the dispatch does not need a second copy of the layer list to fall out of sync with.
+"build_$LAYER"
 
 # ---- the real layer: pure budget math, then the preflights, then (only if all clear) the run ----
 if [[ "$LAYER" == "real" ]]; then

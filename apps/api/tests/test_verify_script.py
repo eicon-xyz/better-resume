@@ -141,12 +141,15 @@ def test_the_list_map_names_the_commands_each_layer_really_runs(layer: str, tmp_
     A substring check cannot see any of that -- it asserts the map is roughly right. Only
     equality can, so this pins the map to the expansion it describes."""
     env = {"VERIFY_ENV_FILE": _synthetic_env_file(tmp_path)} if layer == "real" else None
-    real = _dry_run_commands(layer, env=env)
+    real = _dry_run_command_list(layer, env=env)
     assert real, f"--layer {layer} expands to no commands"
-    advertised = set(_list_map()[layer])
+    # Lists, not sets: verbatim means order and duplicates count too. A set comparison would
+    # forgive a map that prints the right commands in the wrong order.
+    advertised = _list_map()[layer]
     assert advertised == real, (
         f"--list advertises commands that layer {layer} does not run: "
-        f"{sorted(advertised - real)}; and hides ones it does: {sorted(real - advertised)}"
+        f"{sorted(set(advertised) - set(real))}; and hides ones it does: "
+        f"{sorted(set(real) - set(advertised))}; or prints them in a different order"
     )
 
 
@@ -168,6 +171,17 @@ def test_coverage_layer_respects_the_scope_flag() -> None:
     api_commands = _dry_run_commands("coverage", scope="api")
     assert api_commands == _dry_run_commands("coverage", scope="all")
     assert any("check_coverage_floors.py" in c for c in api_commands)
+
+
+def test_the_list_map_shows_the_full_plan_even_when_a_scope_is_given() -> None:
+    """--list is the map of the plan, so it must not silently hide the half a scope excludes:
+    a reader asking "what does all run?" would otherwise get a map shaped by an unrelated flag.
+    The map and a scoped expansion therefore differ by construction -- deliberate, and pinned
+    here rather than left for someone to discover."""
+    scoped = run_verify("--list", "--scope", "api").stdout
+    full = run_verify("--list").stdout
+    assert scoped == full
+    assert "vitest" in full  # the web half stays on the map under --scope api
 
 
 def test_a_scope_with_nothing_to_run_says_so() -> None:
