@@ -15,7 +15,7 @@
 
 | # | 条目 | 缝（测试） | 修前（原始输出要点） | 修后 |
 | --- | --- | --- | --- | --- |
-| S3/P2/P5 | 地图是手写副本，与展开漂移 | `test_the_list_map_names_the_commands_each_layer_really_runs`（8 个参数化） | **25 tests / 7 failed**；unit・coverage・soak・real・scripts 五例各自报出「广告了没跑的命令 / 藏了真跑的命令」 | **25 / 0**（三条文件合计 **66 / 0**） |
+| S3/P2/P5 | 地图是手写副本，与展开漂移 | `test_the_list_map_names_the_commands_each_layer_really_runs`（8 个参数化，逐字比较） | **25 tests / 7 failed**；unit・coverage・soak・real・scripts 五例各自报出「广告了没跑的命令 / 藏了真跑的命令」 | **26 / 0**（三条文件合计 **67 / 0**；加固后的读数） |
 | S2 | 底线判定与写数据的 pytest 隐式顺序耦合 | `test_the_coverage_floor_runs_after_the_pytest_that_writes_its_data` | 变异证明第 2 步红（把 `add_coverage` 提前 → 测试红） | 绿 + 变异证明通过 |
 | P6/S3 | `--layer coverage` 不读 `--scope` | `test_coverage_layer_respects_the_scope_flag` / `test_a_scope_with_nothing_to_run_says_so` | `--scope web` 照样跑整套 API pytest（实测 2 条命令） | `nothing to run for layer=coverage scope=web`（exit 0）+ scope 等价断言 |
 | P1 | `test_list_exposes_every_layer` 元组缺 `coverage` | 同一条测试改为读**层头**并补全九层 | 元组 = 8 层（无 coverage），且断言只是子串包含 | 元组 = 9 层，断言读 `--list` 的层头；变异 M4 让它红 |
@@ -35,7 +35,8 @@ M3 让 build_coverage 的 scope 守卫永不触发
    -> 红：test_coverage_layer_respects_the_scope_flag / test_a_scope_with_nothing_to_run_says_so   PASS
 M4 从 LAYER_ORDER 里删掉 coverage（地图少一层）
    -> 红：test_list_exposes_every_layer / ...[coverage]          PASS
-四条均 "restored: scripts/verify.sh sha256=59f28cdbbaf09e84…"（脚本自己核对恢复后的 sha256）
+四条在收口提交后**复跑一次**（加固重构之后）：各自 "restored: scripts/verify.sh sha256=6d89827e423038b8…"
+（脚本自己核对恢复后的 sha256；重构前首轮读数是 59f28cdbbaf09e84…）
 ```
 
 ### 1.2 CI 侧逐字等价（本次唯一的行为变更就是 B1 那条）
@@ -65,13 +66,13 @@ SOAK EXPANSION IDENTICAL                REAL EXPANSION IDENTICAL
 
 ## 3. 全量收口
 
-**结果：ALL PASS（16 条命令）**，evidence = `var/evidence/20261009T022232Z-all`。
+**结果：ALL PASS（16 条命令）**，evidence = `var/evidence/20261009T023332Z-all`（收口后，含两轴评审驱动的重构与加固）。
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"; export UV_CACHE_DIR='/root/better resume/.cache/uv'
 export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
 export BR_REDIS_URL='redis://127.0.0.1:6379/0'
-bash scripts/verify.sh --layer all        # ALL PASS (16 commands)
+bash scripts/verify.sh --layer all        # ALL PASS (16 commands) -- evidence: var/evidence/20261009T023332Z-all
 python3 scripts/verify_audit_evidence.py --strict
 ```
 
@@ -79,8 +80,8 @@ python3 scripts/verify_audit_evidence.py --strict
 
 | 项 | 读数 |
 | --- | --- |
-| `--layer all` | **ALL PASS（16 条命令）** |
-| 后端 pytest（带 `BR_*`） | **892 passed / 0 failed / 0 skipped**（81.87s） |
+| `--layer all` | **ALL PASS（16 条命令）**，evidence = `var/evidence/20261009T023332Z-all` |
+| 后端 pytest（带 `BR_*`） | **893 passed / 0 failed / 0 skipped**（78.23s） |
 | 覆盖率底线 | `floors ok`（例：`resume_parser 93.2%` / `settings 98.6%` / `worker.py 84.2%`） |
 | 前端 vitest | **177 passed（24 文件）** |
 | ruff check / format --check | 干净（252 文件已格式化） |
@@ -130,3 +131,20 @@ bash scripts/verify.sh --layer coverage --scope web --dry-run     # nothing to r
 
 见 `docs/tickets/p9-verify-map-truth/REVIEW.md`（Standards 与 Spec 两轴并列、不合并、不重排）。
 
+
+## 8. 两轴评审驱动的追加加固（阶段 4 之后）
+
+两轴（`REVIEW.md`）回来后有 **5 条**值得当场闭环，已全部红-绿或等价验证：
+
+| # | 发现（轴） | 修法 | 验证 |
+| --- | --- | --- | --- |
+| 1 | 相等断言是**集合**比较，顺序与重复不可见（Spec a-2） | 改为列表**逐字**比较 | `test_the_list_map_names...` 26 例绿 |
+| 2 | 地图与展开对 `soak` 仍可能逐字不一致（变量未展开） | `evidence_dir` 在脚本顶部展开一次，命令串即最终文本 | `SOAK EXPANSION IDENTICAL`（与 `main` 逐字） |
+| 3 | 5 个纯转发 builder（Standards 坏味道 1） | 删掉转发层，层构建器即真实定义 | 各层展开不变（等价脚本复跑 SAME） |
+| 4 | `build_layer()` 的九路 case 与层名单重复（Standards 坏味道 2） | 改为按名字派生 `build_$LAYER` | 层×scope 展开与 `main` 逐字相同 |
+| 5 | `--list` 忽略 `--scope` 属**未被规格授权**的行为（Spec b-1） | 保留该行为（地图不能因无关开关缺层），补测试把它由暗行为变成规范 | 新例绿 |
+
+评审另外 3 条：① 提案缺「预估」段（已补 §8.5）；② 提案承诺的 `PROBLEMS.md` 未新建（改为真实落点 + §5.5 记偏差）；
+③ 提案头「待你点头」与已实施矛盾（改为「已拍板并实施完毕」，并注明保留原文不改写）。
+
+> 口径说明：本节的 26 / 67 是**加固后**的读数；§1 表里的 25 / 7 是加固**前**的红，两者不是同一次运行。
