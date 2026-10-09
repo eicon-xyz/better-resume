@@ -24,6 +24,38 @@
 | S5/P3 | P31 式发现没有台账号 | `docs/tickets/p1-post-v/PROBLEMS.md` | 无该行 | 新增 **P44**（现象 / 根因 / 修法 / 红绿证据四栏，含 `e0d4fa4` 那次改动） |
 | P4 | PR #23 超出规格字面授权 | 本文件 §5 | — | 记为偏差（不回滚，理由见 §5） |
 
+### 1.0 修前红 / 修后绿的**原始输出**（红绿证据本体）
+
+复现手法：**只把 `scripts/verify.sh` 回退到 `main`、保留本分支的新测试**（这样量的是「一条真断言打在旧实现上」，
+而不是「拿旧测试当基线」），跑完再把新脚本放回并核对逐字一致。产物：`var/p9-evidence/{red,green}.txt`（`var/` 已 gitignore，故原文收录于此）。
+
+```
+$ git show main:scripts/verify.sh > scripts/verify.sh   # 只换脚本，测试保持新
+$ cd apps/api && ./.venv/bin/python -m pytest tests/test_verify_script.py -q -p no:randomly | tail
+=========================== short test summary info ============================
+FAILED tests/test_verify_script.py::test_the_list_map_names_the_commands_each_layer_really_runs[unit]
+FAILED tests/test_verify_script.py::test_the_list_map_names_the_commands_each_layer_really_runs[coverage]
+FAILED tests/test_verify_script.py::test_the_list_map_names_the_commands_each_layer_really_runs[soak]
+FAILED tests/test_verify_script.py::test_the_list_map_names_the_commands_each_layer_really_runs[real]
+FAILED tests/test_verify_script.py::test_the_list_map_names_the_commands_each_layer_really_runs[scripts]
+FAILED tests/test_verify_script.py::test_coverage_layer_respects_the_scope_flag
+FAILED tests/test_verify_script.py::test_a_scope_with_nothing_to_run_says_so
+# 7 failed（当时：25 tests / 7 failed）
+
+$ cp var/p9-evidence/verify_new.sh scripts/verify.sh && diff -q scripts/verify.sh var/p9-evidence/verify_new.sh
+$ cd apps/api && ./.venv/bin/python -m pytest tests/test_verify_script.py -q -p no:randomly | tail
+26 passed        # 修后绿（加固后读数；加固前为 25 passed）
+```
+
+一条代表性断言的原文（红时它就是这么喊的）：
+
+```
+E  AssertionError: --list advertises commands that layer unit does not run:
+E    ['cd apps/api && uv run pytest']
+E  and hides ones it does: ['cd apps/api && uv run pytest --cov=better_resume
+E    --cov-report=json:coverage-api.json --cov-report=term']
+```
+
 ### 1.1 四条变异证明（基线绿 → 变异红 → 恢复绿，脚本看退出码）
 
 ```
