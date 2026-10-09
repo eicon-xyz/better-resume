@@ -7,27 +7,63 @@ two drifted). This file pins the script's own contract: the layer list and dry-r
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 VERIFY = REPO_ROOT / "scripts" / "verify.sh"
 BASH = shutil.which("bash") or "/bin/bash"
 
 
-def run_verify(*args: str) -> subprocess.CompletedProcess[str]:
+def run_verify(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    import os
+
+    merged = dict(os.environ)
+    if env:
+        merged.update(env)
     return subprocess.run(  # noqa: S603 - fixed argv, this is the test harness
-        [BASH, str(VERIFY), *args], capture_output=True, text=True, timeout=120, cwd=REPO_ROOT
+        [BASH, str(VERIFY), *args],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=REPO_ROOT,
+        env=merged,
     )
 
 
+def _list_layers() -> list[str]:
+    """The layer headers --list actually prints (coverage: etc.), in order."""
+    return [
+        line.strip().rstrip(":")
+        for line in run_verify("--list").stdout.splitlines()
+        if line and not line[0].isspace() and line.strip().endswith(":")
+    ]
+
+
 def test_list_exposes_every_layer() -> None:
+    """Every layer the script accepts needs its own header in --list. The first cut of this test
+    only asked whether the substring appeared anywhere in the output, so a layer could vanish
+    from the map with nothing noticing -- and coverage did."""
     result = run_verify("--list")
     assert result.returncode == 0
-    for layer in ("unit", "contract", "deploy", "fault", "soak", "real", "scripts", "all"):
-        assert layer in result.stdout, f"missing layer in --list: {layer}"
+    layers = _list_layers()
+    for layer in (
+        "unit",
+        "contract",
+        "coverage",
+        "deploy",
+        "fault",
+        "soak",
+        "real",
+        "scripts",
+        "all",
+    ):
+        assert layer in layers, f"missing layer header in --list: {layer} (got {layers})"
     assert "pytest" in result.stdout and "vitest" in result.stdout
 
 
@@ -46,12 +82,114 @@ def test_unknown_layer_refuses_to_run() -> None:
     assert "bogus" in result.stderr
 
 
-def _dry_run_commands(layer: str) -> set[str]:
-    result = run_verify("--layer", layer, "--dry-run")
+def _dry_run_command_list(
+    layer: str, scope: str = "all", env: dict[str, str] | None = None
+) -> list[str]:
+    result = run_verify("--layer", layer, "--scope", scope, "--dry-run", env=env)
     assert result.returncode == 0, result.stderr
-    return {
+    return [
         line.strip()[2:] for line in result.stdout.splitlines() if line.strip().startswith("$ ")
-    }
+    ]
+
+
+def _dry_run_commands(
+    layer: str, scope: str = "all", env: dict[str, str] | None = None
+) -> set[str]:
+    return set(_dry_run_command_list(layer, scope, env))
+
+
+def _list_map() -> dict[str, list[str]]:
+    """The layer map --list prints: layer -> its advertised command lines.
+
+    Only the tagged lines (api:/web:/all:) are commands; untagged lines are prose the map is
+    allowed to carry (a note about the manual strict gate, the all-layer label)."""
+    mapped: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in run_verify("--list").stdout.splitlines():
+        if line and not line[0].isspace() and line.strip().endswith(":"):
+            current = line.strip().rstrip(":")
+            mapped[current] = []
+            continue
+        match = re.match(r"^\s+(api|web|all): (.+)$", line)
+        if match and current:
+            mapped[current].append(match.group(2).strip())
+    return mapped
+
+
+def _synthetic_env_file(tmp_path: Path) -> str:
+    """Credentials that satisfy the real layer's preflight and can never reach a vendor."""
+    env_file = tmp_path / "synthetic.env"
+    env_file.write_text(
+        "BR_DASHSCOPE_API_KEY=sk-test\n"
+        "BR_MEDIA__ASR_URL=https://example.invalid/asr\n"
+        "BR_MEDIA__ASR_WS_URL=wss://example.invalid/ws\n",
+        encoding="utf-8",
+    )
+    return str(env_file)
+
+
+@pytest.mark.parametrize(
+    "layer", ["unit", "contract", "coverage", "deploy", "fault", "soak", "real", "scripts"]
+)
+def test_the_list_map_names_the_commands_each_layer_really_runs(layer: str, tmp_path: Path) -> None:
+    """P44: the map in --list is a second, hand-written copy of the layer plan, and copies
+    drift. Measured 2026-10-09: 5 of 21 advertised lines disagreed with the real expansion
+    (unit advertised a bare pytest while the layer runs one with --cov; coverage advertised a
+    prose placeholder; soak dropped the mkdir/--base/absolute --json; scripts dropped the
+    trailing echo), and the real layer was not in the map at all.
+
+    A substring check cannot see any of that -- it asserts the map is roughly right. Only
+    equality can, so this pins the map to the expansion it describes."""
+    env = {"VERIFY_ENV_FILE": _synthetic_env_file(tmp_path)} if layer == "real" else None
+    real = _dry_run_command_list(layer, env=env)
+    assert real, f"--layer {layer} expands to no commands"
+    # Lists, not sets: verbatim means order and duplicates count too. A set comparison would
+    # forgive a map that prints the right commands in the wrong order.
+    advertised = _list_map()[layer]
+    assert advertised == real, (
+        f"--list advertises commands that layer {layer} does not run: "
+        f"{sorted(set(advertised) - set(real))}; and hides ones it does: "
+        f"{sorted(set(real) - set(advertised))}; or prints them in a different order"
+    )
+
+
+def test_the_coverage_floor_runs_after_the_pytest_that_writes_its_data() -> None:
+    """add_coverage judges coverage-api.json, which add_api_unit writes -- an implicit coupling
+    the builder's own comment admits. Pin the order: a floor check that runs first reads the
+    previous run's file (or none) and reports a confident verdict about stale data."""
+    commands = _dry_run_command_list("all")
+    writer = next(i for i, c in enumerate(commands) if "--cov-report=json:coverage-api.json" in c)
+    judge = next(i for i, c in enumerate(commands) if "check_coverage_floors.py" in c)
+    assert writer < judge, commands
+
+
+def test_coverage_layer_respects_the_scope_flag() -> None:
+    """--scope picks which half of the stack to verify (CI runs --scope api and --scope web).
+    coverage ignored it: --scope web still ran the whole API pytest and the floor check, so the
+    flag silently did nothing for that layer while unit and contract honoured it."""
+    assert _dry_run_commands("coverage", scope="web") == set()
+    api_commands = _dry_run_commands("coverage", scope="api")
+    assert api_commands == _dry_run_commands("coverage", scope="all")
+    assert any("check_coverage_floors.py" in c for c in api_commands)
+
+
+def test_the_list_map_shows_the_full_plan_even_when_a_scope_is_given() -> None:
+    """--list is the map of the plan, so it must not silently hide the half a scope excludes:
+    a reader asking "what does all run?" would otherwise get a map shaped by an unrelated flag.
+    The map and a scoped expansion therefore differ by construction -- deliberate, and pinned
+    here rather than left for someone to discover."""
+    scoped = run_verify("--list", "--scope", "api").stdout
+    full = run_verify("--list").stdout
+    assert scoped == full
+    assert "vitest" in full  # the web half stays on the map under --scope api
+
+
+def test_a_scope_with_nothing_to_run_says_so() -> None:
+    """Silence would read as "the web coverage was verified" -- the layer must admit it ran
+    nothing rather than exit 0 quietly."""
+    result = run_verify("--layer", "coverage", "--scope", "web", "--dry-run")
+    assert result.returncode == 0
+    assert "nothing to run" in result.stdout
 
 
 def test_all_layer_actually_runs_unit_contract_coverage_and_scripts() -> None:

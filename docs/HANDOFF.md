@@ -71,7 +71,7 @@ uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序
 
 # 单一入口（P2-T1；CI 与本地同一份命令）
 bash scripts/verify.sh --list          # 全部层与命令
-bash scripts/verify.sh --layer all     # 本地收口（unit+contract+coverage+scripts = 16 条命令）
+bash scripts/verify.sh --layer all     # 本地收口（unit+contract+coverage+scripts；条数看 --list/--dry-run，别抄进文档）
 bash scripts/verify.sh --layer scripts # 4 条：shell 逐文件语法 + 脚本语法 + 审计结构校验 + 脚本回归
 python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手动跑：逐字核对引文（partial 也算失败）
 ```
@@ -164,7 +164,7 @@ P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer �
 
 | 票 | 状态 | 一句话 | 证据 / 复跑 |
 | --- | --- | --- | --- |
-| T1 verify.sh 单一入口 | ✅（含 P31 修正） | 分层 unit/contract/coverage/deploy/fault/soak/real/scripts/all + --dry-run/--list；CI 双 job 已改调它；**all 层曾静默漏 contract**（P31，2026-09-17 修：抽 builder 复用 + 展开漂移测试） | `scripts/verify.sh`；`tests/test_verify_script.py`（钉 all ⊇ unit∪contract∪scripts） |
+| T1 verify.sh 单一入口 | ✅（含 P31 修正） | 分层 unit/contract/coverage/deploy/fault/soak/real/scripts/all + --dry-run/--list；CI 双 job 已改调它；**all 层曾静默漏 contract**（P31，2026-09-17 修：抽 builder 复用 + 展开漂移测试） | `scripts/verify.sh`；`tests/test_verify_script.py`（钉 `all` 的展开 ⊇ 各层展开，并钉 `--list` 的地图 == 真实展开） |
 | T2 pytest markers | ✅ | --strict-markers + 默认 `-m 'not docker and not real'` | `tests/test_pytest_config.py` |
 | T3 nightly/weekly | ✅（首跑等合并） | 公有仓库免费：nightly=deploy+quick fault；weekly=全量故障+60min 浸泡；YAML 本地已校验；**schedule 只认默认分支**，合并后自动首跑 | `.github/workflows/nightly.yml`、`weekly-full.yml` |
 | T4 真机套件+预算守卫 | ✅（含 P32 修正） | BR_REAL_CALL_BUDGET=200、超预算/缺凭据非零退出、dry-run 列清单；音频生成器钉 sha256；**fixture 预检**（P32：缺文件/字节漂移都在花钱前 exit 2，`VERIFY_FIXTURE_AUDIO_DIR` 可覆盖） | `verify.sh --layer real`；`make_fixture_audio.py --check`；`tests/test_real_layer.py` |
