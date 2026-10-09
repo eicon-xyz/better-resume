@@ -92,7 +92,7 @@ python3 scripts/verify_audit_evidence.py --strict
 ## 4. 未验证项（诚实清单）
 
 1. **`--layer real` 未真跑**（零真机调用）：只做了 `--dry-run` 与「旧/新展开逐字相同」的对照；预检路径（凭据/音频/`curl /healthz`）本轮**只靠既有测试**（`tests/test_real_layer.py` 6 例全绿）覆盖，没有真跑一次完整 real 层。
-2. **CI 未跑**：本地全绿 + 逐字等价；GitHub 上的读数要等 PR（`gh run`）出来才算数。
+2. ~~**CI 未跑**~~ → **已出（PR #24，2026-10-09）**：backend **pass 3m42s** / frontend **pass 51s**，`mergeState=CLEAN`（run 37875536597）。
 3. **`--list` 的输出形状变了**：`coverage:` 段第一行由散文占位变成真命令；`real:` 段由 1 行散文变成 5 条命令 + 2 行注解；`scripts:` 段两行注解移到段尾。仓库内无其它消费者（grep 过 `--list` 只命中测试与本文档），但**外部读者的肌肉记忆**无法自动验证。
 4. **`--list` 忽略 `--scope`**（有意）：`--list --scope web` 仍打印完整计划。这是为「地图不能因 scope 而缺层」；已在脚本头注释与本文件写明，但**没有测试**钉它。
 5. **P1 的「补元组不会红」是推理**（元组只多了一个已存在的层名）：其红由变异 M4 提供，不是天然红。
@@ -112,7 +112,7 @@ python3 scripts/verify_audit_evidence.py --strict
 ## 6. 复跑命令（逐条）
 
 ```bash
-# 1 地图/展开同源 + scope + 顺序（全部 25 例）
+# 1 地图/展开同源 + scope + 顺序（加固后 26 例）
 cd apps/api && uv run pytest tests/test_verify_script.py -q -p no:randomly
 # 2 real 层既有契约（6 例）与脚本契约
 uv run pytest tests/test_real_layer.py tests/test_scripts_contracts.py -q -p no:randomly
