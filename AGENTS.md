@@ -58,7 +58,7 @@
 ```bash
 # 单一入口（CI 与本地跑同一份命令，P2-T1）——先 --list 看全层
 bash scripts/verify.sh --list                 # 全部层与命令（CI 与本地同一份）
-bash scripts/verify.sh --layer all            # 本地收口：unit+contract+coverage+scripts（16 条命令）
+bash scripts/verify.sh --layer all            # 本地收口：unit+contract+coverage+scripts（条数看 --dry-run，别抄进文档）
 bash scripts/verify.sh --layer real --dry-run # 真机清单 + 预算（不花钱）
 
 # 变异证明：断言「这段测试真的钉住了这段实现」——基线绿 → 变异红 → 恢复绿，脚本真看退出码
