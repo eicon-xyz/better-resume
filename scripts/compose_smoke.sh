@@ -11,6 +11,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
+# P45: buildx >= 0.37.2 enforces bake's entitlement consent gate even under --progress=rawjson
+# (GHSA-gwr2-q96m-6682). Compose builds through `buildx bake` and only ever grants
+# fs.read / security.insecure -- never `network.host`, which compose.yaml requests for the
+# local WSL2 proxy -- so the build is refused before it starts ("additional privileges
+# requested: pass \"--allow=network.host\""). Nightly died here twice (2026-10-09/10).
+# COMPOSE_BAKE=false uses the classic path, which hands the declared entitlements straight
+# to the builder. Pinned by tests/test_drill_prereqs.py.
+export COMPOSE_BAKE=false
+
 # P35 follow-up: refuse loudly instead of dying inside `docker compose config` with 127.
 # The other two drills already guard this way; this one was the odd one out.
 if ! command -v docker >/dev/null 2>&1; then

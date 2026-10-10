@@ -19,6 +19,16 @@
 # 容器重建会换 IP 而哨兵记着旧地址，所以彻底干净的重跑是 down -v（用法里也写了）。
 set -euo pipefail
 
+# P45: buildx >= 0.37.2 enforces bake's entitlement consent gate even under --progress=rawjson
+# (GHSA-gwr2-q96m-6682). Compose builds through `buildx bake` and only ever grants
+# fs.read / security.insecure -- never `network.host`, which compose.yaml requests for the
+# local WSL2 proxy -- so the build is refused before it starts ("additional privileges
+# requested: pass \"--allow=network.host\""). Nightly died here twice (2026-10-09/10).
+# COMPOSE_BAKE=false uses the classic path, which hands the declared entitlements straight
+# to the builder. Pinned by tests/test_drill_prereqs.py. An `export` is a bash builtin, so
+# --help still works without docker.
+export COMPOSE_BAKE=false
+
 # 只用 bash 内建 echo：--help 必须在 docker/uv 检查之前就能工作，连 cat 都不能依赖。
 usage() {
   echo '用法:'

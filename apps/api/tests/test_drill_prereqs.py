@@ -25,6 +25,42 @@ BASH = shutil.which("bash") or "/bin/bash"
 
 # P35: the three drills that bring the stack up and seed the smoke model row.
 DRILL_SCRIPTS = (SMOKE, SCRIPT, FAULT)
+
+#: P45: buildx >= 0.37.2 enforces the bake entitlement consent gate even under
+#: --progress=rawjson (GHSA-gwr2-q96m-6682). Compose builds through `buildx bake` and never
+#: grants `network.host`, so a build that *requests* host networking is refused outright:
+#: `additional privileges requested: pass "--allow=network.host"`. The stack's compose file
+#: asks for it (WSL2 proxy), so every script that builds the stack must opt out of bake.
+BAKE_OFF = "COMPOSE_BAKE=false"
+BUILDING_SCRIPTS = (SMOKE, SCRIPT, FAULT)
+
+
+@pytest.mark.parametrize("script", BUILDING_SCRIPTS, ids=lambda path: path.name)
+def test_a_script_that_builds_the_stack_opts_out_of_bake(script: Path) -> None:
+    """P45: nightly went red twice (2026-10-09/10) in the first build step -- the runner
+    image bumped buildx 0.37.1 -> 0.37.2, which stopped skipping the entitlement consent
+    check under --progress=rawjson. compose.yaml requests network.host for the local proxy,
+    and Compose's bake path only ever passes --allow fs.read / security.insecure, so the
+    build is refused before it starts.
+
+    COMPOSE_BAKE=false restores the classic path, which hands the declared entitlements
+    straight to the builder. Pin it per script: a new drill that builds the stack without
+    the opt-out would otherwise only fail on the nightly schedule."""
+    # Match a live directive, not the string: the explanatory comment above it names the
+    # variable too, so a substring check would pass with the export deleted (measured --
+    # the first cut of this guard stayed green against exactly that mutation).
+    live = [
+        line.strip()
+        for line in script.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+    assert f"export {BAKE_OFF}" in live, (
+        f"{script.name} builds the stack but never exports {BAKE_OFF} "
+        f"(a comment mentioning it does not count)"
+    )
+
+
 MIGRATE_RUN = re.compile(r"docker compose run\b[^\n]*\bmigrate\b")
 #: httpx needs an absolute URL; the drill builds these from --base at runtime.
 URL = "http://drill.test/api/v1/interview/sessions/s1/answers"
