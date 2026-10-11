@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..ai_resilience import AiResilience, Stage
 from ..llm_gateway import ChatRequest, LlmGateway, Message
+from .categories import CATEGORY_LABELS, DISPLAY_ORDER
 from .errors import SessionNotFound
 from .models import InterviewSession, ReportRecord
 from .orm import InterviewAnswerRow, InterviewQuestionRow, InterviewReportRow
@@ -31,6 +32,10 @@ DIMENSION_LABELS = {
     "coverage": "要点覆盖",
     "completeness": "完成度",
 }
+
+#: A category needs at least this many scored questions before it gets a number (Q16).
+MIN_SCORED_PER_CATEGORY = 2
+THIN_SAMPLE_COMMENT = "样本不足"
 
 SUMMARY_SYSTEM_PROMPT = (
     "你是一名面试官，需要为一次模拟面试写 2-3 句总结。只依据给定的分数与要点数据，"
@@ -239,6 +244,7 @@ class ReportService:
                     "topic_no": question.topic_no,
                     "follow_up_index": question.follow_up_index,
                     "kind": "follow_up" if question.follow_up_index else "main",
+                    "category": question.category,
                     "question": question.text,
                     "answer": answer.answer if answer else None,
                     "score": answer.score if answer else None,
@@ -270,6 +276,7 @@ class ReportService:
             "session_id": session_id,
             "overall_score": round(statistics.fmean(all_scores), 1) if all_scores else None,
             "dimensions": dimensions,
+            "categories": category_breakdown(turns),
             "turns": turns,
             "suggestions": _suggestions(turns, dimensions),
             "generated_at": datetime.now(UTC).isoformat(),
@@ -330,6 +337,51 @@ def _dimensions(
     ]
 
 
+def category_breakdown(turns: list[dict]) -> list[dict]:
+    """Per-category score, question count and one comment (Q7 / Q16).
+
+    Every category is listed, including the ones this interview never asked about; a category
+    with fewer than MIN_SCORED_PER_CATEGORY scored questions stays unscored and says so.
+    """
+    items: list[dict] = []
+    for category in DISPLAY_ORDER:
+        scores = [
+            float(turn["score"])
+            for turn in turns
+            if turn.get("category") == category.value and turn.get("score") is not None
+        ]
+        if len(scores) < MIN_SCORED_PER_CATEGORY:
+            items.append(
+                {
+                    "key": category.value,
+                    "label": CATEGORY_LABELS[category],
+                    "count": len(scores),
+                    "score": None,
+                    "comment": THIN_SAMPLE_COMMENT,
+                }
+            )
+            continue
+        score = round(statistics.fmean(scores), 1)
+        items.append(
+            {
+                "key": category.value,
+                "label": CATEGORY_LABELS[category],
+                "count": len(scores),
+                "score": score,
+                "comment": _category_comment(score),
+            }
+        )
+    return items
+
+
+def _category_comment(score: float) -> str:
+    if score >= 85:
+        return "掌握扎实，能撑住追问"
+    if score >= 70:
+        return "基本掌握，细节还可以再深"
+    return "需要补强，建议按考点系统过一遍"
+
+
 MAX_SUGGESTION_POINT_LENGTH = 32
 
 
@@ -363,6 +415,7 @@ def _to_record(row: InterviewReportRow) -> ReportRecord:
         session_id=row.session_id,
         overall_score=row.overall_score,
         dimensions=payload.get("dimensions", (row.dimensions or {}).get("items", [])),
+        categories=payload.get("categories", []),
         summary=row.summary,
         turns=payload.get("turns", []),
         suggestions=payload.get("suggestions", []),

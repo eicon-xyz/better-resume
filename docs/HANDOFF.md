@@ -6,7 +6,12 @@
 
 ## 1. 当前状态
 
-**`main` = `353b4b5`（CI 绿），没有挂起的 PR，工作区无在飞阶段。**
+**`main` = `353b4b5`（CI 绿），没有挂起的 PR。**
+
+- **在飞阶段**：`docs/tickets/p11-resume-driven-questions/`（简历驱动的分类出题）——实现已落工作区，
+  **待用户验收**（对账与未验证项见同目录 `ACCEPTANCE.md`）。
+- 本地分支 `docs/cleanup-current-state`（`84f622b`）承载那轮全量文档清理，**未推送**；
+  该分支之后的改动仍在工作区。
 
 - 已合并：M0–M6、V、P1–P10。代码即事实：验证入口 `bash scripts/verify.sh --list`。
 - 验证网：CI 双 job 与本地走同一份分层命令（`scripts/verify.sh`）；`nightly`（每日 02:30 UTC，deploy + quick fault）
@@ -82,6 +87,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
 | `scripts/verify_audit_evidence.py` | 引证核对分两层：**结构层总是跑**（字段齐全 + 引用的文件/行号存在）；**逐字层**默认只报告，`--strict` 时 partial 也算失败 |
 | `scripts/check_scripts.py` | 两个脚本目录的语法扫描（`SyntaxWarning` 当错误处理） |
 | `GLOSSARY.md` | 域词汇表（**先读它**）；术语以外的实现细节不进这个文件 |
+| `apps/api/src/better_resume/interview_engine/corpus/questions.json` | 随包发布的八股参考题语料（120 条 / 10 个 topic / 43 个来源页）。**更新方式**：改 JSON 后跑 `cd apps/api && uv run python scripts/check_corpus.py`（条数 100–150、每 topic ≥ 8、来源去重 ≥ 12、id 与题干不重复、URL 必须 https）；缺文件或坏 JSON 是发布缺陷——加载器抛 `CorpusError`，由 `tests/interview_engine/test_corpus.py` 钉住 |
 | `docs/agents/subagents.md` | 用子智能体干活的操作约定 |
 
 ## 4. 本机环境事实与坑
@@ -128,6 +134,8 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
   也没做多可用区与脑裂治理。另一个**已探明的限制**：compose 的单机内嵌 DNS 在容器退出后不再解析服务名，
   哨兵会进 TILT 而拒绝 failover——所以演练用 `docker compose pause redis`（主不可达）而非杀容器，后者在本仓库无法验证。
 - **>24 并发 / 真实 LB 抖动**：未测。
+- **分类出题的真实端到端**：`interview_type` / 题目类别 / 按类报告只在假模型 + 合成 PDF 上验过；
+  真简历 PDF + 真模型出题、以及浏览器手测（`docs/MANUAL-TESTING.md` §1.5）仍待用户验收。
 - **定时任务在合并后的默认分支上尚未跑满一轮**：`nightly`/`weekly-full` 的绿是在分支上实测的；
   合并后首个定时窗口前，默认分支的历史结论不继承。
 

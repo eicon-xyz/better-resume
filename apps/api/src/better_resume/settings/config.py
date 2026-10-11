@@ -167,6 +167,8 @@ class Settings(BaseSettings):
 
     # Uploaded resumes live on a local volume, content-addressed by sha256 (Q2 decision).
     resume_storage_dir: Path = Path("data/resumes")
+    #: How many reference questions one prompt may carry (Q14 keeps this a plain top-N filter).
+    corpus_limit: int = Field(default=24, ge=1, le=100)
 
     # M3: resilience budgets and in-process rate limiting.
     resilience: ResilienceSettings = Field(default_factory=ResilienceSettings)

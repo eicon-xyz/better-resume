@@ -160,22 +160,25 @@ def test_repeat_upload_replays(client: TestClient, gateway, migrated_database: s
     assert fake.calls == 1
 
 
-def test_unparsable_resume_returns_400_and_stays_retryable(
+def test_unparsable_resume_degrades_instead_of_failing(
     client: TestClient, gateway, migrated_database: str
 ) -> None:
+    """Q18: an unreadable resume still produces a generic interview, and the response says so."""
     login(client)
     session_id = client.post("/api/v1/interview/sessions", json={}).json()["id"]
     fake = gateway(FakeGateway(batch(5)))
 
     response = upload(client, session_id, pdf=b"definitely not a pdf")
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "not_a_pdf"
-    assert fake.calls == 0
+    assert response.status_code == 201
+    assert response.json()["degraded"] is True
+    assert response.json()["degraded_reasons"] == ["resume_unparsable"]
+    assert len(response.json()["questions"]) == 5
+    assert fake.calls == 1
 
     listed = client.get("/api/v1/interview/sessions").json()
-    assert listed[0]["status"] == "draft"  # can retry with a good file
-    assert listed[0]["question_count"] == 0
+    assert listed[0]["status"] == "ready"
+    assert listed[0]["question_count"] == 5
 
 
 def test_vendor_timeout_maps_to_gateway_timeout(
@@ -205,3 +208,48 @@ def test_oversized_upload_is_rejected(client: TestClient, gateway, migrated_data
     response = upload(client, session_id, pdf=b"%PDF-" + b"0" * (MAX_RESUME_BYTES + 1))
 
     assert response.status_code == 413
+
+
+def test_missing_interview_type_defaults_to_auto(client: TestClient) -> None:
+    login(client)
+
+    created = client.post("/api/v1/interview/sessions", json={})
+
+    assert created.status_code == 201
+    assert created.json()["interview_type"] == "auto"
+
+
+def test_explicit_interview_type_is_stored(client: TestClient) -> None:
+    login(client)
+
+    created = client.post("/api/v1/interview/sessions", json={"interview_type": "project"})
+
+    assert created.status_code == 201
+    assert created.json()["interview_type"] == "project"
+
+
+def test_invalid_interview_type_falls_back_to_auto(client: TestClient) -> None:
+    login(client)
+
+    created = client.post("/api/v1/interview/sessions", json={"interview_type": "banana"})
+
+    assert created.status_code == 201
+    assert created.json()["interview_type"] == "auto"
+
+
+def test_session_view_keeps_the_generation_notices(
+    client: TestClient, gateway, migrated_database: str
+) -> None:
+    """Q9 / Q18: parser warnings and degradation reasons outlive the upload response."""
+    login(client)
+    session_id = client.post("/api/v1/interview/sessions", json={}).json()["id"]
+    gateway(FakeGateway(batch(3)))
+
+    degraded = upload(client, session_id, pdf=b"definitely not a pdf", count="3")
+    assert degraded.status_code == 201
+
+    listed = client.get("/api/v1/interview/sessions").json()
+    assert listed[0]["degraded_reasons"] == ["resume_unparsable"]
+
+    restored = client.get(f"/api/v1/interview/sessions/{session_id}/restore").json()
+    assert restored["session"]["degraded_reasons"] == ["resume_unparsable"]

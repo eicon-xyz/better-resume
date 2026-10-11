@@ -14,7 +14,9 @@ from .pdf import TextBlock
 # Canonical section keys -> keywords (lower-cased matching for latin text).
 SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "education": ("教育", "学历", "education", "academic"),
-    "experience": ("工作经历", "工作经验", "实习经历", "实习", "experience", "employment"),
+    # internship first: a heading mentioning both reads as the internship entry.
+    "internship": ("实习", "internship"),
+    "work": ("工作经历", "工作经验", "experience", "employment"),
     "projects": ("项目", "project"),
     "skills": ("技能", "擅长的技术", "skills", "technical skills"),
     "summary": ("自我评价", "个人简介", "个人总结", "summary", "about me", "profile"),

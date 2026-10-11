@@ -113,6 +113,9 @@ class InterviewSession(BaseModel):
     resume_sha256: str | None = None
     resume_size: int | None = None
     resume_score: float | None = None
+    #: Signals the candidate must see: parser quality warnings and degradation reasons.
+    resume_warnings: list[str] = Field(default_factory=list)
+    degraded_reasons: list[str] = Field(default_factory=list)
     question_count: int = 0
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -166,6 +169,7 @@ class ReportRecord(BaseModel):
     session_id: str
     overall_score: float | None = None
     dimensions: list[dict[str, Any]] = Field(default_factory=list)
+    categories: list[dict[str, Any]] = Field(default_factory=list)
     summary: str | None = None
     turns: list[dict[str, Any]] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)

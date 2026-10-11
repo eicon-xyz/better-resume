@@ -123,6 +123,30 @@ describe("InterviewReportPage", () => {
     expect(screen.getByTestId("radar-chart")).toBeInTheDocument();
   });
 
+  it("scores every category and marks thin samples", async () => {
+    renderReport(
+      fakeClient({
+        ...REPORT,
+        categories: [
+          { key: "fundamentals", label: "八股", count: 0, score: null, comment: "样本不足" },
+          {
+            key: "project",
+            label: "项目",
+            count: 3,
+            score: 78.3,
+            comment: "基本掌握，细节还可以再深",
+          },
+          { key: "internship", label: "实习", count: 1, score: null, comment: "样本不足" },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText("按类给分")).toBeInTheDocument();
+    expect(screen.getByLabelText("项目得分")).toHaveTextContent("78.3");
+    expect(screen.getAllByText("样本不足")).toHaveLength(2);
+    expect(screen.getByText("基本掌握，细节还可以再深")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there is no report yet", async () => {
     renderReport(
       fakeClient(new ApiError("report for s-1 is not ready", { kind: "not_found", status: 404 })),

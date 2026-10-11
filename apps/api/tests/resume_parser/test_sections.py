@@ -54,7 +54,36 @@ def test_english_headings_are_recognized_case_insensitively() -> None:
 
     sections = split_sections(blocks)
 
-    assert [section.key for section in sections] == ["experience", "skills"]
+    assert [section.key for section in sections] == ["work", "skills"]
+
+
+def test_internship_heading_is_not_merged_into_work() -> None:
+    blocks = [
+        block("王五", size=16, bold=True, top=10),
+        block("实习经历", size=13, bold=True, top=40),
+        block("乙公司 后端实习生 2023.06-2023.09", size=10, top=60),
+    ]
+
+    sections = split_sections(blocks)
+
+    assert [section.key for section in sections] == ["internship"]
+    assert "乙公司" in sections[0].text
+
+
+def test_work_and_internship_headings_produce_two_sections() -> None:
+    blocks = [
+        block("赵六", size=16, bold=True, top=10),
+        block("工作经历", size=13, bold=True, top=40),
+        block("甲公司 后端工程师 2024.07-至今", size=10, top=60),
+        block("实习经历", size=13, bold=True, top=90),
+        block("乙公司 后端实习生 2023.06-2023.09", size=10, top=110),
+    ]
+
+    sections = split_sections(blocks)
+
+    assert [section.key for section in sections] == ["work", "internship"]
+    assert "甲公司" in sections[0].text
+    assert "乙公司" in sections[1].text
 
 
 def test_without_headings_everything_lands_in_one_section() -> None:

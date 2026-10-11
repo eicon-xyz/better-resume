@@ -94,6 +94,14 @@ export function InterviewRoomPage() {
         </p>
       ) : null}
 
+      {state.notices.length > 0 ? (
+        <ul className={styles.notices} aria-label="本次出题提示">
+          {state.notices.map((text) => (
+            <li key={text}>{text}</li>
+          ))}
+        </ul>
+      ) : null}
+
       <div className={styles.body}>
         <section className={styles.main} aria-label="当前题目">
           {current ? (

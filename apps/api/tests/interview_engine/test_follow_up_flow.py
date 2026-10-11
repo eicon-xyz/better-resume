@@ -255,3 +255,61 @@ async def test_follow_up_writer_failure_keeps_the_turn_retryable(
     assert flow.status is FlowStatus.ASKING
     assert flow.current_question_no == "1"
     assert [row.question_no for row in questions] == ["1", "2", "3"]  # no half-written follow-up
+
+
+async def set_main_category(factory, session_id: str, category: str | None) -> None:
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(InterviewQuestionRow).where(
+                    InterviewQuestionRow.session_id == session_id,
+                    InterviewQuestionRow.question_no == "1",
+                )
+            )
+        ).scalar_one()
+        row.category = category
+        await session.commit()
+
+
+async def stored_follow_up(factory, session_id: str) -> InterviewQuestionRow:
+    async with factory() as session:
+        return (
+            await session.execute(
+                select(InterviewQuestionRow).where(
+                    InterviewQuestionRow.session_id == session_id,
+                    InterviewQuestionRow.question_no == "1-F1",
+                )
+            )
+        ).scalar_one()
+
+
+async def test_follow_up_inherits_the_main_question_category(factory, ready_session: str) -> None:
+    await set_main_category(factory, ready_session, "project")
+
+    await service(factory).submit(
+        session_id=ready_session,
+        user_id=USER,
+        question_no="1",
+        answer="浅",
+        request_id="f-7",
+        gateway=FakeGateway(scores=[low()]),
+    )
+
+    assert (await stored_follow_up(factory, ready_session)).category == "project"
+
+
+async def test_follow_up_of_an_unclassified_question_stays_unclassified(
+    factory, ready_session: str
+) -> None:
+    await set_main_category(factory, ready_session, None)
+
+    await service(factory).submit(
+        session_id=ready_session,
+        user_id=USER,
+        question_no="1",
+        answer="浅",
+        request_id="f-8",
+        gateway=FakeGateway(scores=[low()]),
+    )
+
+    assert (await stored_follow_up(factory, ready_session)).category is None

@@ -215,3 +215,53 @@ def test_other_users_report_is_not_found(
     login(client)
     assert client.get(f"/api/v1/interview/sessions/{session_id}/report").status_code == 404
     assert client.get(f"/api/v1/interview/sessions/{session_id}/restore").status_code == 404
+
+
+class CategorizedGateway(FakeGateway):
+    """Question 1 is a project question; the other two are fundamentals."""
+
+    async def complete(self, req: ChatRequest) -> ChatResult:
+        if req.response_schema is QuestionBatch:
+            batch = QuestionBatch(
+                questions=[
+                    {
+                        "topic": "项目",
+                        "category": "project",
+                        "focus_points": ["取舍"],
+                        "text": "简历优化器的解析管线是怎么设计的？",
+                    },
+                    {
+                        "topic": "基础",
+                        "category": "fundamentals",
+                        "focus_points": ["原理"],
+                        "text": "请说明一致性哈希的原理",
+                    },
+                    {
+                        "topic": "基础",
+                        "category": "fundamentals",
+                        "focus_points": ["原理"],
+                        "text": "请说明缓存穿透的防护手段",
+                    },
+                ],
+                resume_score=68.0,
+            )
+            return ChatResult(content=batch.model_dump_json(), model="m", parsed=batch)
+        return await super().complete(req)
+
+
+def test_report_carries_the_category_breakdown(
+    client: TestClient, gateway, migrated_database: str
+) -> None:
+    login(client)
+    gateway(CategorizedGateway())
+    session_id = prepare(client, answers=1)  # only the project question is scored
+
+    report = client.post(f"/api/v1/interview/sessions/{session_id}/finish").json()
+
+    by_key = {item["key"]: item for item in report["categories"]}
+    assert set(by_key) == {"fundamentals", "project", "internship"}
+    assert by_key["project"]["count"] == 1
+    assert by_key["project"]["score"] is None
+    assert by_key["project"]["comment"] == "样本不足"
+    assert by_key["fundamentals"]["comment"] == "样本不足"
+    assert report["turns"][0]["category"] == "project"

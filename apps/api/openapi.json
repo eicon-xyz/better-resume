@@ -235,6 +235,45 @@
         "title": "Body_generate_questions_api_v1_interview_sessions__session_id__questions_post",
         "type": "object"
       },
+      "CategoryScoreView": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "comment"
+        ],
+        "title": "CategoryScoreView",
+        "type": "object"
+      },
       "ChatMessageView": {
         "properties": {
           "client_message_id": {
@@ -452,6 +491,17 @@
       },
       "GeneratedQuestionView": {
         "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "focus_points": {
             "items": {
               "type": "string"
@@ -505,6 +555,13 @@
       },
       "InterviewReportView": {
         "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryScoreView"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
           "dimensions": {
             "items": {
               "$ref": "#/components/schemas/DimensionView"
@@ -593,6 +650,13 @@
             "title": "Created At",
             "type": "string"
           },
+          "degraded_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Reasons",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -623,6 +687,13 @@
               }
             ],
             "title": "Resume Score"
+          },
+          "resume_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Resume Warnings",
+            "type": "array"
           },
           "status": {
             "title": "Status",
@@ -705,6 +776,18 @@
       },
       "QuestionBatchView": {
         "properties": {
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "degraded_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Reasons",
+            "type": "array"
+          },
           "flow": {
             "anyOf": [
               {
@@ -757,6 +840,17 @@
               }
             ],
             "title": "Answer"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           },
           "feedback": {
             "anyOf": [
