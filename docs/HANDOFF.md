@@ -8,11 +8,13 @@
 
 **`origin/main` = `353b4b5`（CI 绿），没有挂起的 PR。本地 `main` = `cb439e7`，落后 4 个 commit（坑见 §4）。**
 
-- **两个在飞阶段，都待用户验收、都未推送、都没有 upstream**：
-  - `p11-resume-driven-questions`（同名分支）= `84f622b`（全量文档清理）+ `a2a0ff1`（简历驱动的分类出题）；
-    对账与未验证项见 `docs/tickets/p11-resume-driven-questions/ACCEPTANCE.md`。
+- **两个在飞阶段，都还没有 PR**：
+  - `p11-resume-driven-questions`（同名分支）= 全量文档清理 + 简历驱动的分类出题 + 验收包状态订正；
+    **待用户验收**（对账与未验证项见 `docs/tickets/p11-resume-driven-questions/ACCEPTANCE.md`）。
   - `p12-intent-alignment`（同名分支，**叠在 P11 之上**）= 意图对齐与验收减负（评审必答问题、高风险面清单、
-    票据与验收包必填段、跨模型交接格式）+ 规则成本检验与机制消融记录；见 `docs/tickets/p12-intent-alignment/ACCEPTANCE.md`。
+    票据与验收包必填段、跨模型交接格式）+ 规则成本检验与三轮机制消融记录；**用户已验收**（2026-10-11），
+    见 `docs/tickets/p12-intent-alignment/ACCEPTANCE.md`。
+  - 两个分支都已推送到 `origin` 并设了 upstream。**PR 顺序必须是 P11 → P12**（见下条）。
 - **P12 依赖 P11，不能先合**：`D23` 由 `84f622b` 引入，`origin/main` 上没有（`git show origin/main:docs/DECISIONS.md | grep -c D23` → 0），
   而 P12 的文档引用 D23 共 7 处。
 - 分支 `docs/cleanup-current-state`（`84f622b`）的内容已被 `p11-resume-driven-questions` 包含。
