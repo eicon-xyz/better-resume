@@ -22,8 +22,8 @@ export function toLocalMessage(view: ChatMessageView): ChatMessage {
  *
  * User turns dedupe exactly by client_message_id. An assistant draft dedupes by *the turn it
  * answers*: the server row that follows that user turn's persisted message. Anchoring on the turn
- * instead of the text is what stops two identical replies from swallowing each other (P8 /
- * web-04); comparing content survives only as a fallback for a draft with no user turn in front
+ * instead of the text is what stops two identical replies from swallowing each other;
+ * comparing content survives only as a fallback for a draft with no user turn in front
  * of it (the page can merge a lone assistant message).
  */
 export function mergeHistory(server: ChatMessageView[], local: ChatMessage[]): ChatMessage[] {

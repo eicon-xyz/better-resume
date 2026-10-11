@@ -1,4 +1,4 @@
-"""P2-T6 round 2: per-module coverage floors for the deep modules.
+"""per-module coverage floors for the deep modules.
 
 Criterion (user decision + codebase-design vocabulary): a module gets a floor when it passes
 the deletion test, has a small stable interface, and hides thick implementation. Shallow

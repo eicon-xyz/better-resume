@@ -40,7 +40,7 @@ class AdapterKind(StrEnum):
     OPENAI_COMPAT = "openai_compat"
     #: Xingyun workflow: the cloud owns the prompt, we own flow_id + the mapping.
     XINGYUN = "xingyun"
-    #: DashScope application call (P3): the same shape, bound by app_id instead of flow_id.
+    #: DashScope application call: the same shape, bound by app_id instead of flow_id.
     DASHSCOPE_APP = "dashscope_app"
 
 

@@ -1,6 +1,6 @@
 # better-resume 技术栈与范围决议记录
 
-> 产生方式：对 AI-Meeting（码上面试平台）的深度架构分析（见 docs/ai-meeting-architecture-analysis.md）
+> 产生方式：对 AI-Meeting（码上面试平台）的深度架构分析（见 docs/history_docs/ai-meeting-architecture-analysis.md）
 > 之后的专项技术选型评审，三轮 grilling 逐项拍板。本文档是新仓库的**开工依据**，
 > 与分析文档 §11/§12 一致；冲突时以本文档为准。
 
@@ -14,7 +14,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 
 ---
 
-## 1. 决议表（D01-D22）
+## 1. 决议表（D01-D23）
 
 | # | 决议 | 内容 |
 | --- | --- | --- |
@@ -35,11 +35,12 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 | D15 | 语音交互范围 | 一个转写通道、两个消费方（面试答案框 + 对话输入框）、一个播放器；**砍草稿板** |
 | D16 | 简历亮点排序 | 深挖 trio：**① ai-resilience（单飞+熔断+限流，假时钟测试）② interview-engine（状态机+幂等+裁决）③ ASR 句池归并增量去重**；支撑 bullet：④ llm-gateway（多模型注册+schema 防幻觉）⑤ resume-parser（混合解析） |
 | D17 | 工程微默认 | uv / pnpm；structlog（JSON + request_id，**不引 OpenTelemetry**）；测试先行、只 mock 系统边界（LLM/时钟/Redis/讯飞）；GitHub Actions 双 job（ruff+pytest+alembic check / eslint+tsc+vitest）；**OpenAPI → TS 类型生成**（openapi-typescript，根治前端猜字段）；MIT |
-| D18 | 开发流程 | 五阶段 **grill → spec → implement → review → retro**（Matt Pocock 技能集，2026-09-23 起）：grill 逐轮拷问并即时把术语落进 `GLOSSARY.md`（D21 改名；D18 原文写的是 `CONTEXT.md`）、把决策落进本文；spec = `docs/tickets/<stage>/README.md`（即原「阶段提案」）；implement 驱动 `/tdd` 垂直切片、收尾自动 `/code-review` 双轴评审；retro 读会话日志改环境。**人工闸门不变**：spec 经用户点头才动工、验收包由用户验收、AI 不擅自合并。配置见 `docs/agents/`（本地 markdown tracker，映射 `docs/tickets/`） |
-| D19 | 分布式限流与降级语义 | 限流状态迁到 Redis（Lua 令牌桶，单次 `eval` 原子；键 `br:rl:{bucket}:{identity}`，TTL 兜底过期），**N 副本共享同一份对外配额**。只共享供应商成本桶（`AI_CALL/ANSWER/HEAVY`）——它们限的是对外配额；`GENERAL/READ` 留在进程内：它们限的是「我们自己的容量」，副本变多容量也变多，按副本限才是对的（P7）。时间基线用**应用侧注入的 wall-clock**（`SystemClock` 是 monotonic，跨进程不可比；Lua 只做算术，负 elapsed 钳 0）。**降级语义**：Redis 不可用时退回进程内桶（配额暂时 ×N，即迁移前的语义），并显式可观测——`ratelimit_degraded` 日志 + `/resilience/stats` 计数 + 响应头 `X-RateLimit-Scope: shared\|instance`，外加 30s 冷却窗口（窗口内不再尝试 Redis）与 50ms 单次超时；**不 fail-closed**（限流不是正确性，Redis 抖动不该升级成全站 503），**不按快照拒绝**（跨副本快照本就不准，只会更严不会更准）。对外语义不变：`X-Instance-Id`、429 映射、白名单、身份哈希照旧 |
+| D18 | 开发流程 | 五阶段 **grill → spec → implement → review → retro**（Matt Pocock 技能集，2026-09-23 起）：grill 逐轮拷问并即时把术语落进 `GLOSSARY.md`、把决策落进本文；spec = `docs/tickets/<stage>/README.md`；implement 驱动 `/tdd` 垂直切片、收尾自动 `/code-review` 双轴评审；retro 读会话日志改环境。**人工闸门不变**：spec 经用户点头才动工、验收包由用户验收、AI 不擅自合并。配置见 `docs/agents/`（本地 markdown tracker，映射 `docs/tickets/`） |
+| D19 | 分布式限流与降级语义 | 限流状态迁到 Redis（Lua 令牌桶，单次 `eval` 原子；键 `br:rl:{bucket}:{identity}`，TTL 兜底过期），**N 副本共享同一份对外配额**。只共享供应商成本桶（`AI_CALL/ANSWER/HEAVY`）——它们限的是对外配额；`GENERAL/READ` 留在进程内：它们限的是「我们自己的容量」，副本变多容量也变多，按副本限才是对的。时间基线用**应用侧注入的 wall-clock**（`SystemClock` 是 monotonic，跨进程不可比；Lua 只做算术，负 elapsed 钳 0）。**降级语义**：Redis 不可用时退回进程内桶（配额暂时 ×N），并显式可观测——`ratelimit_degraded` 日志 + `/resilience/stats` 计数 + 响应头 `X-RateLimit-Scope: shared\|instance`，外加 30s 冷却窗口（窗口内不再尝试 Redis）与 50ms 单次超时；**不 fail-closed**（限流不是正确性，Redis 抖动不该升级成全站 503），**不按快照拒绝**（跨副本快照本就不准，只会更严不会更准）。对外语义不变：`X-Instance-Id`、429 映射、白名单、身份哈希照旧 |
 | D20 | 桶算术的双实现与等价契约 | 限流桶的补充/扣减算术**保留两份实现**：Redis 侧 Lua（`redis_buckets._TAKE_LUA`，跨副本读改写必须一次 `eval` 原子完成）与进程内 `TokenBucket`（降级路径不能依赖 Redis，见 D19）。二者**不可归约**，因此不追求「合并成一份」，而是把「必须永远一致」变成可执行断言：`take_lua_math` 是 Lua 算术的**可执行镜像**（运算顺序与 Lua 字面一致——`elapsed / 1000 * rate` 与 `elapsed * rate / 1000` 差 1 ULP），由 `tests/ai_resilience/test_ratelimit_equivalence.py` 用同一张场景表驱动两条路径、逐项且**按位**比较，外加一条「Lua 关键式仍在」的源码警报。**否决的替代**：删 Lua 改成 Python 侧 RMW（要 WATCH/MULTI 重试或接受非原子读改写，属行为变更）；把 `lupa` 加进依赖以便用 fakeredis 真执行 Lua（原生依赖 + CI 走 `uv sync --frozen`，须单独提案）；模板生成 Lua（CI 里同样执行不了，等于把风险换个地方藏）。**已知边界**：本环境无法执行 Lua，「等价」是「镜像 ↔ TokenBucket 可执行且按位」＋「Lua 文本警报」，**不含 Redis 端真实执行验证**；Lua `tostring`（%.14g）往返有 ~1e-14 尾差；键 TTL 与进程内 `max_identities` 是两种过期策略，不要求等价。**纪律**：改任一侧算术必须两处同改，否则等价测试会红。审计条目 ai-02 |
 | D21 | 文档落点：术语表与 ADR | 域词汇表用仓库根 **`GLOSSARY.md`**，**取代** D18 里写的 `CONTEXT.md`——与技能默认文件名对齐，少一个自定义名；ADR 仍用仓库既有的 **`docs/DECISIONS.md` 续编 D 号**（不建 `docs/adr/`），因为决议表已是本仓库单一权威，且被票据/验收包互相引用。词汇表只收本仓库特有的**产品域**与**工程过程**词（分两节），**不含实现细节**（Lua / TokenBucket 这类属实现，不进词汇表）；`docs/agents/domain.md`、`AGENTS.md` 的指针同步改。首次落地（2026-10-06）收 **31 词 / 7 节**：面试（7）、会话与消息（3）、语音（3）、模型与场景（3）＋ 阶段与文档（4）、验证（9）、配额与降级（2） |
-| D22 | 验证证据的判定权 | 「验证过」必须由**会变红的检查**背书，分三级：(1) **CI 的 scripts 层只跑结构级核对**——审计 JSON 字段齐全 + 引证指向存在的行区间（`verify_audit_evidence.py --structural`），这一级**不因代码漂移变红**（实测：对 `http/chat.py` 纯插 3 行 → 4 条引证变 partial；`--strict` 退 1、`--structural` 退 0）；(2) **`--strict` 逐字级核对降为审计/修复收口的手动门槛**（引证窗口里必须真有原文摘录）；(3) 判断项规则落 `CODING_STANDARDS.md`——声称「我验证了 X」的脚本必须真检查退出码或断言，只打印结论的验证脚本视为缺陷。配套工具：`scripts/verify_mutation.sh`（断言基线绿 → 变异红 → 恢复绿，并校验恢复后 sha256 与改前一致）、`scripts/check_scripts.py`（两个脚本目录语法扫描，SyntaxWarning 当错误）、`.githooks/pre-commit`（可选，提交前挡刀）。**否决**：把 strict 放进 CI（无关重构变红＝教人绕过它）；只靠自述证据（曾有一个恒退 0 的「证明脚本」从全绿 CI 里溜过） |
+| D22 | 验证证据的判定权 | 「验证过」必须由**会变红的检查**背书，分三级：(1) **CI 的 scripts 层只跑结构级核对**——审计 JSON 字段齐全 + 引证指向存在的行区间（`verify_audit_evidence.py --structural`），这一级**不因代码漂移变红**；(2) **`--strict` 逐字级核对降为审计/修复收口的手动门槛**（引证窗口里必须真有原文摘录）；(3) 判断项规则落 `CODING_STANDARDS.md`——声称「我验证了 X」的脚本必须真检查退出码或断言，只打印结论的验证脚本视为缺陷。配套工具：`scripts/verify_mutation.sh`（断言基线绿 → 变异红 → 恢复绿，并校验恢复后 sha256 与改前一致）、`scripts/check_scripts.py`（两个脚本目录语法扫描，SyntaxWarning 当错误）、`.githooks/pre-commit`（可选，提交前挡刀）。**否决**：把 strict 放进 CI（无关重构变红＝教人绕过它） |
+| D23 | 题目分类与八股语料 | 每道题必须带三个一级类之一——`fundamentals`(八股) / `project` / `internship`；类别由模型在 `QuestionBatch` 里给出、引擎用枚举校验，**非法或缺失回退到规则推断**（题目引用了项目 → `project`；引用了实习段 → `internship`；否则 `fundamentals`），追问**继承主问题**的类别。八股语料是**构建期**搜集、随包发布（`interview_engine/corpus/`）、逐条带 `source_url` 的参考题集合，运行时按简历技能过滤 top-N 注入 prompt；**语料不是题库**（不机械抽题、不承诺覆盖度）。出题配比默认由简历内容算出（题量 5：实习 1 / 项目 2 / 其余八股），用户可在上传页用受控枚举 `interview_type` 覆盖（非法值回退 `auto`）。报告在四维雷达之外**另开一节**按类给分（分数 + 题数 + 评语；某类 < 2 题不出分数，写「样本不足」）。**降级分两类**：语料文件缺失/损坏 = 大声失败（发布缺陷）；过滤后没匹配 = 降级 + 明示。**否决**：运行期联网搜题（把网络抖动塞进用户等待出题的路径）、向量检索（违 D03）、OCR、把工作经历单列一类 |
 
 ---
 

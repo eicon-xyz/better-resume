@@ -1,4 +1,4 @@
-"""V6: soak sampling and fault injection for the distributed pieces.
+"""Soak sampling and fault injection for the distributed pieces.
 
 Everything here talks to the stack through nginx (never straight into a container) and injects
 faults with docker, so the evidence is "what a client saw while Redis/worker were broken".
@@ -8,7 +8,7 @@ Run it through `scripts/fault_injection_drill.sh`, or by hand:
     uv run python -m scripts.fault_probe soak --duration 1200
     uv run python -m scripts.fault_probe fault --scenario redis-pause --seconds 20
 
-P5 的自动 failover 走 --auto（需要 compose 的 drill profile + 应用侧哨兵变量）：
+自动 failover 走 --auto（需要 compose 的 drill profile + 应用侧哨兵变量）：
 
     uv run python -m scripts.fault_probe fault --scenario redis-failover \
         --auto --master-name br-master
@@ -38,7 +38,7 @@ from scripts.kill_instance_drill import bind_every_scene_to_the_fake
 PROBE_TIMEOUT_SECONDS = 2.0
 
 DOCKER = shutil.which("docker") or "docker"
-#: P1-D: the throwaway replica used by the failover drill.
+#: The throwaway replica used by the failover drill.
 REPLICA_NAME = "br-redis-replica"
 #: P5: the sentinel-managed drill (compose `drill` profile). One sentinel is enough to ask.
 SENTINEL_SERVICE = "redis-sentinel-1"
@@ -69,7 +69,7 @@ def docker(*args: str) -> str:
 
 
 def parse_replica_link(info: str) -> str:
-    """'up' / 'down' / 'unknown' from a replica's INFO replication output (P1-D)."""
+    """'up' / 'down' / 'unknown' from a replica's INFO replication output."""
     for line in info.splitlines():
         key, _, value = line.strip().partition(":")
         if key == "master_link_status":
@@ -472,7 +472,7 @@ async def login_with_retry(
     client: httpx.AsyncClient, *, attempts: int = 5, delay: float = 1.0
 ) -> httpx.Response:
     """P37: a fault experiment leaves brief stale connections behind, and a 503 is the
-    documented "dependency is down" answer (P17) — retry the login instead of aborting the
+    documented "dependency is down" answer — retry the login instead of aborting the
     next experiment on one bad response.
 
     The soak grew this loop first ("observed after a failover"); worker-crash runs straight
@@ -506,9 +506,9 @@ def write_json(path: str, payload: dict[str, Any]) -> None:
 async def wait_until_the_stack_is_usable(
     client: httpx.AsyncClient, *, model: str, budget_seconds: float, delay: float = 2.0
 ) -> None:
-    """P38: worker-crash runs straight after the failover experiment puts the original
-    master back, and the scene/registry caches answer 503 for a while after that (P17
-    "dependency unavailable"). The experiment is about reclaiming a crashed consumer's job,
+    """worker-crash runs straight after the failover experiment puts the original
+    master back, and the scene/registry caches answer 503 for a while after that
+    ("dependency unavailable"). The experiment is about reclaiming a crashed consumer's job,
     not about surviving a cold cache — so wait for the stack to be usable, and still fail
     loudly if it never is.
     """
@@ -661,7 +661,7 @@ async def fault(args: argparse.Namespace) -> int:
                     health_ok += 1 if health.status_code == 200 else 0
                     if not rate_sampled:
                         rate_sampled = True
-                        # 认证路径自己也依赖 Redis：分区期间带 cookie 的请求会先超时/503（P1-D 的
+                        # 认证路径自己也依赖 Redis：分区期间带 cookie 的请求会先超时/503（会话存储的
                         # 语义），根本走不到限流器的判定。所以降级要在**认证之前**观测：匿名请求
                         # （IP 身份）不碰会话存储，401 之前那一步就是限流 middleware 的决定。
                         async with httpx.AsyncClient(base_url=args.base, trust_env=False) as anon:
@@ -759,7 +759,7 @@ async def sentinel_failover(args: argparse.Namespace) -> int:
     notes: list[str] = []
     async with httpx.AsyncClient(base_url=args.base, trust_env=False) as client:
         login = await login_with_retry(client)
-        # 前置状态必须在故障前就存在：否则 /auth/me 的 401 是"没 cookie"，不是"会话丢了"（P27）。
+        # 前置状态必须在故障前就存在：否则 /auth/me 的 401 是"没 cookie"，不是"会话丢了"。
         cookie = login.cookies.get("br_session")
         original = sentinel_master_address(master_name)
         if original is None:
@@ -954,7 +954,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--ready-timeout",
         type=float,
         default=120.0,
-        help="how long worker-crash waits for the stack to stop answering 503 (P38)",
+        help="how long worker-crash waits for the stack to stop answering 503",
     )
     args = parser.parse_args(argv)
     if args.command == "fault" and args.auto and args.scenario != "redis-failover":

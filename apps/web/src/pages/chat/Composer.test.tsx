@@ -14,7 +14,7 @@ function box() {
   return screen.getByLabelText("输入消息") as HTMLTextAreaElement;
 }
 
-describe("chat composer realtime transcript (P28 layer 2)", () => {
+describe("chat composer realtime transcript", () => {
   it("growing/correcting partials replace the span instead of accumulating", () => {
     const view = render(<Composer onSend={vi.fn()} onCancel={vi.fn()} streaming={false} transcript="我" />);
     expect(box().value).toBe("我");

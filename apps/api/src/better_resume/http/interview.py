@@ -428,7 +428,7 @@ async def finish_interview(
 ) -> InterviewReportView:
     state = request.app.state
     if state.settings.jobs_enabled:
-        # Queue the narrative and return the frozen numbers immediately (M6-T4).
+        # Queue the narrative and return the frozen numbers immediately.
         result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(
             session_id=session_id, user_id=principal.user_id
         )

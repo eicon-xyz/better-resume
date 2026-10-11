@@ -1,4 +1,4 @@
-"""Scene binding endpoints (M5-T2): inspect and switch providers without a redeploy."""
+"""Scene binding endpoints: inspect and switch providers without a redeploy."""
 
 from __future__ import annotations
 

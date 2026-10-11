@@ -1,4 +1,4 @@
-"""M3-T2: in-process single flight — concurrent same key runs the vendor once."""
+"""in-process single flight — concurrent same key runs the vendor once."""
 
 from __future__ import annotations
 

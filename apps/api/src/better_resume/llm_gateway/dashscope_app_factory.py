@@ -1,4 +1,4 @@
-"""P3: factory for the DashScope application-call adapter.
+"""factory for the DashScope application-call adapter.
 
 One factory per adapter kind, like the Xingyun one: the binding row says *which* application
 serves a scene (`target_ref` = app_id) and the credential only ever comes from settings

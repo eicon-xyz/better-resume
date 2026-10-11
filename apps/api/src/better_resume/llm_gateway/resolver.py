@@ -1,4 +1,4 @@
-"""Scene -> gateway resolution (M5-T2): the seam that makes provider switching a config change.
+"""Scene -> gateway resolution: the seam that makes provider switching a config change.
 
 The resolver owns three things and nothing else: which binding a scene has today (cached),
 how to materialise a gateway for that binding, and how to describe both honestly to the API.
@@ -25,7 +25,7 @@ from .scenes import AdapterKind, LlmScene, scene_label
 
 logger = structlog.get_logger("better_resume.llm_gateway.resolver")
 
-#: What every scene runs on out of the box (mirrors the M5-T1 migration seed).
+#: What every scene runs on out of the box (mirrors the migration seed).
 DEFAULT_ADAPTER = AdapterKind.OPENAI_COMPAT
 DEFAULT_TARGET_REF = "deepseek-flash"
 

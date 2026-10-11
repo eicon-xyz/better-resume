@@ -1,4 +1,4 @@
-"""M6-T4: job queue semantics (real Redis) and the report-summary worker path."""
+"""job queue semantics (real Redis) and the report-summary worker path."""
 
 from __future__ import annotations
 

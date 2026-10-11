@@ -1,4 +1,4 @@
-"""P2-T2: the pytest layer markers (unit/docker/real) are declared and the default run
+"""the pytest layer markers (unit/docker/real) are declared and the default run
 excludes the heavy layers. This pins the config so a stray marker or a missing default
 filter cannot silently bring the compose/real-machine layers into every test run."""
 

@@ -1,4 +1,4 @@
-"""M4-T1: sentence-pool merge (AstTranscriptionAssembler ported from the old Java class).
+"""sentence-pool merge (AstTranscriptionAssembler ported from the old Java class).
 
 Input: xunfei-style incremental packets (seg_id / pgs apd|rpl / rg / bg / ed / final).
 Output: the three-level snapshot (full / committed / live) plus a monotonic revision.

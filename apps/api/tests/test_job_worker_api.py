@@ -29,7 +29,7 @@ from .test_interview_report_api import FakeGateway, login, prepare
 
 
 def _private_jobs_stream() -> str:
-    """A stream no other test can collide with (P40).
+    """A stream no other test can collide with.
 
     This used to be `f"br:jobs:test:{id(settings):x}"`. CPython reuses object addresses —
     12 freshly built Settings objects yielded only 2 distinct ids — so the "private stream

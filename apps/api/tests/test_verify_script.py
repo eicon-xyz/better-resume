@@ -1,6 +1,6 @@
-"""P2-T1: scripts/verify.sh is the single entry point for every verification layer.
+"""scripts/verify.sh is the single entry point for every verification layer.
 
-CI and local must call the same commands (M6 P16: "local green, CI red" happened because the
+CI and local must call the same commands ("local green, CI red" happens when the
 two drifted). This file pins the script's own contract: the layer list and dry-run behaviour.
 """
 
@@ -193,7 +193,7 @@ def test_a_scope_with_nothing_to_run_says_so() -> None:
 
 
 def test_all_layer_actually_runs_unit_contract_coverage_and_scripts() -> None:
-    """P31 + P8-retro: --list and AGENTS.md call "all" the local closure; pin the real expansion
+    """--list and AGENTS.md call "all" the local closure; pin the real expansion
     instead of trusting the label. The contract layer silently went missing once (a formatting
     failure stayed invisible locally until CI), and the coverage floors turned out to sit outside
     "all" the same way — a broken floor would have been locally green and CI red."""
@@ -222,7 +222,7 @@ def test_the_list_map_does_not_advertise_the_manual_strict_gate() -> None:
 
 
 def test_the_all_label_names_every_layer_it_runs() -> None:
-    """The label is what a human (and AGENTS.md) reads before trusting the run (P31 again)."""
+    """The label is what a human (and AGENTS.md) reads before trusting the run ."""
     listing = run_verify("--list").stdout
     label = next(line for line in listing.splitlines() if line.strip().startswith("= "))
 

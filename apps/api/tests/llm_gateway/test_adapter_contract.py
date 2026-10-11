@@ -1,4 +1,4 @@
-"""M5-T5: one contract suite, every LlmGateway implementation (P3 added the third).
+"""one contract suite, every LlmGateway implementation.
 
 All adapters are driven through the same seam — an injected httpx client over a mock
 transport — and every case is expressed once, in vendor-neutral terms. The per-vendor

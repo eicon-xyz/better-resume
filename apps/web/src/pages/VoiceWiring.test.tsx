@@ -1,5 +1,5 @@
 /**
- * M4-T8: voice answering wiring.
+ * Voice answering wiring.
  *
  * Boundaries are injected (capture + socket factories, fake api client) instead of stubbing
  * browser globals: deterministic, and the modules under test stay real.
@@ -340,7 +340,7 @@ describe("interview room voice wiring", () => {
   });
 });
 
-describe("interview room realtime partials (P28 regression)", () => {
+describe("interview room realtime partials", () => {
   it("streams growing partials into the box without ever duplicating them", async () => {
     const client = fakeClient();
     renderRoom(client);

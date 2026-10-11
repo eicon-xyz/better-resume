@@ -1,4 +1,4 @@
-"""M6-T1: Redis question locks — mutex, lease, takeover safety, bounded wait."""
+"""Redis question locks — mutex, lease, takeover safety, bounded wait."""
 
 from __future__ import annotations
 

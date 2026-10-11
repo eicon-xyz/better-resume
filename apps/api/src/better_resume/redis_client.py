@@ -1,4 +1,4 @@
-"""取 Redis 客户端的唯一缝（P5：主挂了应用自己切到可用节点）。
+"""取 Redis 客户端的唯一缝（主挂了应用自己切到可用节点）。
 
 为什么单独一个模块：Redis 是横跨 `identity` / `jobs` / `interview_engine` /
 `ai_resilience` 的共享依赖，不属于任何单一功能模块；而 `db/` 明确是 Postgres 引擎的位置

@@ -72,7 +72,7 @@ class MediaSettings(BaseModel):
     asr_url: str = ""
     asr_model: str = "qwen-audio-3.0-asr-flash"
     asr_timeout_seconds: float = 30.0
-    #: P1-A realtime recognition: explicit wss endpoint; empty = derive the wss:// host
+    #: Realtime recognition: explicit wss endpoint; empty = derive the wss:// host
     #: from asr_url (same workspace domain, fixed /api-ws/v1/inference path).
     asr_ws_url: str = ""
     asr_realtime_model: str = "paraformer-realtime-v2"
@@ -94,7 +94,7 @@ class RateLimitSettings(BaseModel):
     enabled: bool = True
     general_per_second: float = 20.0
     read_per_second: float = 15.0
-    # P1-B 标定（2026-09-15，docs/perf/M6-capacity.md §2.7）：真实单用户 answer ~0.2 rps、
+    # 容量标定（docs/perf/capacity.md §2.7）：真实单用户 answer ~0.2 rps、
     # chat 流 ~0.5 rps；旧值（8/6）曾允许单身份经 2 副本维持 24 并发供应商流。
     answer_per_second: float = 2.0
     heavy_per_second: float = 2.0
@@ -252,7 +252,7 @@ class Settings(BaseSettings):
 
 
 def parse_sentinel_addresses(raw: str) -> tuple[str, ...]:
-    """The single reading of BR_REDIS_SENTINELS (P8 / identity_jobs-01).
+    """The single reading of BR_REDIS_SENTINELS.
 
     Both the startup validator and RedisTopology.from_settings go through this, so "what counts as
     a configured sentinel" cannot drift into two disagreeing answers again. Address *syntax* stays

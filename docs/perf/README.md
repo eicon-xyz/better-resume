@@ -1,11 +1,11 @@
 # 压测（docs/perf）
 
-M6-T6 的自研压测脚本：`apps/api/scripts/load_test.py`（asyncio + httpx，不依赖 locust/k6）。
+自研压测脚本：`apps/api/scripts/load_test.py`（asyncio + httpx，不依赖 locust/k6）。
 它只做一件事：**对目标服务发固定比例的流量，把延迟分位数、RPS、错误分类如实记下来**。
 
 ## 前置条件
 
-- 目标栈已起（M6-T5 的 compose 形态）：nginx 8080 → 2×api（容器内 uvicorn）+ worker + postgres + redis；
+- 目标栈已起（compose 形态）：nginx 8080 → 2×api（容器内 uvicorn）+ worker + postgres + redis；
   假供应商场景还需要 compose 里的 fake-llm 服务。
 - 只需要本机有 `uv`；脚本**不**需要本机 Postgres/Redis，它只发 HTTP。
 - 同一时间**只跑一个**压测（不要和 T8 kill 演练、其他压测并行，数字会互相污染）。
@@ -52,7 +52,7 @@ M6-T6 的自研压测脚本：`apps/api/scripts/load_test.py`（asyncio + httpx�
    失败只包括 4xx（非 429）/5xx/超时/传输错误，分类进 `failure_kinds`。
 3. **mixed 是固定循环**（12 read / 5 answer / 3 chat 每 20 个请求），不是掷骰子：同样参数的两次
    运行打的是同样比例的端点，数字可比。
-4. 报告里必须写清环境（见 `M6-capacity.md` 第 1 节）；**不同机器的数字不可比**。
+4. 报告里必须写清环境（见 `capacity.md` 第 1 节）；**不同机器的数字不可比**。
 5. 脚本测的是"目标服务 + 它前面那一层"；模型延迟属于供应商，进程内数字（无 uvicorn/nginx/网络）
    不能当作部署容量。
 

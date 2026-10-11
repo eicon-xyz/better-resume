@@ -96,7 +96,7 @@ class ScriptedTranscriptionChannel:
             final=step.final,
         )
         update = self._assembler.apply(packet)
-        # The rule lives in one place now (P8 / media-01): this adapter only feeds packets.
+        # The rule lives in one place now: this adapter only feeds packets.
         for event in self._event_mapper.events(update):
             await self._emit(event)
 

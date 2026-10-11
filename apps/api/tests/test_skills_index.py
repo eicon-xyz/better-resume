@@ -1,4 +1,4 @@
-"""Skills knowledge base: structure, drift and cross-reference checks (M6-T7).
+"""Skills knowledge base: structure, drift and cross-reference checks.
 
 Same discipline as openapi.json / schema.d.ts: the committed index must equal what the
 generator renders, and --check must fail on drift. The module SKILL.md files are the
@@ -11,7 +11,6 @@ import json
 import re
 import subprocess
 import sys
-from functools import cache
 from pathlib import Path
 
 import pytest
@@ -27,7 +26,7 @@ GENERATOR = API_ROOT / "scripts/extract_api_index.py"
 OPENAPI = API_ROOT / "openapi.json"
 APP_TSX = REPO_ROOT / "apps/web/src/App.tsx"
 CI_WORKFLOW = REPO_ROOT / ".github/workflows/ci.yml"
-TICKETS = REPO_ROOT / "docs/tickets"
+HISTORY_TICKETS = REPO_ROOT / "docs/history_docs/tickets"
 
 MAX_LINES = 80
 REQUIRED_SECTIONS = [
@@ -55,8 +54,8 @@ MODULE_DIRS = {
 #: repo-map has to route all of the above plus the web app (which has no module SKILL.md).
 REPO_MAP_TARGETS = sorted({*MODULE_DIRS, "web"})
 
-CITATION = re.compile(r"M(\d)\s*P(\d+)")
-BARE_PROBLEM_ID = re.compile(r"(?<![\w])P(\d+)(?![\w])")
+#: Development-history references are banned from skills (AGENTS.md 硬规则).
+HISTORY_REF = re.compile(r"M\d+\s*[-P]\s*\d+|docs/tickets")
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 CODE_FENCE = "\u0060\u0060\u0060"
 
@@ -105,12 +104,6 @@ def index_endpoints() -> list[list[str]]:
 
 def app_route_paths() -> list[str]:
     return re.findall(r'<Route\s+path="([^"]+)"', read(APP_TSX))
-
-
-@cache
-def problem_ids(milestone: str) -> frozenset[str]:
-    text = read(TICKETS / milestone / "PROBLEMS.md")
-    return frozenset(re.findall(r"^## (P\d+)", text, flags=re.MULTILINE))
 
 
 def test_every_module_directory_has_a_skill_file() -> None:
@@ -188,7 +181,7 @@ def test_check_fails_on_drift_and_regeneration_repairs_it(tmp_path: Path) -> Non
 
 def test_ci_runs_the_index_drift_check() -> None:
     """CI must run the index drift check — directly, or through the verify.sh entry point
-    (P2-T1: ci.yml calls verify.sh, which owns the actual command list)."""
+    (ci.yml calls verify.sh, which owns the actual command list)."""
     workflow = read(CI_WORKFLOW)
     if "extract_api_index.py --check" in workflow:
         return  # a direct call also satisfies the contract
@@ -209,20 +202,13 @@ def test_skills_readme_explains_both_audiences_and_the_real_path() -> None:
 @pytest.mark.parametrize(
     "path", [REPO_MAP, *module_skill_files()], ids=lambda p: Path(p).parent.name
 )
-def test_problem_citations_resolve(path: Path) -> None:
+def test_skills_record_no_development_history(path: Path) -> None:
+    """Skills describe current state only: no milestone/problem ids, no ticket paths."""
     for number, line in enumerate(read(path).splitlines(), start=1):
-        for match in CITATION.finditer(line):
-            milestone, problem = "m" + match.group(1), "P" + match.group(2)
-            assert problem in problem_ids(milestone), (
-                str(path) + ":" + str(number) + " cites " + milestone + " " + problem
-            )
-        rest = CITATION.sub("", line)
-        bare = BARE_PROBLEM_ID.search(rest)
-        assert bare is None, (
-            str(path) + ":" + str(number) + " cites a problem id without its milestone"
+        assert not HISTORY_REF.search(line), (
+            str(path) + ":" + str(number) + " records development history: " + line.strip()
         )
 
 
-@pytest.mark.parametrize("path", module_skill_files(), ids=lambda p: Path(p).parent.name)
-def test_every_module_skill_cites_problem_history(path: Path) -> None:
-    assert CITATION.search(read(path)), str(path) + " cites no docs/tickets/m*/PROBLEMS.md entry"
+def test_the_history_archive_holds_the_closed_stages() -> None:
+    assert HISTORY_TICKETS.is_dir(), "closed stages belong in docs/history_docs/tickets"

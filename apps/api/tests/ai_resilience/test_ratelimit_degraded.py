@@ -1,4 +1,4 @@
-"""P7 / D19: what happens when the shared (Redis) bucket store is unavailable.
+"""what happens when the shared (Redis) bucket store is unavailable.
 
 The decision recorded in D19: an unavailable shared store must NOT become a 503 and must
 NOT silently lift the limit. It degrades to the per-replica bucket — i.e. exactly the

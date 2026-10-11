@@ -1,4 +1,4 @@
-"""M6-T5/T8: the deploy fake vendor must satisfy the real pydantic contracts.
+"""the deploy fake vendor must satisfy the real pydantic contracts.
 
 The compose smoke and the kill drill both point a smoke-fake model at
 `apps/api/scripts/fake_openai.py`. These tests keep that fake honest: every payload it

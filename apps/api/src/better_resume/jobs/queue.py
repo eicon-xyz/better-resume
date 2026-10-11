@@ -1,4 +1,4 @@
-"""Redis Stream job queue (M6-T4): the smallest thing that supports a real worker.
+"""Redis Stream job queue: the smallest thing that supports a real worker.
 
 Deliberately not Celery/RQ/arq (D04 keeps orchestration in our code): a stream, a consumer
 group, an ack, an attempt counter, a dead-letter stream and a status key are enough for the

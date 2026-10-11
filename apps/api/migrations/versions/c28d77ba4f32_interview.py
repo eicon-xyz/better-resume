@@ -1,4 +1,4 @@
-"""interview domain tables (M2-T2)
+"""interview domain tables
 
 Revision ID: c28d77ba4f32
 Revises: 745c366ba82b

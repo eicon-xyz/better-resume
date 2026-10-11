@@ -1,6 +1,6 @@
 """V3: drive the browser path (WS ticket -> binary PCM -> stop) against the real ASR.
 
-P1-A: --realtime paces the PCM at 1x (like a microphone) and PASSes only when incremental
+--realtime paces the PCM at 1x (like a microphone) and PASSes only when incremental
 "replace" partials arrived before the final — the proof that the realtime channel streams.
 """
 

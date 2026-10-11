@@ -31,7 +31,7 @@ export function Composer({
   const valueRef = useRef("");
   const [notice, setNotice] = useState(false);
   // The transcript text this composer contributed into the box; realtime partials replace
-  // that span (P28) instead of re-appending the whole cumulative text each event.
+  // that span instead of re-appending the whole cumulative text each event.
   const spanRef = useRef("");
 
   const update = useCallback((text: string) => {

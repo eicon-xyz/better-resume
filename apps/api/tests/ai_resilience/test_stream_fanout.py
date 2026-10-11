@@ -1,4 +1,4 @@
-"""M3-T3: streamed single flight — one upstream stream, many identical consumers."""
+"""streamed single flight — one upstream stream, many identical consumers."""
 
 from __future__ import annotations
 

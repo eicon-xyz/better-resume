@@ -1,4 +1,4 @@
-"""M3-T6: token buckets on the manual clock (unit level).
+"""token buckets on the manual clock (unit level).
 
 P7: `RateLimiter.check` is async now — the bucket may live in Redis, so the seam is a
 coroutine from the start and the in-process store is just one implementation of it.
@@ -19,7 +19,7 @@ from better_resume.settings import RateLimitSettings
 
 
 def test_defaults_are_calibrated_for_real_traffic() -> None:
-    """P1-B 标定（2026-09-15，证据 docs/perf/M6-capacity.md §2.7）。
+    """限流标定（证据 docs/perf/capacity.md §2.7）。
 
     实测：真实单用户峰值 ~0.5 rps（一条流 2-4s）；AI_CALL 6/s 曾允许单身份经 2 副本
     维持 24 并发供应商流。收紧到 2/s（burst 4/副本 → 2 副本 8 并发，4× 余量）；
@@ -27,7 +27,7 @@ def test_defaults_are_calibrated_for_real_traffic() -> None:
     成本压力信号，维持不变；burst_multiplier 维持 2.0。
 
     P7 起配额改为跨副本共享（D19），"2 副本 8 并发"要读成"合计 burst 4"——见
-    `docs/perf/M6-capacity.md` §2.7 的迁移说明。
+    `docs/perf/capacity.md` §2.7 的迁移说明。
     """
     settings = RateLimitSettings()
     assert settings.ai_call_per_second == 2.0

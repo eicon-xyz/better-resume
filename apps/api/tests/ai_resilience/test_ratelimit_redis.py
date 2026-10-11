@@ -1,4 +1,4 @@
-"""P7: the shared bucket store on real Redis (two "replicas", one quota).
+"""the shared bucket store on real Redis (two "replicas", one quota).
 
 Redis is the system boundary here, so it is not faked — the test skips when it is
 unreachable (same rule as tests/test_distributed_flight.py). Time is injected

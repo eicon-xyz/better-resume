@@ -1,4 +1,4 @@
-"""Question locks: process-local by default, Redis for multi-instance runs (M6-T1).
+"""Question locks: process-local by default, Redis for multi-instance runs.
 
 Both implementations satisfy the same tiny interface (`acquire(session_id, question_no)`
 as an async context manager) because `AnswerService` only knows that shape. The Redis one

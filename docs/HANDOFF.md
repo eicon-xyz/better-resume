@@ -1,40 +1,34 @@
-# 交接文档（better-resume · P7 已收口，P8 在飞）
+# 交接文档（better-resume）
 
 > 写给下一个窗口/接手的人：先读仓库根 **`GLOSSARY.md`**（域词汇表/术语）与 **`AGENTS.md`**（项目全貌 / 技术栈 / 规范），
-> 再读**在飞阶段**的票据 `docs/tickets/p8-audit-hardening/README.md`（提案 + 8 条候选实测判定表）；已收口阶段的证据在各自目录的 `ACCEPTANCE.md`。
-> 最后更新：**2026-10-08**（M0–M6/V/P1–P7 已合并，main = `d1b764c`；PR #19 落审计/文档线，#20 落 P7 收口）。
+> 再读**在飞阶段**的票据 `docs/tickets/<stage>/README.md`；已收口阶段的一切（票据 / 验收包 / 问题台账 / 经验流水）
+> 归档在 `docs/history_docs/`——**那是历史，不是当前状态**。
 
-## 1. 一句话状态
+## 1. 当前状态
 
-**M0–M6、V、P1–P6 已全部合并进 main**（P5 = PR #15、P6 = PR #16，均 2026-09-28 合并）。
-**P4 守护网修复**（P35–P38、P39、P40）让 `nightly` 与 `weekly-full` 从「上线起从没绿过」变成**真跑绿**
-（nightly `35835316554`、weekly `35870043832`）。真机花费 ~191 次（P1 约定 200 封顶内；`verify.sh --layer real` 自带预算守卫）。
+**`main` = `353b4b5`（CI 绿），没有挂起的 PR，工作区无在飞阶段。**
 
-**P7（限流状态迁到 Redis）已合并**——**PR #18**（`p7/stage-close` → `main`，merge `15f073e`，2026-10-07）：**N 个副本共享同一份对外配额**
-（只共享供应商成本桶 `ai_call/answer/heavy`；`general/read` 限的是自己的容量，按副本限才是对的），Redis 不可用时
-**降级回进程内桶**并把降级做成可观测量（`rate_limit_degraded` 计数 + 响应头 `X-RateLimit-Scope: shared|instance` + 30s 冷却）。
-验收数字（`docs/tickets/p7-shared-rate-limit/ACCEPTANCE.md`）：后端 **842 passed**、`bash scripts/verify.sh --layer all` =
-**ALL PASS（12 条命令）**；真机调用 **0 次**。决议 = **D19**。
-
-**审计/文档线已合并**——**PR #19**（`audit/gates-and-glossary` → `main`，merge `f915f20`，2026-10-07）：模块设计审计（122 条问题，`docs/audit/`）
-+ ai-02 修复 + 验证工具链（`verify_mutation.sh` / `check_scripts.py` / 引证两级核对）+ `GLOSSARY.md` + 决议 D20/D21/D22。
-
-**当前 `main` = `d1b764c`（CI 绿）**，没有挂起的 PR。**在飞（未推送、待用户验收）**：`p8/audit-hardening`（审计高危项硬化：
-5 修复 + 3 守卫；验收包 `docs/tickets/p8-audit-hardening/ACCEPTANCE.md`；实测后端 879 / 前端 177 / `verify.sh --layer all` ALL PASS）与
-`docs/agents-md-drift`（只改本文与 `AGENTS.md` 的文档漂移）。下一次开工要么开新阶段提案，要么从 `docs/audit/FIXES.md` 台账里挑一条。
-
-> **教训（PR #17 踩的）**：把 PR 的 base 选在阶段分支，合并只会落在阶段分支上（#17 因此只进了 `p7/shared-rate-limit`，
-> 直到 #19 才真正进 main）。阶段分支只用来收口一个阶段；跨阶段的内容直接对 `main` 开 PR。
+- 已合并：M0–M6、V、P1–P10。代码即事实：验证入口 `bash scripts/verify.sh --list`。
+- 验证网：CI 双 job 与本地走同一份分层命令（`scripts/verify.sh`）；`nightly`（每日 02:30 UTC，deploy + quick fault）
+  与 `weekly-full`（周日 03:00 UTC，全量故障 + 60min 浸泡）是定时兜底。`schedule` 只认默认分支。
+- 收口口径：`bash scripts/verify.sh --layer all` 全绿 + 后端全量 pytest（带 `BR_*` env、`--junitxml` 读数）。
 
 ## 2. 仓库与流程约定
 
 - `apps/api`（FastAPI + SQLAlchemy async + Alembic + structlog）、`apps/web`（React 19 + Vite）、
-  `docs/`（决议/架构分析/各里程碑票据）、`skills/`（repo-map + 模块 SKILL.md + 生成式 API 索引）。
+  `docs/`（决议 / 交接 / 审计 / 容量报告）、`skills/`（repo-map + 模块 SKILL.md + 生成式 API 索引）。
 - **协作流程（用户明确要求，永久生效）**：每个阶段**先出提案**（范围/不做/交付物/测试/验收口径）→ 用户确认 →
   红-绿 TDD 执行 → 交**验收包**（ACCEPTANCE：可复跑命令 + 原始输出 + 未验证项 + 偏差）→ **由用户验收**。
-  **AI 不自行宣布完成、不擅自合并**；验收通过后才开 PR / 合并 / 进下一阶段。
-- 纪律：只 mock 系统边界（LLM/时钟/Redis/讯飞/浏览器音频/IPC）；小步提交说 WHAT；难题即时记
-  `docs/tickets/mN/PROBLEMS.md`；真机凭据只进 gitignored `.env`；不允许"默认关闭、没人跑"的死分支。
+  **AI 不自行宣布完成、不擅自提交/推送/开 PR/合并**；验收通过且用户明确下令后才动 git。
+- **文档纪律**：所有文档与代码注释只描述**当前状态**，不记录修改历史；临时阶段划分与被取代的决策不留痕。
+- 纪律：只 mock 系统边界（LLM/时钟/Redis/讯飞/浏览器音频/IPC）；小步提交说 WHAT；难题即时记票据的 `PROBLEMS.md`；
+  真机凭据只进 gitignored `.env`；不允许"默认关闭、没人跑"的死分支。
+
+### 归档约定
+
+- **在飞阶段** → `docs/tickets/<stage>/`（README 提案 / ACCEPTANCE / PROBLEMS / EVIDENCE）。
+- **阶段收口后** → 整个目录移到 `docs/history_docs/tickets/<stage>/`；经验教训与状态流水进 `docs/history_docs/`。
+- 历史档不是当前状态：排查"现在该怎么写"不要引用它，改代码前看代码本身与 `skills/`。
 
 ## 3. 怎么把这台机器跑起来
 
@@ -42,263 +36,129 @@
 export PATH="$HOME/.local/bin:$PATH"          # uv 在 ~/.local/bin，root 新 shell 默认没有
 export UV_CACHE_DIR='/root/better resume/.cache/uv'
 
-# 后端测试（注意：必须显式导出测试库地址，否则 5432 连不上）
+# 后端测试（必须显式导出测试库地址，否则依赖 DB 的用例会 skipped）
 cd '/root/better resume/apps/api'
 export BR_DATABASE_URL='postgresql+asyncpg://better_resume:better_resume@127.0.0.1:5433/better_resume'
 export BR_REDIS_URL='redis://127.0.0.1:6379/0'
-uv run pytest -q          # 865 例（2026-10-08 实测，main）；不导出 BR_* 时依赖 DB 的用例会 skipped（不会假装通过）
+uv run pytest -q --junitxml=/tmp/x.xml        # 例数看 xml 读数，别抄进文档
 
 # 前端
-cd '/root/better resume' && pnpm -C apps/web test --run     # 必须从仓库根；在 apps/api 下用 -C ../web
+cd '/root/better resume' && pnpm -C apps/web test --run     # 必须从仓库根
 
 # compose 栈（nginx :8080 = 唯一入口；api 无宿主端口，可 --scale）
 export BR_SMOKE_KEY=smoke-fake-key BR_SSE_HEARTBEAT_SECONDS=1
-docker compose up -d --build --wait --scale api=2
+docker compose up -d --wait --scale api=2
 docker compose --profile smoke down -v        # 停栈
 
-# 两个验收脚本（都会自己起栈）
+# 三个验收脚本（都会自己起栈）
 bash scripts/compose_smoke.sh                 # 部署面：REST/SSE/WS/非 root/双实例轮询/worker 心跳
-bash scripts/kill_instance_drill.sh           # §12.4 硬验收：kill 正在服务的实例，状态/报告一致
-bash scripts/fault_injection_drill.sh           # 5 个故障实验 + 浸泡（--quick 为 2 分钟浸泡）
+bash scripts/kill_instance_drill.sh           # kill 正在服务的实例，状态/报告一致
+bash scripts/fault_injection_drill.sh         # 5 个故障实验 + 浸泡（--quick 为 2 分钟浸泡）
 
-# P1-D 生产形态演练（恢复动作在 finally，可安全重跑）
-uv run python -m scripts.fault_probe fault --scenario redis-partition --seconds 20   # 网络分区：503/timeout 语义 + 自愈
-uv run python -m scripts.fault_probe fault --scenario redis-failover  --seconds 20   # 主从切换：恢复时间 + worker 存活
-# P1 真机探针（各 1 次真调用）
+# 真机探针（各消耗真调用，受 BR_REAL_CALL_BUDGET 守卫）
+uv run python -m scripts.fault_probe fault --scenario redis-partition --seconds 20
+uv run python -m scripts.fault_probe fault --scenario redis-failover  --seconds 20
 uv run python scripts/media_smoke.py --paraformer-rt-real --wav ../../data/audio/p1c-multi-sentence-16k.wav
-uv run python scripts/assembler_real_probe.py        # 真机增量包回放句池（提交语义 + 已知边界）
+uv run python scripts/assembler_real_probe.py        # 真机增量包回放句池
 uv run python scripts/v3_ws_probe.py --realtime      # 穿 nginx 的增量时序 + 关闭码
 
-# 单一入口（P2-T1；CI 与本地同一份命令）
+# 单一入口（CI 与本地同一份命令）
 bash scripts/verify.sh --list          # 全部层与命令
-bash scripts/verify.sh --layer all     # 本地收口（unit+contract+coverage+scripts；条数看 --list/--dry-run，别抄进文档）
-bash scripts/verify.sh --layer scripts # 4 条：shell 逐文件语法 + 脚本语法 + 审计结构校验 + 脚本回归
-python3 scripts/verify_audit_evidence.py --strict   # 审计/修复收口时手动跑：逐字核对引文（partial 也算失败）
+bash scripts/verify.sh --layer all     # 本地收口（条数看 --list/--dry-run，别抄进文档）
+python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核对引文（partial 也算失败）
 ```
 
 人工测试只有一处入口：**`docs/MANUAL-TESTING.md`**（统一清单，§1 为必测）。
 
-- **P1 阶段新增**：`media/adapters/paraformer_rt.py`（百炼实时 ASR）、`scripts/assembler_real_probe.py`、
-  `fault_probe.py` 的 `redis-partition` / `redis-failover` 两个场景、`data/audio/p1c-multi-sentence-16k.wav`（本地素材）。
-- **V 阶段专属脚本**：`apps/api/scripts/real_model_smoke.py`（真模型四链路 + 失败面）、
-  `scripts/load_test.py`（压测，带 `--tag`）、`apps/api/scripts/fault_probe.py` +
-  `scripts/fault_injection_drill.sh`（浸泡/故障注入）、`apps/api/scripts/v3_ws_probe.py`（ASR 走 WS 端到端）。
-- **契约漂移三件套**（改过后端模型必须一起跑）：`uv run python scripts/export_openapi.py`（apps/api 下）、
-  `pnpm -C apps/web gen:api`、`uv run python scripts/extract_api_index.py --check`。
-
-## 3b. 审计与验证工具（2026-10 新增）
+## 3b. 审计与验证工具
 
 | 东西 | 一句话 |
 | --- | --- |
-| `docs/audit/MODULE-AUDIT.html` | 模块设计审计的**渲染产物**（10 个单元 / 122 条问题，每条带 `文件:行号` 与原文摘录）；`python3 scripts/build_module_audit.py` 重新生成 |
+| `docs/audit/MODULE-AUDIT.html` | 模块设计审计的**渲染产物**（10 个单元，每条带 `文件:行号` 与原文摘录）；`python3 scripts/build_module_audit.py` 重新生成 |
 | `docs/audit/units/*.json` | 审计**数据**——渲染器的输入；改问题清单改这里，不要手改 HTML |
-| `docs/audit/FIXES.md` | **修复台账**：已动手的审计条目（改了什么 / 为什么 / 怎么验证 / 未验证项）+ 环境改进记录 |
+| `docs/history_docs/audit/FIXES.md` | 历史：已动手的审计条目修复台账 + 环境改进记录 |
 | `docs/audit/CONTRACT.md` | 审计**口径**：检查维度、危险信号、证据与写作红线、severity 分级 |
-| `scripts/verify_mutation.sh` | **变异证明**：断言「基线绿 → 变异红 → 恢复绿」，真看退出码并在恢复后校验 sha256；用来证明一条测试真的钉住了某段实现 |
-| `scripts/verify_audit_evidence.py` | 引证核对分两层：**结构层总是跑**（字段齐全 + `where` 指向的文件/行号存在——对代码漂移稳定，所以 CI 跑它，`--structural` 可只跑这层）；**逐字层**默认只报告，`--strict` 时 partial 也算失败，归审计/修复收口手动跑（见 D22） |
+| `scripts/verify_mutation.sh` | **变异证明**：断言"基线绿 → 变异红 → 恢复绿"，真看退出码并在恢复后校验 sha256 |
+| `scripts/verify_audit_evidence.py` | 引证核对分两层：**结构层总是跑**（字段齐全 + 引用的文件/行号存在）；**逐字层**默认只报告，`--strict` 时 partial 也算失败 |
 | `scripts/check_scripts.py` | 两个脚本目录的语法扫描（`SyntaxWarning` 当错误处理） |
 | `GLOSSARY.md` | 域词汇表（**先读它**）；术语以外的实现细节不进这个文件 |
-| `docs/agents/subagents.md` | 用子智能体干活的操作约定（先建任务、写范围不重叠、fork 与席位、等待上限） |
-| D20 / D21 / D22 | D20 = 桶算术双实现 + 等价契约（审计条目 ai-02）；D21 = 文档落点（`GLOSSARY.md` 取代 `CONTEXT.md`，ADR 仍在 `docs/DECISIONS.md`）；D22 = 验证证据的判定权（CI 只做结构校验，`--strict` 与变异证明是收口手段） |
+| `docs/agents/subagents.md` | 用子智能体干活的操作约定 |
 
-## 4. 本机环境事实与坑（踩过的，别再踩）
+## 4. 本机环境事实与坑
 
-> 本节是**环境事实的单一真相源**：`AGENTS.md` 只留会「静默把事情做错」的几条（uv cache、BR_* 导出、junitxml、ffmpeg、httpx 兜底），
+> 本节是**环境事实的单一真相源**：`AGENTS.md` 只留会"静默把事情做错"的几条（uv cache、BR_* 导出、junitxml、ffmpeg、httpx 兜底），
 > 其余（端口表、构建代理与镜像前缀、WSL 掉线、22 端口、`gh` 证书、volume remount）以本节为准。
 
 | 事实 | 影响 / 做法 |
 | --- | --- |
-| **本地 `main` 可能过期** | `git pull --ff-only` 在没有 upstream 时只打印提示、**不会拉取**（2026-10-07 实际踩过：以为在 main 上，其实落后 20+ 个提交，收尾分支建在了旧树上）。收口前先 `git fetch && git merge --ff-only origin/main`，或先 `git branch --set-upstream-to=origin/main main` |
-| WSL2 + Docker Desktop（VM 与发行版不同网络） | 构建要 `build.network: host` + shell 里带 `HTTPS_PROXY=http://127.0.0.1:7897`（compose 会自动转成 build args）；**不要**往 `~/.docker/config.json` 写 proxies。**另见下一条 P45**：buildx ≥ 0.37.2 会对 `network.host` 要授权，所以本机**人手**敲 `docker compose build/up --build` 时还要带 `COMPOSE_BAKE=false`（三个演练脚本已各自 export，无需手动） |
-| **buildx ≥ 0.37.2 拒绝未授权的 `network.host`**（P45，2026-10-10） | 症状：`additional privileges requested: pass "--allow=network.host"`，**构建还没开始就 exit 1**。根因：buildx 0.37.2 修了 GHSA-gwr2-q96m-6682——bake 在 `--progress=rawjson` 下**不再跳过**权限同意检查；Compose 永远走 bake+rawjson 且只补 `--allow fs.read/security.insecure`，从不补 `network.host`，而我们的 `compose.yaml` 为 WSL2 代理请求了它。修法：构建栈的脚本一律 `export COMPOSE_BAKE=false`（回到 classic 路径，它把 entitlements 直接交给 builder），由 `tests/test_drill_prereqs.py` 钉住 |
+| **本地 `main` 可能过期** | `git pull --ff-only` 在没有 upstream 时只打印提示、**不会拉取**。收口前先 `git fetch && git merge --ff-only origin/main`，或先 `git branch --set-upstream-to=origin/main main` |
+| WSL2 + Docker Desktop（VM 与发行版不同网络） | 构建要 `build.network: host` + shell 里带 `HTTPS_PROXY=http://127.0.0.1:7897`（compose 会自动转成 build args）；**不要**往 `~/.docker/config.json` 写 proxies。buildx ≥ 0.37.2 会对 `network.host` 要授权，所以本机**人手**敲 `docker compose build/up --build` 时要带 `COMPOSE_BAKE=false`（构建栈的脚本已各自 export，无需手动） |
+| **buildx ≥ 0.37.2 拒绝未授权的 `network.host`** | 症状：`additional privileges requested: pass "--allow=network.host"`，**构建还没开始就 exit 1**。根因：该版本起 bake 在 `--progress=rawjson` 下不再跳过权限同意检查；Compose 永远走 bake+rawjson 且只补 `--allow fs.read/security.insecure`，从不补 `network.host`，而 `compose.yaml` 为 WSL2 代理请求了它。做法：构建栈的脚本一律 `export COMPOSE_BAKE=false`（回到 classic 路径，它把 entitlements 直接交给 builder），由 `tests/test_drill_prereqs.py` 钉住 |
+| **沙箱内 `docker build` 跑不了** | `workspace-write` 下 buildx 要写工作区外的 `/root/.docker/buildx/activity/` → permission denied；`docker build` / `docker compose build` / `up --build` 必然失败（`docker compose config` 与已构建镜像的 `up` 不受影响）。另：`docker compose build … \| tail` 会把退出码换成 `tail` 的 0（"exit 0" 是假象）。**要验构建面就推到 CI 跑** |
 | Docker Hub 直连不通 | `.env` 里 `BR_LIBRARY_PREFIX=docker.m.daocloud.io/library/`、`BR_UV_IMAGE=ghcr.m.daocloud.io/astral-sh/uv:latest`（仓库默认仍是上游 tag） |
-| **Docker Desktop 的 WSL 集成会掉线** | 症状：`docker` 命令突然消失（`/usr/bin/docker` 指向 `/mnt/wsl/docker-desktop/...`，挂载没了）。恢复：`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker/Docker Desktop.exe'`，等约 1 分钟后 `docker compose up -d --wait --scale api=2`（2026-09 实际踩过一次） |
-| **出网 22 端口可能被拒**（2026-09-15 实测） | `git push` 报 "Connection refused / 请检查权限"时先 `ssh -T git@github.com`：22 端口被拒不是仓库问题。改走 443：`git push ssh://git@ssh.github.com:443/<owner>/<repo>.git <branch>`，或写进 `~/.ssh/config`（Host github.com → HostName ssh.github.com, Port 443） |
-| GitHub：SSH 可用、API 时断时续 | `git push` 正常；`gh pr create/create api` 可能 SSL EOF（重试/稍后再试），必要时用 REST + `--body-file` |
-| 没有 ffmpeg | 转音频用 `uv run --with soundfile --with numpy python …`（已把用户录音转成 `data/audio/v3-sample-16k.wav`） |
-| pytest 输出被 `-q` 压掉摘要 | 一律 `--junitxml=/tmp/x.xml` 再解析 `tests/failures/errors`；**跑前先 rm 掉旧 xml**，否则读到陈旧结果 |
-| 本机 `NO_PROXY` 含裸 IPv6 | httpx 构造时可能抛 `InvalidURL: Invalid port ':1]'`；所有新建 httpx client 都要兜底（`trust_env=False`），M3/V3 各踩一次 |
-| 测试/脚本需 hermetic | 代理变量、PATH、DB 地址都算环境：断言不能依赖 shell 里恰好有什么（见 P15） |
+| **Docker Desktop 的 WSL 集成会掉线** | 症状：`docker` 命令突然消失（`/usr/bin/docker` 指向 `/mnt/wsl/docker-desktop/...`，挂载没了）。恢复：`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command Start-Process 'C:/Program Files/Docker/Docker Desktop.exe'`，等约 1 分钟后 `docker compose up -d --wait --scale api=2` |
+| **出网 22 端口可能被拒** | `git push` 报 "Connection refused / 请检查权限"时先 `ssh -T git@github.com`：22 端口被拒不是仓库问题。改走 443：`git push ssh://git@ssh.github.com:443/<owner>/<repo>.git <branch>`，或写进 `~/.ssh/config`（Host github.com → HostName ssh.github.com, Port 443） |
+| GitHub：SSH 可用、API 时断时续 | `git push` 正常；`gh pr create/api` 可能 SSL EOF（重试/稍后再试），必要时用 REST + `--body-file`。`gh run view --log` 需要可写的缓存目录：在沙箱里需 `export XDG_CACHE_HOME='/root/better resume/.cache'`，否则报 `creating cache entry: … permission denied` |
+| 没有 ffmpeg | 转音频用 `uv run --with soundfile --with numpy python …` |
+| pytest 输出被 `-q` 压掉摘要 | 一律 `--junitxml=/tmp/x.xml` 再解析 `tests/failures/errors`；**跑前先 rm 掉旧 xml** |
+| 本机 `NO_PROXY` 含裸 IPv6 | httpx 构造时可能抛 `InvalidURL: Invalid port ':1]'`；所有新建 httpx client 都要兜底（`trust_env=False`） |
+| 测试/脚本需 hermetic | 代理变量、PATH、DB 地址都算环境：断言不能依赖 shell 里恰好有什么 |
 | 端口 | 原生测试库 Postgres **5433** / Redis **6379**；compose 内网 postgres 5432（不发布）、nginx 宿主 **8080** |
-| **改过 volume 挂载的文件后 `restart` 会失败** | WSL2 bind-mount inode 失效（`no such file or directory`）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，**不要**重启 Docker 引擎（2026-10 实测：改过 `deploy/nginx.conf` 之后） |
+| **改过 volume 挂载的文件后 `restart` 会失败** | WSL2 bind-mount inode 失效（`no such file or directory`）→ 用 `docker compose up -d --force-recreate <svc>` 重新挂载，**不要**重启 Docker 引擎 |
 | **`gh` 报「token invalid」多半是证书问题** | 代理（7897）没起时直连 HTTPS 被本机 Watt Toolkit 的中间人证书（CN=SteamTools Certificate）拦截、系统 CA 不认。修法：用 `openssl s_client -connect api.github.com:443 -servername api.github.com -showcerts` 的输出里抽出 `BEGIN CERT`→`END CERT` 段存成 `/tmp/chain.pem`，再 `export SSL_CERT_FILE=/tmp/chain.pem`（`git push` 走 ssh.github.com:443，不受影响） |
 
 ## 5. 凭据与密钥（务必遵守）
 
 - **只放仓库根 `.env`（gitignored）**，绝不入库；`.env.example` 只写变量名。
-- 目前 `.env` 里有：`BR_DEEPSEEK_API_KEY`（官方 DeepSeek，V1/V2 用的就是它）、
-  `BR_DASHSCOPE_API_KEY`（阿里百炼，V3/V4 用）、`BR_ARK_API_KEY`（火山方舟，**账号未开通任何模型**，
-  调用返回 404 `ModelNotOpen`，已弃用）、`BR_MEDIA__ASR_URL/ASR_MODEL/TRANSCRIPTION_ADAPTER`。
-- **这三个 key 都在对话里出现过 → 建议交接后轮换一遍**（轮换后只改 `.env` 即可，代码不用动）。
-- **真假供应商的判定**：真实调用的响应里带 `usage`（流式需要模型行 `extra.stream_usage=true` 才会带，
-  见 P19）；假供应商（`apps/api/scripts/fake_openai.py` + `smoke-fake` 模型行）没有 usage。
+- `.env` 里的 key：`BR_DEEPSEEK_API_KEY`（官方 DeepSeek）、`BR_DASHSCOPE_API_KEY`（阿里百炼）、
+  `BR_ARK_API_KEY`（火山方舟，**账号未开通任何模型**，调用返回 404 `ModelNotOpen`，已弃用）、
+  `BR_MEDIA__ASR_URL/ASR_MODEL/TRANSCRIPTION_ADAPTER`。
+- **真假供应商的判定**：真实调用的响应里带 `usage`（流式需要模型行 `extra.stream_usage=true` 才会带）；
+  假供应商（`apps/api/scripts/fake_openai.py` + `smoke-fake` 模型行）没有 usage。
 
-## 6. V 阶段逐票状态（证据入口）
+## 6. 未验证 / 欠账（诚实清单）
 
-| 票 | 状态 | 一句话 | 证据 / 复跑 |
-| --- | --- | --- | --- |
-| V1 真模型四链路 + 失败面 | ✅ | DeepSeek 真机：四链路 + 缺凭据 503 点名变量 | `V1-EVIDENCE.md`；`uv run python -m scripts.real_model_smoke --failure-probe` |
-| V2 真模型容量 + 拐点 | ✅ | chat p50 1.9s（我们增量 ~30ms）；限流钉住 ~23 ok/s，c=80 拒绝路径 p50 134ms | `V2-EVIDENCE.md` + `docs/perf/M6-capacity.md` §2.4–2.6 |
-| V3 语音识别真机 | ✅ | 百炼 Qwen-Audio-ASR-Flash（**批量**）：5.5s 音频 1.15s 出文本；WS 端到端 0.77s 收 final、干净关闭 1000 | `V3-EVIDENCE.md`；`media_smoke.py --qwen-asr-real --wav data/audio/v3-sample-16k.wav`；`scripts/v3_ws_probe.py` |
-| V4 第二家 LLM 平台 | ✅ | 百炼 qwen-plus **零代码**接入，四链路 + 与 DeepSeek 对照 + P18 多副本复证 | `V4-EVIDENCE.md` |
-| V5 浏览器人工手测 | ✅ | 用户本机 Chrome：两次不同句子**追加**显示、手写内容未被覆盖、TTS 正常 | `V5-EVIDENCE.md` |
-| V6 浸泡 + 故障注入 | ✅ | redis-pause/restart 语义；worker 崩溃任务 59.3s 被接管；10 分钟 600 请求 0 失败 | `V6-EVIDENCE.md`；`bash scripts/fault_injection_drill.sh [--quick]` |
-
-阶段问题台账：`docs/tickets/v1-verification/PROBLEMS.md`（P17–P21）。
-
-## 6b. P1 阶段逐票状态（证据入口）
-
-| 票 | 状态 | 一句话 | 证据 / 复跑 |
-| --- | --- | --- | --- |
-| P1-A 实时 ASR | ✅ 手测通过，待正式验收 | 百炼 Paraformer 实时：端到端首增量 **0.56s**、松手→final **1.1s**（修 P24 前 10.1s）；句池不被该供应商触发（直连 replace/archive） | `P1-A-EVIDENCE.md`；`scripts/v3_ws_probe.py --realtime` |
-| P1-B 真模型容量 + 限流标定 | ✅ 待验收 | 24 并发真流 0 供应商错误；标定 `ai_call 6→2`、`answer 8→2`（红-绿 + 实证） | `P1-B-EVIDENCE.md` + `docs/perf/M6-capacity.md` §2.7 |
-| P1-C 阿里 API 补验 | ✅ 待验收 | 多句真机（3 句、含供应商自我纠错）；句池真机包回放提交语义 PASS + 已知边界 | `P1-C-EVIDENCE.md`；`scripts/assembler_real_probe.py` |
-| P1-D 生产形态演练 | ✅ 待验收 | 分区（503+Retry-After、恢复 0.2–2.2s）/ 主从切换（恢复 109ms、worker 存活）/ 浸泡 3600 请求 0 失败 | `P1-D-EVIDENCE.md`；`fault_probe.py fault --scenario redis-partition|redis-failover` |
-
-阶段问题台账：`docs/tickets/p1-post-v/PROBLEMS.md`（P24–P27 + 验收轮新增 P28–P30）；阶段验收包：`docs/tickets/p1-post-v/ACCEPTANCE.md`。
-
-**P1-A 浏览器手测已完成**（第 3 轮通过，2026-09-17）：实时出字 ✅、录音中打字原位保留 ✅；过程中修掉
-P28（页面级合并层）→ P29（部署缓存头）→ P30（chat Composer 内部第三层合并）——全部红-绿 + 页面级回归用例，
-结论与每轮记录在 `docs/MANUAL-TESTING.md` §5。
-
-## 6c. P2 阶段逐票状态（测试自动化）
-
-| 票 | 状态 | 一句话 | 证据 / 复跑 |
-| --- | --- | --- | --- |
-| T1 verify.sh 单一入口 | ✅（含 P31 修正） | 分层 unit/contract/coverage/deploy/fault/soak/real/scripts/all + --dry-run/--list；CI 双 job 已改调它；**all 层曾静默漏 contract**（P31，2026-09-17 修：抽 builder 复用 + 展开漂移测试） | `scripts/verify.sh`；`tests/test_verify_script.py`（钉 `all` 的展开 ⊇ 各层展开，并钉 `--list` 的地图 == 真实展开） |
-| T2 pytest markers | ✅ | --strict-markers + 默认 `-m 'not docker and not real'` | `tests/test_pytest_config.py` |
-| T3 nightly/weekly | ✅（首跑等合并） | 公有仓库免费：nightly=deploy+quick fault；weekly=全量故障+60min 浸泡；YAML 本地已校验；**schedule 只认默认分支**，合并后自动首跑 | `.github/workflows/nightly.yml`、`weekly-full.yml` |
-| T4 真机套件+预算守卫 | ✅（含 P32 修正） | BR_REAL_CALL_BUDGET=200、超预算/缺凭据非零退出、dry-run 列清单；音频生成器钉 sha256；**fixture 预检**（P32：缺文件/字节漂移都在花钱前 exit 2，`VERIFY_FIXTURE_AUDIO_DIR` 可覆盖） | `verify.sh --layer real`；`make_fixture_audio.py --check`；`tests/test_real_layer.py` |
-| T5 脚本回归 | ✅ | 14/14 脚本 ≥2 契约（import 隔离/argparse/拒绝假装/同步性） | `tests/test_scripts_contracts.py` |
-| T6 覆盖率两轮 | ✅ | 报告→底线：7 深模块 ≥90% 进 CI（缺数据=违规）；浅模块不设线 | `scripts/check_coverage_floors.py`；`coverage-report-round1.md` |
-
-## 7. 可复用的经验教训（精华）
-
-**契约与实现**
-1. 实现 Protocol ≠ 满足契约：`wait()` 该阻塞却立即返回，类型检查全绿、端到端第一帧就断（P20）。
-   新 adapter 必须跑一次真实链路，不能只看单测。
-2. "可选字段"最容易静默丢失：流式 `usage` 需按平台请求（P19）——没有报错，只有空值。
-3. 缓存要有 TTL 或跨进程失效：多副本下"只在本地失效"= 配置漂移（P18，8 个 503 一度被误判为供应商限流）。
-4. 缺配置要报"不可用"，不是"你未登录"：Redis 挂了应是 503 + Retry-After，不是 500（P17）。
-5. 过期视图比慢视图更糟：热层读缓存必须写路径失效（M6 P6）。
-6. 未 await 的协程恒为真值 → "检查"变"永远通过"（M6 P8）；测试里加 RuntimeWarning 断言很便宜。
-
-**分布式与异步**
-7. 先查结果再抢锁：否则 owner 释放瞬间会出现"空档重跑"（M6 P2）。
-8. 队列要兼容下限版本：Redis 6.0 没有 `XAUTOCLAIM`/带 IDLE 的 `XPENDING`，且 `XCLAIM` 只返回条目列表（M6 P7）。
-9. worker 不能死于依赖抖动：阻塞读被取消会包装成 TimeoutError 逃出循环（M6 P9）。
-10. 崩溃恢复时间 = 接管阈值本身（实测 59.3s ≈ `min_idle_ms=60s`），不要美化。
-
-**部署与验证**
-11. compose 必须有迁移步骤（一次性 `migrate` 服务 + `service_completed_successfully`），否则新卷直接 500（M6 P10）。
-12. 非 root + 共享卷：容器里建不了 `data/`、多副本看不到同一份上传都会 500（M6 P11）。
-13. nginx 只在启动解析 upstream → 变量 + `resolver 127.0.0.11` 才能 `--scale` 生效（M6 P12）。
-14. **本地验收清单必须逐条镜像 CI**：漏了 `pnpm gen:api` → 本地"全绿"、CI 直接红（M6 P16）。
-15. 测试必须自带环境（P15）：依赖 shell 里的代理变量/PATH/DB 地址的断言，在别人机器上会静默失效；
-    干净 shell 才是真验收环境。
-16. 端到端探针本身也会骗人：5s 超时把"接管耗时"量成了探针上界（V6/P21 周边）；数字要写清口径。
-
-**流程**
-17. 提案先行、验收包交付、由人拍板——本项目已经因此两次避免了"假绿"（M6 收尾、V 阶段）。
-
-**验证与演练（P1 阶段补充）**
-18. **连接参数不能信库默认值**：`websockets` 的 `close_timeout` 默认 10s，供应商不回关闭帧 → 松手后干等 10 秒（P24）。
-19. **证据工具本身要先被校准**：探针"发完才收"会把增量时序塌缩（P25）；漏 cookie 会把 503 读成 401（P27）；
-    演练的恢复动作必须放 `finally`，否则一次崩溃就把栈留在故障态。
-20. **兜底 try 要罩住循环里的每一次依赖调用**：心跳写漏在 try 外，Redis 抖动就让 worker 退出（P26，M6 P9 的补完）。
-21. **单身份压测测的是"我们的桶"**：进程内限流 × N 副本 = 配额 ×N；要压供应商必须多身份并行（P1-B §2.7）。
-
-**验收轮补充（P28–P30）**
-22. **一个语义可能活在多层**：转写合并 = store→页面→**组件内部 prop-effect**；P28 改了两层仍复发，P30 才补上
-    chat Composer 这层。改任何合并语义，先 grep 调用点清零。
-23. **测试缝贴着用户路径不够时，贴着组件也来一份**：store 级页面测试全绿，浏览器照样复现——因为组件内部
-    合并由 prop 逐事件驱动，store 灌事件测不到（P30 的缝缺口）。
-24. **部署不发 Cache-Control = 修了个寂寞**：index.html 无头 → 启发式缓存 → 用户跑上一版 bundle，症状与代码
-    bug 肉眼难分（P29）。判定链：nginx access log 拉的是哪个 hash → 容器产物 md5 vs 本地 build。
-
-**PR 首跑补充（P31–P33）**
-25. **收口脚本的"标签"与"展开"会各自漂移**：`--list` 写着 `all = unit + contract + scripts`，`all)` 实际只跑
-    unit+scripts（P31）——于是"本地全绿、CI 红"（M6 P16）原地复活。写"本地收口"之前先 `--dry-run` 看它**到底要跑什么**；
-    回归测试钉展开，不钉标签。
-26. **测试断言不许引用"本机恰好存在的文件"**：`data/` 是 gitignored，fixture 断言在干净 checkout 必红（P32）。
-    需要本地产物的校验，放进那一层自己的预检（real 层：**花钱之前** exit 2），单测只测 hermetic 的"缺失即拒绝"。
-
-## 8. 未验证 / 欠账（诚实清单）
-
-- **讯飞 AST / 星云工作流真机**：无凭据，未验证（P1-C 用阿里实时 ASR 覆盖同类能力，非同一协议）。
-- **百炼应用调用（星云的阿里等价物，P3）**：adapter 已实现并合并（PR #9），代码面有 10 条契约 × 3 实现 +
-  假 SSE 服务端证据；**真机 6 次调用全部失败**——供应商回 `InvalidParameter: Required parameter(AppId)
-  missing or invalid`（两种端点相同）→ **这条链路仍属未验证**，等用户确认应用是否已发布 / app_id 取值
-  （`docs/tickets/p3-dashscope-app/EVIDENCE.md` §4）。过程中真机抓到真 bug **P34**（带内错误被当空成功），已红-绿修掉
-  （PR `p3/dashscope-evidence`）。
-- ~~真实浏览器手测（P1-A）~~ **已完成**（第 3 轮通过，顺带修出 P28/P29/P30）。仍待：浏览器矩阵（Safari/Firefox/蓝牙）、>30s 长说的实时表现。
-- **供应商 429**：P1 阶段 177 次真调用一次未触发；退避/重试路径仍是纸面推演。
-- ~~自动 Redis failover~~ → **P5 已实现并演练通过**（PR #15）。但**单机 compose 上的哨兵 ≠ 生产级高可用**：
-  三个哨兵同一台宿主、同一个 Docker 守护进程，宿主一挂全挂；也没做多可用区与脑裂治理。
-  另一个**已探明的限制**：compose 的单机内嵌 DNS 在容器退出后不再解析服务名，哨兵会进 TILT 而拒绝 failover——
-  所以演练用 `docker compose pause redis`（主不可达）而非杀容器（主容器消失），后者在本仓库无法验证
-  （连败 5 次的记录见 `docs/tickets/p5-auto-failover/PROBLEMS.md` P41）。
+- **讯飞 AST / 星云工作流真机**：无凭据，未验证（阿里实时 ASR 覆盖同类能力，非同一协议）。
+- **百炼应用调用（星云的阿里等价物）**：adapter 已实现并合并，代码面有 10 条契约 × 3 实现 + 假 SSE 服务端证据；
+  **真机调用全部失败**——供应商回 `InvalidParameter: Required parameter(AppId) missing or invalid`（两种端点相同）
+  → **这条链路仍属未验证**，等确认应用是否已发布 / app_id 取值。
+- **浏览器矩阵**：Safari/Firefox/蓝牙未测；长音频最长只验到 13.1s。
+- **供应商 429**：真调用一次未触发；退避/重试路径仍是纸面推演。
+- **单机 compose 上的哨兵 ≠ 生产级高可用**：三个哨兵同一台宿主、同一个 Docker 守护进程，宿主一挂全挂；
+  也没做多可用区与脑裂治理。另一个**已探明的限制**：compose 的单机内嵌 DNS 在容器退出后不再解析服务名，
+  哨兵会进 TILT 而拒绝 failover——所以演练用 `docker compose pause redis`（主不可达）而非杀容器，后者在本仓库无法验证。
 - **>24 并发 / 真实 LB 抖动**：未测。
-- 浏览器矩阵（Safari/Firefox/蓝牙）延续未验证；长音频最长只验到 13.1s。
+- **定时任务在合并后的默认分支上尚未跑满一轮**：`nightly`/`weekly-full` 的绿是在分支上实测的；
+  合并后首个定时窗口前，默认分支的历史结论不继承。
 
-## 9. 交接动作清单
+## 7. 后续候选（都要先提案）
 
-0. ~~**本轮动作**：等 PR #18 合入 → 审计线开 PR~~ ✅ **已完成（2026-10-07）**：#18（`15f073e`）与 #19（`f915f20`）均已合入 `main`；收尾只改文档（本节 + §1 + §4 加一行坑）。
-1. ~~**用户**：正式验收 **P1 + P2**~~ ✅ **已完成（2026-09-17）**：用户验收通过，结论回填
-   `docs/tickets/p1-post-v/ACCEPTANCE.md` §7（浏览器手测第 3 轮 ✅，见 `docs/MANUAL-TESTING.md` §5）。
-2. **用户**（小事仍挂着）：轮换三个 key（对话里出现过）；端到端验证"星云等价物"时给百炼应用 **app_id**。
-3. ~~**我**（PR 流程）~~ ✅ **已完成**：**PR #8 已合并**（`p1/realtime-asr` → `main`，正文 = ACCEPTANCE.md）。
-   首跑 backend 红（P31–P33，本地看不见的三层）→ 已红-绿修完并复跑 `--layer all` 12 条命令全绿 → 复跑 CI → 用户点头 → 合并：
-   ```bash
-   cd '/root/better resume'
-   # 本机 gh 的 TLS：7897 代理没起时，直连被 Watt Toolkit 中间人拦截，需信任其证书链
-   #   openssl s_client -connect api.github.com:443 -servername api.github.com -showcerts </dev/null | \
-   #     awk '/BEGIN CERT/,/END CERT/' > /tmp/chain.pem
-   export SSL_CERT_FILE=/tmp/chain.pem; unset HTTPS_PROXY HTTP_PROXY
-   gh pr checks 8 --watch                 # backend/frontend 双 job（含 coverage 底线步）
-   gh pr merge 8 --merge                  # 用户点头后
-   # 22 端口被拒时：git push ssh://git@ssh.github.com:443/eicon-xyz/better-resume.git <branch>
-   cd apps/api && uv run pytest -q --junitxml=/tmp/main.xml   # main 复跑 747
-   # 合并当晚 02:30 UTC：nightly 首跑（schedule 只认默认分支）；次日 gh run list + artifacts
-   ```
-   **注意**：历史清理时删光了 29 条 run → GitHub 上 workflow 曾"注销"（`gh workflow list` 为空）；PR 事件会重新注册，
-   nightly/weekly 要等合并后由 schedule 注册。
-4. 后续候选（都要**先提案**）：自动 Redis failover（哨兵/多端点）、>24 并发与供应商 429 行为、讯飞真机、浏览器矩阵。
+自动 Redis failover（哨兵/多端点）、>24 并发与供应商 429 行为、讯飞真机、浏览器矩阵。
 
-## 10. 文件地图（找东西用这个）
+## 8. 文件地图（找东西用这个）
 
 ```
 GLOSSARY.md                             ← 域词汇表（术语；**接手先读这个**）
 AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律
-docs/HANDOFF.md                         ← 本文档：状态 / 怎么跑 / 环境坑 / 未验证清单
+docs/HANDOFF.md                         ← 本文档：当前状态 / 怎么跑 / 环境坑 / 未验证清单
 docs/DECISIONS.md                       技术决议 D01–D22（冲突以它为准）
-docs/agents/subagents.md                子智能体操作约定（先建任务、写范围不重叠、fork 与席位、等待上限）
-docs/audit/                             模块设计审计：MODULE-AUDIT.html（产物）/ units/*.json（数据）/ FIXES.md（台账）/ CONTRACT.md（口径）
-docs/tickets/p7-shared-rate-limit/      P7 阶段：README + ACCEPTANCE + PROBLEMS
-docs/tickets/p1-post-v/                 P1 阶段：README + ACCEPTANCE + PROBLEMS(P24–P33) + 4 份 EVIDENCE
-docs/tickets/p2-test-automation/        P2 阶段：README（T1–T6 全落地）+ coverage-report-round1.md
-docs/MANUAL-TESTING.md                  人工测试统一入口（结果记录在第 3 节回填表）
-docs/tickets/m0..m6/                    各里程碑票据 + ACCEPTANCE + PROBLEMS
-docs/tickets/m6/ACCEPTANCE.md           M6 验收包（含 kill 实例 drill 原始输出）
-docs/tickets/v1-verification/           V 阶段：README（进度）+ 6 票据 + 4 份 EVIDENCE + PROBLEMS(P17–P21)
-docs/perf/M6-capacity.md                容量报告（§2.4 真模型、§2.5 拐点、§2.6 P18、§2.7 真模型并发与限流标定）
-docs/resume/MN-resume-draft.md          各里程碑/P1 简历草稿（含 P1-resume-draft.md）
+docs/agents/subagents.md                子智能体操作约定
+docs/audit/                             模块设计审计：MODULE-AUDIT.html（产物）/ units/*.json（数据）/ CONTRACT.md（口径）
+docs/history_docs/                      历史归档：tickets/**（各阶段票据+验收包+问题台账）、HANDOFF-archive.md、audit/FIXES.md
+docs/tickets/<stage>/                   在飞阶段：README + ACCEPTANCE + PROBLEMS + EVIDENCE
+docs/MANUAL-TESTING.md                  人工测试统一入口
+docs/perf/capacity.md                容量报告
+docs/resume/MN-resume-draft.md          各里程碑/P1 简历草稿
 skills/repo-map/SKILL.md                "改 X 先看哪"（含两跳示例）
-apps/api/src/better_resume/
-  settings/config.py                    全部设置（BR_* 前缀；凭据字段为空默认）
-  llm_gateway/{resolver,registry,adapters/}  场景绑定 + 模型注册 + OpenAI 兼容/星云 adapter
-  ai_resilience/{resilient,distributed}.py   单飞/熔断/舱壁/超时 + Redis 分布式单飞
-  interview_engine/{locks,hot_state,report_service}.py  题级锁/热层/报告冻结
-  jobs/queue.py + worker.py             Redis Stream 队列 + worker（心跳、重试、死信、接管）
-  media/adapters/{xunfei_ast,qwen_asr,paraformer_rt,edge_tts,scripted}.py  语音适配器（paraformer_rt=实时，默认）
-apps/api/scripts/                       real_model_smoke / fault_probe / load_test / media_smoke / v3_ws_probe / assembler_real_probe / make_fixture_audio / check_coverage_floors / fake_openai / export_openapi / extract_api_index
-apps/api/tests/                         865 例（2026-10-08 实测，main）；test_source_hygiene.py 拦语法警告与转义反引号
-scripts/verify.sh                       单一验证入口（P2-T1；CI 与本地同一份命令）
-scripts/compose_smoke.sh                部署面验收（含 P29 缓存头断言）
-scripts/kill_instance_drill.sh          §12.4 硬验收
-scripts/fault_injection_drill.sh        V6 浸泡/故障注入
-scripts/verify_mutation.sh              变异证明（基线绿 → 变异红 → 恢复绿，真看退出码）
-scripts/check_scripts.py                两个脚本目录的语法扫描（SyntaxWarning 当错误）
-.githooks/pre-commit                    可选提交前检查（`git config core.hooksPath .githooks` 启用）
+apps/api/src/better_resume/             后端源码（settings / llm_gateway / ai_resilience / interview_engine / jobs / media …）
+apps/api/scripts/                       真机探针与一次性脚本
+apps/api/tests/                         pytest（hermetic；test_source_hygiene.py 拦语法警告与转义反引号）
+scripts/verify.sh                       单一验证入口（CI 与本地同一份命令）
+scripts/compose_smoke.sh                部署面验收（含缓存头断言）
+scripts/kill_instance_drill.sh          kill 实例硬验收
+scripts/fault_injection_drill.sh        浸泡/故障注入
+scripts/verify_mutation.sh              变异证明
+scripts/check_scripts.py                两个脚本目录的语法扫描
+.githooks/pre-commit                    可选提交前检查（git config core.hooksPath .githooks 启用）
 compose.yaml + deploy/nginx.conf        部署最终形态
 ```

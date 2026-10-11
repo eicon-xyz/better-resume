@@ -81,7 +81,7 @@ describe("mergeTranscript", () => {
   });
 });
 
-describe("replaceTranscript (P28: realtime partials replace their span, never re-append)", () => {
+describe("replaceTranscript: realtime partials replace their span, never re-append", () => {
   it("replaces the contributed span while trailing handwriting stays put", () => {
     const r = replaceTranscript("你好我是测试", "你好我是", "你好我是来自重庆");
     expect(r).toEqual({ text: "你好我是来自重庆测试", notice: false });

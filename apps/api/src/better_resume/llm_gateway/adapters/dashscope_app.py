@@ -1,4 +1,4 @@
-"""P3: DashScope application-call adapter — the third implementation of the LlmGateway seam.
+"""DashScope application-call adapter — the third implementation of the LlmGateway seam.
 
 Protocol (Model Studio "call applications", verified 2026-09-17): `POST
 {base}/api/v1/apps/{app_id}/completion` with `Authorization: Bearer <key>`; the header

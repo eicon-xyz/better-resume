@@ -18,7 +18,7 @@
 
 - CJK 无空格：分词靠章节关键词 + 字号/加粗启发式，正则别假设空格（见 `sections.py`）。
 - 测试用 `tests/interview_engine/test_parser_helpers.py` 生成 PDF：**别在仓库里塞二进制样本，
-  也别用 shell/heredoc 手工转义样本内容**——转义反复踩坑之后加了源码 hygiene 守卫（M4 P7）。
+  也别用 shell/heredoc 手工转义样本内容**——转义反复踩坑之后加了源码 hygiene 守卫。
 - 解析器是"确定性"卖点：任何"猜一个默认值"的补丁都会让同一份简历在不同版本给出不同结果。
 
 ## 测试地图

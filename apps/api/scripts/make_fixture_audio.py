@@ -1,4 +1,4 @@
-"""P2-T4: rebuild the ASR fixture audio from scratch (no binary blobs in git).
+"""rebuild the ASR fixture audio from scratch (no binary blobs in git).
 
 The wav is synthesized (edge-tts voice, fixed script text) and downsampled to 16 kHz mono,
 so any machine can regenerate the input for the real-machine probes. PINNED_SHA256 guards

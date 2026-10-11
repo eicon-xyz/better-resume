@@ -1,4 +1,4 @@
-"""M5-T8: dual-provider parity smoke — same scene, two adapters, one schema.
+"""dual-provider parity smoke — same scene, two adapters, one schema.
 
     uv run python scripts/adapter_smoke.py --scene answer_evaluation   # DeepSeek vs fake Xingyun
     uv run python scripts/adapter_smoke.py --scene chat --offline             # two fake vendors

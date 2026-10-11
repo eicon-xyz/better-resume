@@ -1,4 +1,4 @@
-"""M3-T5: bulkhead — bounded concurrency, bounded queue wait, no leaked slots."""
+"""bulkhead — bounded concurrency, bounded queue wait, no leaked slots."""
 
 from __future__ import annotations
 

@@ -2,9 +2,9 @@
 
 Why a buffer: the vendor takes a whole audio clip and answers once (batch), so unlike the
 xunfei AST adapter there are no incremental packets to merge. What the client sees is a single
-"final" event a second or two after the user releases the button, and the M4 sentence pool
+"final" event a second or two after the user releases the button, and the sentence pool
 (which exists to merge *incremental* vendor packets) is not exercised by this adapter. That
-trade-off is recorded in docs/tickets/v1-verification/V3-speech-to-text-real-machine.md.
+trade-off is recorded under docs/history_docs/tickets/v1-verification/.
 
 Wire format verified against the live endpoint (2026-09-14):
 A "data:audio/wav;base64,..." URI is required; a bare base64 string is rejected with HTTP 500.

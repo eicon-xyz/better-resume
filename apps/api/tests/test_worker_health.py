@@ -1,4 +1,4 @@
-"""M6-T5: the worker publishes a heartbeat so compose can health-check it.
+"""the worker publishes a heartbeat so compose can health-check it.
 
 A queue worker has no port to poll, so `serve` refreshes a short-lived Redis key and the
 container health check (`python -m better_resume.worker --health`) reads it.
@@ -52,7 +52,7 @@ async def test_check_health_is_false_without_a_heartbeat(worker_settings: Settin
 async def test_serve_survives_a_redis_timeout_in_the_heartbeat(
     worker_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """P1-D/P26: during a Redis failover the heartbeat write times out; the worker must log,
+    """During a Redis failover the heartbeat write times out; the worker must log,
     back off and keep going — not exit (observed live: exit 1 during master→replica promotion,
     which silently stopped every background job until someone restarted the container)."""
     from redis.exceptions import TimeoutError as RedisTimeoutError

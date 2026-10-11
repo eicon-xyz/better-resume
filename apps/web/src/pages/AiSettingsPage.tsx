@@ -1,4 +1,4 @@
-/** M5-T7: the AI settings panel — see and switch which provider serves each scene. */
+/** The AI settings panel — see and switch which provider serves each scene. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";

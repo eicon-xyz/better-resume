@@ -1,4 +1,4 @@
-"""M3-T7: GET /api/v1/resilience/stats is a session-guarded snapshot."""
+"""GET /api/v1/resilience/stats is a session-guarded snapshot."""
 
 from __future__ import annotations
 

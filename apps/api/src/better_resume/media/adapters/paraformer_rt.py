@@ -1,4 +1,4 @@
-"""Paraformer realtime channel: incremental ASR while the button is held (P1-A).
+"""Paraformer realtime channel: incremental ASR while the button is held.
 
 Wire contract verified against the live workspace endpoint (2026-09-15 preflight):
 
@@ -66,7 +66,7 @@ async def open_connection(ws_url: str, headers: dict[str, str], open_timeout: fl
     """The real vendor connection; tests swap `connect=` instead of this.
 
     websockets >= 14 renamed extra_headers and grew a proxy argument, and a malformed
-    NO_PROXY on this machine must not take the channel down (P20) — hence the fallbacks.
+    NO_PROXY on this machine must not take the channel down — hence the fallbacks.
     close_timeout is bounded because the vendor stalls the close handshake (~10 s
     observed live): the transcript is already complete, so we must not wait for it.
     """

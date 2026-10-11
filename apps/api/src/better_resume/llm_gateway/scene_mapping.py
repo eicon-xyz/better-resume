@@ -1,4 +1,4 @@
-r"""Scene mapping for the Xingyun adapter (M5-T4): explicit in, strict out.
+r"""Scene mapping for the Xingyun adapter: explicit in, strict out.
 
 The cloud workflow is a black box: we control what we send and what we accept, nothing else.
 So this module has exactly two jobs and no fallbacks:
@@ -80,7 +80,7 @@ def to_dashscope_app_payload(
     app_id: str,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """The one mapping from our ChatRequest to a Model Studio application call (P3).
+    """The one mapping from our ChatRequest to a Model Studio application call.
 
     The application owns its prompt, so we send the caller's last user message as
     `input.prompt` and nothing else: no system prompt, no schema hints, no invented

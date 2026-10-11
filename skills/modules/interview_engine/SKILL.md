@@ -22,11 +22,11 @@
 ## 已知陷阱
 
 - 追问与评分是同一次请求里的两个 AI 调用：`AnswerService.submit` 的 `follow_up_gateway` 可选参数
-  就是为场景路由加的（M5 P4）；删掉它会让 FOLLOW_UP 绑定失效。
-- 用"第 N 次出现"打文本补丁把 `http/interview.py` 改坏过一次（M5 P3）：改这个模块前先看测试地图，
+  就是为场景路由加的；删掉它会让 FOLLOW_UP 绑定失效。
+- 用"第 N 次出现"打文本补丁把 `http/interview.py` 改坏过一次：改这个模块前先看测试地图，
   改完必须跑 `tests/test_interview_*_api.py`，不要盲打补丁。
 - 追问上限按主题重置；题号是值对象（`2-F1`），不要用字符串拼接解析。
-- `report summary` 异步化（M6-T4）后，`GET report` 可能返回 `summary_pending`，数字仍然可用。
+- `report summary` 异步化后，`GET report` 可能返回 `summary_pending`，数字仍然可用。
 
 ## 测试地图
 

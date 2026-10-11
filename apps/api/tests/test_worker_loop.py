@@ -1,4 +1,4 @@
-"""M6-T4/T5: the worker loop must survive Redis hiccups and stop cleanly.
+"""the worker loop must survive Redis hiccups and stop cleanly.
 
 The T5 drill found this the hard way: a blocked XREADGROUP read that is cancelled during
 shutdown surfaced as a redis TimeoutError, the exception escaped `serve`, the container

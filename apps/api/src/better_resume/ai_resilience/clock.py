@@ -25,7 +25,7 @@ class SystemClock:
 
 @runtime_checkable
 class WallClock(Protocol):
-    """Wall-clock **milliseconds** — the only time base several processes can compare (P7).
+    """Wall-clock **milliseconds** — the only time base several processes can compare.
 
     `Clock` is monotonic on purpose (durations inside one process), so two replicas cannot
     compare their readings. Bucket state lives in Redis and is written by whichever replica

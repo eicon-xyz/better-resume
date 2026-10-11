@@ -1,4 +1,4 @@
-"""Generate the API index skill from the OpenAPI document plus the web routes (M6-T7).
+"""Generate the API index skill from the OpenAPI document plus the web routes.
 
     uv run --project apps/api python apps/api/scripts/extract_api_index.py
     uv run --project apps/api python apps/api/scripts/extract_api_index.py --check

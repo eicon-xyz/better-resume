@@ -1,9 +1,9 @@
-"""M6-T5: structure lint for the deployment manifests.
+"""structure lint for the deployment manifests.
 
 These checks are fast and always run, so a manifest edit cannot silently drop the worker,
 the two-instance wiring or the SSE settings. They are *not* the verification of the
 deployment: `scripts/compose_smoke.sh` starts the real stack and exercises the links
-(recorded in docs/tickets/m6/T5-evidence.md).
+(recorded in docs/history_docs/tickets/m6/T5-evidence.md).
 """
 
 from __future__ import annotations

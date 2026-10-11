@@ -2,7 +2,7 @@
 
 The bucket maths is the M3 token bucket; **where the state lives is a seam**
 (`BucketStore`): the in-process dict (default, and the fallback when Redis is down) or
-Redis for a quota shared by every replica (P7 / D19). The Redis store lives in
+Redis for a quota shared by every replica (D19). The Redis store lives in
 `redis_buckets.py`; the degradation policy lives in `ai_resilience.degraded`.
 """
 
@@ -147,7 +147,7 @@ class RateLimiter:
         self._default: BucketStore = store or InProcessBucketStore(
             clock=self._clock, max_identities=max_identities
         )
-        #: Per-bucket overrides — the cost buckets may live in a shared store (P7 / D19).
+        #: Per-bucket overrides — the cost buckets may live in a shared store (D19).
         self._stores: dict[Bucket, BucketStore] = dict(stores or {})
 
     @property

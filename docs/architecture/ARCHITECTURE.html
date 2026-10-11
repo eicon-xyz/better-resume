@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1480"/>
+<title>better-resume · 系统架构</title>
+<style>
+:root{
+  --bg:#0b0f14; --fg:#c9d1d9; --dim:#7d8590; --hair:#3a4450;
+  --blue:#79a8ff; --cyan:#5ad1e6; --green:#6fdc8c; --amber:#e8b25d; --purple:#b48cff; --red:#ff7b72;
+  --mono:"JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+}
+/* 图层色：每个节点带一个 tone class，边框 / 副标题 / 面板图例都取它；
+   没有这段，var(--tone) 会退化成 currentColor，边框全变灰。 */
+.blue{--tone:var(--blue)} .cyan{--tone:var(--cyan)} .green{--tone:var(--green)}
+.amber{--tone:var(--amber)} .purple{--tone:var(--purple)} .red{--tone:var(--red)} .dim{--tone:var(--dim)}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font-family:var(--mono);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.page{width:1480px;margin:0 auto;padding:22px 20px 40px}
+.masthead{text-align:center;padding:6px 0 14px;border-bottom:1px solid var(--hair)}
+.masthead h1{margin:0;font-size:15px;letter-spacing:.14em;color:#fff;font-weight:700}
+.masthead h1 .dot{color:var(--dim);padding:0 8px}
+.masthead .sub{margin-top:6px;font-size:11px;color:var(--dim);letter-spacing:.06em}
+.masthead .meta{margin-top:8px;font-size:11px;color:var(--dim)}
+.masthead .meta b{color:var(--fg);font-weight:400}
+.live{display:inline-block;min-width:150px;text-align:left}
+.live.ok{color:var(--green)}
+.live.dim{color:var(--dim)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;padding:10px 2px;border-bottom:1px solid var(--hair);font-size:11px;color:var(--dim)}
+.legend .grp{display:flex;gap:14px;align-items:center}
+.legend .sw{display:inline-flex;align-items:center;gap:6px;color:var(--fg);white-space:nowrap}
+.legend .sw i{width:16px;height:9px;border:1px solid currentColor;display:inline-block}
+.legend .sw.dashed i{border-style:dashed}
+.legend .bd{color:var(--fg);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.canvas{position:relative;width:1440px;height:1880px;margin:14px auto 0}
+svg.wires{position:absolute;left:0;top:0;overflow:visible}
+svg.wires path{fill:none;stroke-width:1}
+svg.wires path.dashed{stroke-dasharray:4 3}
+.wl{font-family:var(--mono);font-size:10px;fill:var(--dim);paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
+.box{position:absolute;border:1px solid var(--tone);background:var(--bg)}
+.box.dashed{border-style:dashed}
+.box .pad{padding:9px 11px}
+.box .t,.panel .t{color:#fff;font-weight:700;font-size:13px}
+.box .s,.panel .s{color:var(--tone);font-size:11px;margin-top:2px}
+.box .l,.panel .l{color:var(--dim);font-size:11px;line-height:1.6;margin-top:5px;white-space:pre-wrap;word-break:break-word}
+.box .l b,.panel .l b{color:var(--fg);font-weight:400}
+.box .err,.panel .err{color:var(--red)}
+.box .l .run,.panel .l .run{color:var(--green)}
+.box .l .missing,.panel .l .missing{color:var(--dim)}
+.panel .pad{padding:22px 12px 9px}
+.mod .n{white-space:nowrap}
+.panel{position:absolute;border:1px solid var(--tone);background:var(--bg)}
+.panel.dashed{border-style:dashed}
+.panel>.plegend{position:absolute;top:-8px;left:12px;background:var(--bg);padding:0 6px;font-size:11px;color:var(--tone);white-space:nowrap}
+.badge{position:absolute;top:-8px;right:10px;background:var(--bg);padding:0 5px;font-size:11px;white-space:nowrap}
+.badge.run{color:var(--green);animation:softpulse 2.4s ease-in-out infinite}
+.badge.done{color:var(--green)}
+.badge.warn{color:var(--red)}
+.badge.progress{color:var(--blue)}
+.badge.stopped,.badge.missing{color:var(--dim)}
+@keyframes softpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.badge.run{animation:none}}
+.mod{position:absolute;border:1px solid var(--hair);padding:5px 9px}
+.mod .n{color:var(--tone);font-weight:700;font-size:12px}
+.mod .d{color:var(--dim);font-size:11px;line-height:1.35}
+.mod .f{position:absolute;top:5px;right:9px;color:var(--dim);font-size:10px}
+.mods .mod .n{color:var(--tone)}
+.log{margin-top:26px;border:1px solid var(--hair);padding:18px 14px 12px;position:relative}
+.log>.plegend{background:var(--bg);color:var(--dim)}
+.log table{width:100%;border-collapse:collapse;font-size:11px}
+.log td{padding:2px 10px 2px 0;color:var(--dim);white-space:nowrap;vertical-align:top}
+.log td.t{color:#4d5866;width:74px}
+.log td.s{color:var(--fg);width:86px}
+.log td.b{width:96px}
+.log td.d{white-space:normal}
+.log .run,.log .done{color:var(--green)}
+.log .warn{color:var(--red)}
+.log .progress{color:var(--blue)}
+.log .stopped,.log .missing{color:var(--dim)}
+.cmd{margin-top:10px;padding-top:8px;border-top:1px dashed var(--hair);font-size:11px;color:var(--dim)}
+.cmd .p{color:var(--green)}
+.tools{margin-top:14px;display:flex;gap:14px;align-items:center;font-size:11px;color:var(--dim)}
+.tools button{font-family:var(--mono);font-size:11px;color:var(--fg);background:var(--bg);border:1px solid var(--hair);padding:3px 9px;cursor:pointer}
+.tools button:hover{border-color:var(--dim)}
+.foot{margin-top:14px;font-size:11px;color:var(--dim);border-top:1px solid var(--hair);padding-top:10px;line-height:1.7}
+.foot code{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="masthead">
+  <h1>BETTER-RESUME<span class="dot">·</span>系统架构<span class="dot">·</span>FastAPI 主导<span class="dot">·</span>Redis Stream 异步作业</h1>
+  <div class="sub">深色终端蓝图 · 结构事实扫描自仓库 · 运行状态来自实时探针（docker ps / TCP / HTTP）</div>
+  <div class="meta">
+    <span id="live" class="live dim">○ 快照</span>
+    <b>时钟 <span id="clock">--:--:--</span></b> · 渲染 <b>2026-10-10 23:09:30 +0800</b> ·
+    HEAD <b>8049264</b> @ <b>fix/nightly-buildx-entitlement</b>（未提交 296 项）·
+    探针 开 · 采样 5s
+  </div>
+</div>
+<div class="legend">
+  <span class="grp"><span class="sw " style="color:#79a8ff"><i></i>客户端</span><span class="sw " style="color:#5ad1e6"><i></i>边缘 / 接入</span><span class="sw " style="color:#6fdc8c"><i></i>AI 与韧性</span><span class="sw " style="color:#e8b25d"><i></i>数据与异步</span><span class="sw " style="color:#b48cff"><i></i>语音与媒体</span><span class="sw dashed" style="color:#7d8590"><i></i>外部依赖（虚线 = 计划 / 可选）</span></span>
+  <span class="grp"><span class="bd run">● 运行中</span><span class="bd warn">▲ 异常</span><span class="bd progress">◐ 进行中</span><span class="bd stopped">■ 已停止</span><span class="bd missing">○ 未创建</span><span class="bd done">✓ 已完成</span></span>
+  <span class="grp"><span class="sw">── 同步调用</span><span class="sw dashed"><i></i>异步 / 展开</span></span>
+</div>
+<div class="canvas"><svg class="wires" width="1440" height="1880" viewBox="0 0 1440 1880"><defs><marker id="ah-blue" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#79a8ff"/></marker><marker id="ah-cyan" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#5ad1e6"/></marker><marker id="ah-green" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#6fdc8c"/></marker><marker id="ah-amber" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#e8b25d"/></marker><marker id="ah-purple" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#b48cff"/></marker><marker id="ah-red" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#ff7b72"/></marker><marker id="ah-dim" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0.6 L 7.6 4 L 0 7.4 z" fill="#7d8590"/></marker></defs><path class="" d="M 835 174 L 835 244" stroke="#79a8ff" marker-end="url(#ah-blue)"/><text class="wl" x="900" y="210" text-anchor="start">fetch · EventSource(SSE) · WebSocket</text><path class="" d="M 835 370 L 835 394" stroke="#5ad1e6" marker-end="url(#ah-cyan)"/><text class="wl" x="852" y="384" text-anchor="start">proxy_pass $api_upstream$request_uri（/api/）</text><path class="" d="M 1110 520 L 1130 520 L 1130 105 L 1146 105" stroke="#5ad1e6" marker-end="url(#ah-cyan)"/><circle cx="1130" cy="520" r="2" fill="#5ad1e6"/><circle cx="1130" cy="105" r="2" fill="#5ad1e6"/><text class="wl" x="1130" y="330" text-anchor="middle" transform="rotate(-90 1130 330)">openapi.json 导出</text><path class="dashed" d="M 1283 190 L 1283 226 L 900 226 L 900 178" stroke="#5ad1e6" marker-end="url(#ah-cyan)"/><circle cx="1283" cy="226" r="2" fill="#5ad1e6"/><circle cx="900" cy="226" r="2" fill="#5ad1e6"/><text class="wl" x="1283" y="310" text-anchor="middle" transform="rotate(-90 1283 310)">生成 · 契约三件套校验</text><path class="" d="M 400 822 L 400 1064" stroke="#e8b25d" marker-end="url(#ah-amber)"/><text class="wl" x="410" y="848" text-anchor="start">SQL · asyncpg（统一 get_session）</text><path class="" d="M 1090 822 L 1090 1064" stroke="#e8b25d" marker-end="url(#ah-amber)"/><text class="wl" x="1080" y="1046" text-anchor="end">锁 / 热层 / 票据 / 限流桶 / 单飞 · XADD br:jobs</text><path class="dashed" d="M 1020 950 L 1045 950 L 1045 1064" stroke="#e8b25d" marker-end="url(#ah-amber)"/><circle cx="1045" cy="950" r="2" fill="#e8b25d"/><text class="wl" x="1054" y="996" text-anchor="start">XREADGROUP → XACK · 接管 XCLAIM(idle)</text><path class="" d="M 620 1012 L 620 1064" stroke="#e8b25d" marker-end="url(#ah-amber)"/><text class="wl" x="630" y="1046" text-anchor="start">写报告 / 作业状态</text><path class="" d="M 300 760 L 275 760 L 275 600 L 243 600" stroke="#6fdc8c" marker-end="url(#ah-green)"/><circle cx="275" cy="760" r="2" fill="#6fdc8c"/><circle cx="275" cy="600" r="2" fill="#6fdc8c"/><text class="wl" x="275" y="680" text-anchor="middle" transform="rotate(-90 275 680)">HTTPS · OpenAI 兼容（必经 ai_resilience）</text><path class="dashed" d="M 300 800 L 255 800 L 255 1420 L 286 1420" stroke="#7d8590" marker-end="url(#ah-dim)"/><circle cx="255" cy="800" r="2" fill="#7d8590"/><circle cx="255" cy="1420" r="2" fill="#7d8590"/><text class="wl" x="255" y="1110" text-anchor="middle" transform="rotate(-90 255 1110)">展开（不是新进程）</text><path class="dashed" d="M 600 1542 L 600 1600 L 248 1600 L 248 903" stroke="#b48cff" marker-end="url(#ah-purple)"/><circle cx="600" cy="1600" r="2" fill="#b48cff"/><circle cx="248" cy="1600" r="2" fill="#b48cff"/><text class="wl" x="430" y="1594" text-anchor="middle">ASR/TTS 出网（WSS / HTTPS）</text><path class="dashed" d="M 1150 780 L 1135 780 L 1135 700 L 1114 700" stroke="#7d8590" marker-end="url(#ah-dim)"/><circle cx="1135" cy="780" r="2" fill="#7d8590"/><circle cx="1135" cy="700" r="2" fill="#7d8590"/><text class="wl" x="1135" y="741" text-anchor="middle" transform="rotate(-90 1135 741)">探针</text></svg><div class="panel dim dashed" style="left:20px;top:40px;width:220px;height:860px"><div class="plegend">外部供应商 · 外部依赖</div><div class="pad"><div class="l"><b>DeepSeek 官方</b> · openai 兼容
+CHAT / 出题 / 评分 / 追问 / 报告
+凭据 BR_DEEPSEEK_API_KEY（.env）
+
+<b>阿里百炼 DashScope</b> · 第二平台
+qwen-plus 文本 · qwen-audio 批量 ASR
+paraformer-realtime-v2 实时 ASR
+凭据 BR_DASHSCOPE_API_KEY（LLM+ASR 共用）
+
+<b>讯飞 AST</b> · 流式 ASR
+pgs / rg / seg_id 句池归并（移植自旧项目）
+
+<b>edge-tts</b> · TTS 合成
+TtsCache：digest 寻址 mp3</div></div></div><div class="panel cyan" style="left:300px;top:400px;width:810px;height:420px"><div class="plegend">api · FastAPI 模块化单体 :8000 ×N</div><span class="badge missing">○ 未知</span><div class="pad"><div class="l">25 条路由 · 9 张表 · 5 版迁移 · 126 文件 / 13,146 行
+pytest 测试函数 653 个（静态计数）· 只 mock 系统边界（LLM/时钟/Redis/讯飞/音频/IPC）
+N 副本无状态：锁 / 热层 / 票据 / 限流桶 / 单飞全在 Redis，写路径失效</div></div></div><div class="panel dim dashed" style="left:1150px;top:400px;width:266px;height:420px"><div class="plegend">运行探针 · runtime probe</div><div class="pad"><div class="l">采样 23:09:30（docker ps + TCP + HTTP）
+探针拿不到就写「未知」，不编造状态
+
+postgres  <span class="unknown">○ 未知</span>  
+redis  <span class="unknown">○ 未知</span>  
+migrate  <span class="unknown">○ 未知</span>  一次性
+api  <span class="unknown">○ 未知</span>  
+worker  <span class="unknown">○ 未知</span>  
+nginx  <span class="unknown">○ 未知</span>  宿主 :8080
+fake-llm  <span class="unknown">○ 未知</span>  profile smoke
+redis-sentinel-1  <span class="unknown">○ 未知</span>  profile drill
+redis-replica  <span class="unknown">○ 未知</span>  profile drill</div></div></div><div class="panel green dashed" style="left:290px;top:1320px;width:1126px;height:220px"><div class="plegend">展开视图 · api 内部两个深模块（虚线 = 展开，不是新进程）</div><div class="pad"></div></div><div class="panel cyan" style="left:290px;top:1650px;width:1126px;height:170px"><div class="plegend">验证网 · scripts/verify.sh 单一入口（CI 与本地同一份命令）</div><div class="pad"></div></div><div class="mod" style="left:316px;top:482px;width:380px;height:58px"><div class="n" style="color:#5ad1e6">identity</div><div class="f">10 文件 · 481 行</div><div class="d">Cookie session（Redis 30 天滑动）+ WS ticket 一次性握手（D11）</div></div><div class="mod" style="left:316px;top:548px;width:380px;height:58px"><div class="n" style="color:#5ad1e6">http</div><div class="f">10 文件 · 1,226 行</div><div class="d">REST / WS / SSE 薄层 · 25 条路由（/api/v1/*）</div></div><div class="mod" style="left:316px;top:614px;width:380px;height:58px"><div class="n" style="color:#5ad1e6">conversation + chat</div><div class="f">9 文件 · 799 行</div><div class="d">chat 与 interview 两类会话收敛到一个 conversation 模块（D09）</div></div><div class="mod" style="left:316px;top:680px;width:380px;height:58px"><div class="n" style="color:#6fdc8c">interview_engine</div><div class="f">22 文件 · 3,107 行</div><div class="d">双状态机（会话 6 态 / 流程 5 态）· 题级锁 · 热层 · 报告冻结</div></div><div class="mod" style="left:316px;top:746px;width:380px;height:58px"><div class="n" style="color:#6fdc8c">resume_parser</div><div class="f">8 文件 · 469 行</div><div class="d">pdfplumber + 章节启发式（解析不靠 LLM，D10）</div></div><div class="mod" style="left:714px;top:482px;width:380px;height:58px"><div class="n" style="color:#6fdc8c">llm_gateway</div><div class="f">19 文件 · 1,862 行</div><div class="d">场景绑定 resolver + 模型注册 + 3 个 adapter（D04）</div></div><div class="mod" style="left:714px;top:548px;width:380px;height:58px"><div class="n" style="color:#6fdc8c">ai_resilience</div><div class="f">20 文件 · 2,287 行</div><div class="d">单飞（进程内 + 分布式）+ 熔断 + 舱壁 + 超时 + 令牌桶：供应商调用必经</div></div><div class="mod" style="left:714px;top:614px;width:380px;height:58px"><div class="n" style="color:#b48cff">media</div><div class="f">15 文件 · 1,689 行</div><div class="d">TranscriptionChannel + TtsSynthesizer 两缝 + assembler 句池归并</div></div><div class="mod" style="left:714px;top:680px;width:380px;height:58px"><div class="n" style="color:#e8b25d">jobs + worker.py</div><div class="f">3 文件 · 470 行</div><div class="d">Redis Stream 生产端；worker 进程复用同一模块</div></div><div class="mod" style="left:714px;top:746px;width:380px;height:58px"><div class="n" style="color:#7d8590">settings · observability · db</div><div class="f">7 文件 · 431 行</div><div class="d">BR_ 前缀配置 · structlog + request_id · async 引擎/session</div></div><div class="box blue" style="left:600px;top:40px;width:470px;height:132px"><span class="badge done">✓ 已完成</span><div class="pad"><div class="t">web · React 19 + Vite SPA</div><div class="s">客户端 · 浏览器（D05/D08）</div><div class="l">路由 / · /chat · /chat/:sessionId · /settings/ai · /interview · /interview/room/:sessionId
+76 文件 · 9,455 行 · vitest 166 例
+api/ 请求层 + SSE/WS 客户端 · audio/ 采集 → PCM → 转写合并（三层合并）</div></div></div><div class="box cyan" style="left:1150px;top:40px;width:266px;height:150px"><span class="badge done">✓ 已完成</span><div class="pad"><div class="t">契约 · openapi 生成</div><div class="s">契约 · 单一事实源（D17）</div><div class="l">apps/api/openapi.json
+→ openapi-typescript → schema.d.ts
+生成物勿手改；契约三件套：
+export_openapi → gen:api → extract_api_index</div></div></div><div class="box cyan" style="left:600px;top:250px;width:470px;height:118px"><span class="badge missing">○ 未知</span><div class="pad"><div class="t">nginx :8080 · 唯一入口</div><div class="s">边缘 · SPA 静态 + /api 反向代理（D07）</div><div class="l">upstream 变量 + resolver 127.0.0.11 → --scale api=N 才生效
+index.html Cache-Control: no-store · /assets/ immutable
+16m 上传上限 · /api/ 关闭缓冲（WS/SSE，read/send 300s）</div></div></div><div class="box amber" style="left:580px;top:870px;width:440px;height:140px"><span class="badge missing">○ 未知</span><div class="pad"><div class="t">worker · Redis Stream 消费者</div><div class="s">异步 · python -m better_resume.worker</div><div class="l">XREADGROUP br:jobs / br:workers → XACK；崩溃接管 XCLAIM(idle≈60s)
+心跳 br:worker:heartbeat（TTL）· 死信 br:jobs:dead（兜底 try）
+作业 report_summary · 退避 0.5 → 5s（loop_backoff_seconds）</div></div></div><div class="box amber" style="left:290px;top:1070px;width:380px;height:190px"><span class="badge missing">○ 未知</span><div class="pad"><div class="t">postgres:16 · 5432（内网不发布）</div><div class="s">数据 · 关系表 + JSONB + GIN（D03）</div><div class="l">conversations · conversation_messages · interview_sessions
+interview_questions · interview_answers
+interview_flow_state · interview_reports
+llm_scene_bindings · ai_models
+Alembic 5 版迁移 · volume uploads → /app/data（内容寻址 PDF，多副本共享）</div></div></div><div class="box amber" style="left:700px;top:1070px;width:405px;height:190px"><span class="badge missing">○ 未知</span><div class="pad"><div class="t">redis:7 · 6379（内网不发布）</div><div class="s">数据 · 会话 / 锁 / 热层 / 票据 / 限流 / 队列</div><div class="l">br:jobs
+br:hot:restore:{user_id}:{session_id} · br:lock:question:{session_id}:{question_no} · br:ws_ticket:{ticket}
+br:flight:owner:{flight_key} · br:flight:result:{flight_key} · br:rl:{bucket}|{identity}
+worker 心跳 br:worker:heartbeat（TTL 30s）</div></div></div><div class="box amber dashed" style="left:1150px;top:1070px;width:266px;height:190px"><span class="badge missing">○ 未知</span><div class="pad"><div class="t">drill profile · 哨兵演练</div><div class="s">计划 / 可选（默认不启）</div><div class="l">redis-sentinel-1/2/3（quorum=2）
+redis-replica ×2：主挂时必须仍有可见副本
+须同时给 BR_REDIS_SENTINELS + BR_REDIS_MASTER_NAME
+演练用 pause 冻结主：kill 会让 compose DNS 失效 → TILT</div></div></div><div class="box green" style="left:310px;top:1360px;width:520px;height:168px"><span class="badge done">✓ 已完成</span><div class="pad"><div class="t">llm_gateway · 场景 → 供应商</div><div class="s">AI 编排 · 自研轻量（D04，不引 LangChain）</div><div class="l">场景（5）chat · question_extraction · answer_evaluation · follow_up · report_summary
+适配器 dashscope_app · openai_compat · xingyun
+必经 ai_resilience：单飞 + 熔断 + 舱壁 + 超时 + 令牌桶（跨副本共享，降级回进程内）
+缺配置 / 依赖不可用 → <span class="err">503 + Retry-After</span> 并点名变量（红色只标错误路径）</div></div></div><div class="box purple" style="left:860px;top:1360px;width:536px;height:172px"><span class="badge done">✓ 已完成</span><div class="pad"><div class="t">media · 语音两缝</div><div class="s">语音 · TranscriptionChannel + TtsSynthesizer（D06）</div><div class="l">WS /api/v1/media/transcribe：ticket → 音频帧 → replace|archive|final → close(1000)
+ASR 适配器 paraformer_rt · qwen_asr · scripted · xunfei_ast（scripted 为 CI/本地默认）· TTS ['edge_tts']
+TTS edge_tts + TtsCache → GET /api/v1/media/tts/{digest}.mp3
+assembler 句池归并：增量包提交语义（真机证过）</div></div></div><div class="box cyan" style="left:310px;top:1690px;width:340px;height:110px"><div class="pad"><div class="t">CI · GitHub Actions 双 job</div><div class="l">backend：ruff + pytest + alembic check
+frontend：eslint + tsc + vitest
+nightly.yml · weekly-full.yml（长跑 / 浸泡）</div></div></div><div class="box cyan" style="left:670px;top:1690px;width:340px;height:110px"><div class="pad"><div class="t">verify.sh · 分层</div><div class="l">unit · contract · coverage · deploy
+fault · soak · real · scripts · all
+real 层带预算守卫 BR_REAL_CALL_BUDGET=200</div></div></div><div class="box cyan" style="left:1030px;top:1690px;width:366px;height:110px"><div class="pad"><div class="t">演练与证明</div><div class="l">compose_smoke.sh（REST/SSE/WS/双实例/心跳）
+kill_instance_drill.sh · fault_injection_drill.sh
+verify_mutation.sh（基线绿 → 变异红 → 恢复绿）</div></div></div><div class="box dim" style="left:20px;top:930px;width:220px;height:172px"><div class="pad"><div class="t">本机开发环境</div><div class="s">探针 · TCP</div><div class="l">postgres:5433 <span class="run">● 监听中</span>
+redis:6379 <span class="run">● 监听中</span>
+nginx:8080 <span class="missing">○ 未启动</span>
+uv .venv ✓ · pnpm node_modules ✓
+compose 内网 5432/6379 不发布</div></div></div></div><div class="log"><div class="plegend">session log · 探针事件 · 每 5s 采样一次，状态变化时记录</div><table><tr><td class="t">23:09:30</td><td class="s">nginx</td><td class="b unknown">○ 未知</td><td class="d">GET /nginx-healthz → 连接失败（端口无应答）</td></tr><tr><td class="t">23:09:29</td><td class="s">api</td><td class="b unknown">○ 未知</td><td class="d">GET /healthz（穿 nginx）→ 连接失败（端口无应答）</td></tr><tr><td class="t">23:09:28</td><td class="s">worker</td><td class="b unknown">○ 未知</td><td class="d">心跳 br:worker:heartbeat · docker 不可用（TimeoutExpired）</td></tr><tr><td class="t">23:09:27</td><td class="s">postgres</td><td class="b unknown">○ 未知</td><td class="d">docker 不可用（TimeoutExpired）</td></tr><tr><td class="t">23:09:26</td><td class="s">redis</td><td class="b unknown">○ 未知</td><td class="d">docker 不可用（TimeoutExpired）</td></tr><tr><td class="t">23:09:25</td><td class="s">migrate</td><td class="b unknown">○ 未知</td><td class="d">alembic upgrade head（一次性）· docker 不可用（TimeoutExpired）</td></tr><tr><td class="t">23:09:30</td><td class="s">host</td><td class="b run">● 监听中</td><td class="d">TCP 127.0.0.1:5433 · postgres:5433 原生测试库</td></tr><tr><td class="t">23:09:30</td><td class="s">host</td><td class="b run">● 监听中</td><td class="d">TCP 127.0.0.1:6379 · redis:6379 原生测试库</td></tr></table><div class="cmd"><span class="p">~/better-resume $</span> docker compose ps<div>● 探针 23:09:30 · 0/6 运行中 [nginx · api · worker · postgres · redis · migrate] · profile 服务（smoke / drill）默认不启</div></div></div>
+<div class="tools">
+  <button id="autoreload">自动刷新：关</button>
+  <span>配合 <code>python3 scripts/build_architecture_map.py --watch -i 5</code> 使用：脚本重渲染，页面自动重载；
+  也可在地址后加 <code>?auto=1</code> 直接开启。</span>
+</div>
+<div class="foot">
+  生成脚本 <code>scripts/build_architecture_map.py</code> · 产物 <code>docs/architecture/ARCHITECTURE.html</code> ·
+  手改 HTML 会在下一次渲染被覆盖：结构变化改脚本，状态变化不用改（探针自动读）。
+</div>
+</div>
+<script>
+(function () {
+  var PORT = 8080;
+  var BASE = "http://127.0.0.1:" + PORT;
+  var PERIOD = 5000;
+  var clock = document.getElementById("clock");
+  var live = document.getElementById("live");
+  var btn = document.getElementById("autoreload");
+  function tick() { clock.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false }); }
+  tick(); setInterval(tick, 1000);
+  // no-cors 读不到状态码：只能证明这个端口上有人应答，所以文案只写可达性，不写健康。
+  function ping() {
+    fetch(BASE + "/healthz", { mode: "no-cors", cache: "no-store" }).then(function () {
+      live.textContent = "● 边缘可达 :" + PORT; live.className = "live ok";
+    }).catch(function () {
+      live.textContent = "○ 快照（未探测到边缘）"; live.className = "live dim";
+    });
+  }
+  ping(); setInterval(ping, PERIOD);
+  var timer = null;
+  function toggle() {
+    if (timer) { clearInterval(timer); timer = null; btn.textContent = "自动刷新：关"; }
+    else { timer = setInterval(function () { location.reload(); }, PERIOD); btn.textContent = "自动刷新：开"; }
+  }
+  btn.addEventListener("click", toggle);
+  if (new URLSearchParams(location.search).get("auto") === "1") { toggle(); }
+})();
+</script>
+</body>
+</html>

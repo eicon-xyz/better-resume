@@ -1,4 +1,4 @@
-r"""One place where the HTTP layer turns a scene into a gateway (M5-T6).
+r"""One place where the HTTP layer turns a scene into a gateway.
 
 Business services keep taking a `gateway: LlmGateway` argument (that seam is from M1); only
 the *choice* of provider moved here, so switching providers never edits business code.

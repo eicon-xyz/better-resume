@@ -1,4 +1,4 @@
-"""M4-T2: xunfei AST adapter — signing, pacing, parsing, failures, reconnect.
+"""xunfei AST adapter — signing, pacing, parsing, failures, reconnect.
 
 The vendor boundary is faked with a real local WebSocket server; nothing inside the
 adapter is patched, so the frames, the JSON parsing and the assembler wiring are all real.

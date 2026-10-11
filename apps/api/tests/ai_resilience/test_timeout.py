@@ -1,4 +1,4 @@
-"""M3-T5: deadlines driven by the manual clock (no real sleeping in tests)."""
+"""deadlines driven by the manual clock (no real sleeping in tests)."""
 
 from __future__ import annotations
 

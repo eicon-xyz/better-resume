@@ -1,4 +1,4 @@
-"""P1-A: the Paraformer realtime channel, built against a scripted fake vendor.
+"""the Paraformer realtime channel, built against a scripted fake vendor.
 
 Wire contract verified against the live workspace endpoint (2026-09-15 preflight):
 wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference, Bearer auth at the

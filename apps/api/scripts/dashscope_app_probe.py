@@ -1,11 +1,11 @@
-"""P3: real-machine probe for the DashScope application-call adapter (Xingyun's Alibaba twin).
+"""real-machine probe for the DashScope application-call adapter (Xingyun's Alibaba twin).
 
     uv run python scripts/dashscope_app_probe.py --dry-run   # plan + budget, spends nothing
     uv run python scripts/dashscope_app_probe.py             # 1 vendor call: SSE protocol + timing
     uv run python scripts/dashscope_app_probe.py --schema    # +1 call: structured-output boundary
 
 Refuses to pretend: without `BR_DASHSCOPE_APP_ID` / `BR_DASHSCOPE_API_KEY` (gitignored
-`.env`) it exits 2 and spends nothing. Evidence honesty (P19): the usage envelope is printed
+`.env`) it exits 2 and spends nothing. Evidence honesty: the usage envelope is printed
 **as the vendor sent it** — "this platform returns no usage" is a valid finding, inventing one
 is not. Exit codes: 0 ok, 2 missing configuration, 3 the structured contract failed.
 """

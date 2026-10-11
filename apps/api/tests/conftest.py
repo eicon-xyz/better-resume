@@ -112,7 +112,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 @pytest.fixture
 async def restore_scene_bindings(migrated_database: str) -> AsyncIterator[None]:
-    """P8-N1: put the shared scene-binding table back after a test that switches providers.
+    """Put the shared scene-binding table back after a test that switches providers.
 
     The table lives outside the process and is shared by the whole run, so one forgotten restore
     makes an unrelated file fail while the full suite stays green (the store test resets the

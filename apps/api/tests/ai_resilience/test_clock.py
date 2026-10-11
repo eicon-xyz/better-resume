@@ -1,4 +1,4 @@
-"""M3-T1: the clock seam — real time in production, manual time in tests."""
+"""the clock seam — real time in production, manual time in tests."""
 
 from __future__ import annotations
 

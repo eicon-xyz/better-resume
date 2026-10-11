@@ -1,4 +1,4 @@
-"""M6-T5: every response names the instance that served it.
+"""every response names the instance that served it.
 
 nginx load-balances two api containers, so an operator (and the drill in T8) needs to see
 *which* container answered. The header is also what the dual-instance smoke test asserts on.
