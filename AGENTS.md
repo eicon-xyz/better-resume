@@ -23,7 +23,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D22），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
+- 决议记录在 `docs/DECISIONS.md`（D01–D23），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
 
 ## 技术栈
 
