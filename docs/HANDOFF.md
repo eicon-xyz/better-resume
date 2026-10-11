@@ -6,12 +6,16 @@
 
 ## 1. 当前状态
 
-**`main` = `353b4b5`（CI 绿），没有挂起的 PR。**
+**`origin/main` = `353b4b5`（CI 绿），没有挂起的 PR。本地 `main` = `cb439e7`，落后 4 个 commit（坑见 §4）。**
 
-- **在飞阶段**：`docs/tickets/p11-resume-driven-questions/`（简历驱动的分类出题）——实现已落工作区，
-  **待用户验收**（对账与未验证项见同目录 `ACCEPTANCE.md`）。
-- 本地分支 `docs/cleanup-current-state`（`84f622b`）承载那轮全量文档清理，**未推送**；
-  该分支之后的改动仍在工作区。
+- **两个在飞阶段，都待用户验收、都未推送、都没有 upstream**：
+  - `p11-resume-driven-questions`（同名分支）= `84f622b`（全量文档清理）+ `a2a0ff1`（简历驱动的分类出题）；
+    对账与未验证项见 `docs/tickets/p11-resume-driven-questions/ACCEPTANCE.md`。
+  - `p12-intent-alignment`（同名分支，**叠在 P11 之上**）= 意图对齐与验收减负（评审必答问题、高风险面清单、
+    票据与验收包必填段、跨模型交接格式）+ 规则成本检验与机制消融记录；见 `docs/tickets/p12-intent-alignment/ACCEPTANCE.md`。
+- **P12 依赖 P11，不能先合**：`D23` 由 `84f622b` 引入，`origin/main` 上没有（`git show origin/main:docs/DECISIONS.md | grep -c D23` → 0），
+  而 P12 的文档引用 D23 共 7 处。
+- 分支 `docs/cleanup-current-state`（`84f622b`）的内容已被 `p11-resume-driven-questions` 包含。
 
 - 已合并：M0–M6、V、P1–P10。代码即事实：验证入口 `bash scripts/verify.sh --list`。
 - 验证网：CI 双 job 与本地走同一份分层命令（`scripts/verify.sh`）；`nightly`（每日 02:30 UTC，deploy + quick fault）
@@ -25,6 +29,13 @@
 - **协作流程（用户明确要求，永久生效）**：每个阶段**先出提案**（范围/不做/交付物/测试/验收口径）→ 用户确认 →
   红-绿 TDD 执行 → 交**验收包**（ACCEPTANCE：可复跑命令 + 原始输出 + 未验证项 + 偏差）→ **由用户验收**。
   **AI 不自行宣布完成、不擅自提交/推送/开 PR/合并**；验收通过且用户明确下令后才动 git。
+- **票据与验收包的必填段**：开工前「意图复述」、收工「实现决定交代」；验收包另有「自行拍定的决定」（跨票聚合、带票标识列）
+  与「改动面与高风险面自查」（`git diff --stat` 原始输出 + 与声明写入路径逐条比对、**越界即红** + 五类高风险面逐类勾）。
+  格式见 `docs/agents/issue-tracker.md`。
+- **人工评审看两处**：`CODING_STANDARDS.md` §5（五类高风险面，每格是检查动作）与 §6（八条必答问题；
+  合法回答有三种——证据 / 不适用 / **无法取证**，后者必须点名读不到的路径）。
+- **跨模型派活与评审分派**：交接包五栏（含「不接受的自由度」）、Spec 轴派**异家族同级**模型、Standards 轴归规划方、
+  派活前给票据建 sha256 基线——见 `docs/agents/subagents.md` §8。
 - **文档纪律**：所有文档与代码注释只描述**当前状态**，不记录修改历史；临时阶段划分与被取代的决策不留痕。
 - 纪律：只 mock 系统边界（LLM/时钟/Redis/讯飞/浏览器音频/IPC）；小步提交说 WHAT；难题即时记票据的 `PROBLEMS.md`；
   真机凭据只进 gitignored `.env`；不允许"默认关闭、没人跑"的死分支。
