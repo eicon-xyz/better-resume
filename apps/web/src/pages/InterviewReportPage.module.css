@@ -45,8 +45,7 @@
 
 .overall {
   margin: 0;
-  /* allow: 综合分英雄数字的一次性展示字号（超出 --br-text-* 字阶，非间距/常规字阶） */
-  font-size: 42px;
+  font-size: var(--br-text-hero);
   line-height: 1.1;
 }
 
@@ -103,7 +102,7 @@
 
 .badge {
   padding: var(--br-space-1) var(--br-space-2);
-  border-radius: var(--br-radius-pill);
+  border-radius: var(--br-radius-xs);
   background: var(--br-color-surface-raised);
   color: var(--br-color-text-muted);
   font-size: var(--br-text-xs);

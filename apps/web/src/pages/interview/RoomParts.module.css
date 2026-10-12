@@ -14,7 +14,7 @@
 
 .badge {
   padding: var(--br-space-1) var(--br-space-2);
-  border-radius: var(--br-radius-pill);
+  border-radius: var(--br-radius-xs);
   background: var(--br-color-surface);
   color: var(--br-color-text-muted);
   font-size: var(--br-text-xs);

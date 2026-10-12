@@ -7,8 +7,22 @@
   color: var(--br-color-text);
   font: inherit;
   font-size: var(--br-text-sm);
+  transition:
+    border-color var(--br-duration-fast),
+    box-shadow var(--br-duration-fast);
 }
 
 .select:hover {
   border-color: var(--br-color-accent);
+}
+
+.select:focus-visible {
+  border-color: var(--br-color-accent);
+  box-shadow: 0 0 0 var(--br-space-1) var(--br-color-accent-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select {
+    transition: none;
+  }
 }

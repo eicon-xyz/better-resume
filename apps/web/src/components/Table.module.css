@@ -17,3 +17,17 @@
   color: var(--br-color-text-muted);
   font-weight: 600;
 }
+
+.table tbody tr {
+  transition: background var(--br-duration-fast);
+}
+
+.table tbody tr:hover {
+  background: var(--br-color-surface-raised);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table tbody tr {
+    transition: none;
+  }
+}

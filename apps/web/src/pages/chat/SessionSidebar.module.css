@@ -29,6 +29,11 @@
   font-size: var(--br-text-sm);
   cursor: pointer;
   list-style: none;
+  transition: color var(--br-duration-fast);
+}
+
+.summary:hover {
+  color: var(--br-color-text);
 }
 
 .summary::-webkit-details-marker {
@@ -70,11 +75,24 @@
   font-size: var(--br-text-sm);
   text-align: left;
   cursor: pointer;
+  transition:
+    background var(--br-duration-fast),
+    border-color var(--br-duration-fast);
 }
 
-.active {
+.session:hover {
   border-color: var(--br-color-border);
   background: var(--br-color-surface-raised);
+}
+
+.session:active {
+  background: var(--br-color-accent-muted);
+}
+
+.active,
+.active:hover {
+  border-color: var(--br-color-accent);
+  background: var(--br-color-accent-muted);
 }
 
 .sessionTitle {
@@ -94,6 +112,11 @@
   color: var(--br-color-text-muted);
   font-size: var(--br-text-md);
   cursor: pointer;
+  transition: color var(--br-duration-fast);
+}
+
+.delete:hover {
+  color: var(--br-color-danger);
 }
 
 @media (min-width: 1024px) {
@@ -116,5 +139,13 @@
     gap: var(--br-space-1);
     overflow-x: visible;
     overflow-y: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session,
+  .summary,
+  .delete {
+    transition: none;
   }
 }

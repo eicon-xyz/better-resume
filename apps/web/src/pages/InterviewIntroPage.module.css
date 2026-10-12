@@ -114,7 +114,13 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--br-space-3);
+  border-radius: var(--br-radius-md);
   font-size: var(--br-text-sm);
+  transition: background var(--br-duration-fast);
+}
+
+.sessions li:hover {
+  background: var(--br-color-accent-muted);
 }
 
 .loading {
@@ -123,7 +129,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bar {
+  .bar,
+  .sessions li {
     transition: none;
   }
 }

@@ -36,11 +36,18 @@
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
   text-decoration: none;
+  transition:
+    background var(--br-duration-fast),
+    color var(--br-duration-fast);
 }
 
 .navLink:hover {
   background: var(--br-color-surface);
   color: var(--br-color-text);
+}
+
+.navLink:active {
+  background: var(--br-color-accent-muted);
 }
 
 .navActive {
@@ -72,5 +79,11 @@
 @media (min-width: 1024px) {
   .content {
     padding: 0 var(--br-space-5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navLink {
+    transition: none;
   }
 }

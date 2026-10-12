@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   padding: var(--br-space-1) var(--br-space-2);
-  border-radius: var(--br-radius-pill);
+  border-radius: var(--br-radius-xs);
   font-size: var(--br-text-xs);
   font-weight: 600;
 }
