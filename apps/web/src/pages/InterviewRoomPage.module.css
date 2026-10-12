@@ -1,3 +1,5 @@
+/* 面试间：房间二级行 + 上下堆叠的答题区 + 吸底 composer 卡片。 */
+
 .page {
   display: flex;
   flex-direction: column;
@@ -5,19 +7,21 @@
   overflow: hidden;
 }
 
-.header {
+.roomBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--br-space-4);
+  gap: var(--br-space-3);
   padding: var(--br-space-3) var(--br-space-4);
-  /* allow: 页头底部分隔线线宽（1px 几何） */
+  /* allow: 房间二级行底部分隔线线宽（1px 几何） */
   border-bottom: 1px solid var(--br-color-border);
+  background: var(--br-color-surface-raised);
 }
 
-.brand {
-  margin: 0 0 var(--br-space-1);
-  font-size: var(--br-text-lg);
+.roomActions {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+  margin-left: auto;
 }
 
 .body {
@@ -29,17 +33,55 @@
   overflow-y: auto;
 }
 
-@media (min-width: 1024px) {
-  .body {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  }
-}
-
 .main,
 .side {
   display: flex;
   flex-direction: column;
   gap: var(--br-space-3);
+}
+
+.feedbackToggle {
+  display: flex;
+}
+
+/* 窄屏（<1024）反馈默认折叠，展开开关只在断点块之前可见。 */
+.feedbackBody {
+  display: none;
+}
+
+.feedbackBody[data-open="true"] {
+  display: block;
+}
+
+.feedbackList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedbackItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-1);
+}
+
+/* 最新一条反馈高亮：Card 的根是 section，直接给它靛蓝描边与浮起阴影。 */
+.feedbackItem[data-latest="true"] > section {
+  border-color: var(--br-color-accent);
+  box-shadow: var(--br-shadow-md);
+}
+
+.latestTag {
+  align-self: flex-start;
+  padding: var(--br-space-1) var(--br-space-2);
+  border-radius: var(--br-radius-xs);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-accent);
+  font-size: var(--br-text-xs);
+  font-weight: 600;
 }
 
 .hint {
@@ -72,4 +114,18 @@
   color: var(--br-color-text);
   font-size: var(--br-text-sm);
   list-style: none;
+}
+
+@media (min-width: 1024px) {
+  .body {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .feedbackToggle {
+    display: none;
+  }
+
+  .feedbackBody {
+    display: block;
+  }
 }

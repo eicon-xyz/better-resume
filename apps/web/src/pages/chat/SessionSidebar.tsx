@@ -35,6 +35,7 @@ export function SessionSidebar({
               <button
                 type="button"
                 className={`${styles.session} ${session.id === activeId ? styles.active : ""}`}
+                aria-current={session.id === activeId ? "true" : undefined}
                 onClick={() => {
                   onSelect(session.id);
                 }}

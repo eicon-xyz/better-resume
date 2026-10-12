@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiProvider } from "../api/ApiContext";
-import type { ApiClient } from "../api/client";
+import type { ApiClient, UploadOptions } from "../api/client";
 import { ApiError } from "../api/errors";
 import { useChatStore } from "../chat/store";
 import { InterviewIntroPage } from "./InterviewIntroPage";
@@ -141,6 +141,51 @@ describe("InterviewIntroPage", () => {
     expect(typeof uploadOptions?.onProgress).toBe("function");
   });
 
+  it("keeps the chosen focus in controlled state and explains each option", async () => {
+    renderPage(fakeClient());
+
+    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    const select = screen.getByLabelText("面试侧重");
+    fireEvent.change(select, { target: { value: "project" } });
+
+    expect(select).toHaveValue("project");
+    expect(screen.getByRole("option", { name: /项目深挖/ })).toHaveTextContent(
+      "围绕项目经历追问技术取舍",
+    );
+  });
+
+  it("drives the progress bar and its percentage from the upload progress", async () => {
+    let reportProgress: ((ratio: number) => void) | undefined;
+    const client = fakeClient({
+      uploadResumeAndGenerateQuestions: vi.fn(
+        (_sessionId: string, _file: File, options?: UploadOptions) => {
+          reportProgress = options?.onProgress;
+          return new Promise<never>(() => undefined);
+        },
+      ),
+    });
+    renderPage(client);
+
+    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    selectFile(pdfFile());
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "开始面试" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始面试" }));
+    await waitFor(() => {
+      expect(reportProgress).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      reportProgress?.(0.42);
+    });
+
+    const bar = screen.getByRole("progressbar", { name: "上传进度" });
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+    expect((bar.lastElementChild as HTMLElement).style.width).toBe("42%");
+    expect(bar.parentElement).toHaveTextContent("正在生成题目…");
+  });
+
   it("sends the chosen interview focus when creating the session", async () => {
     const client = fakeClient();
     renderPage(client);
@@ -179,6 +224,19 @@ describe("InterviewIntroPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("PDF 没有可提取的文本层");
     expect(screen.queryByText("房间已打开")).not.toBeInTheDocument();
+  });
+
+  it("accepts a dropped pdf through the same validation path", async () => {
+    renderPage(fakeClient());
+
+    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    const dropzone = screen.getByLabelText("选择简历 PDF").closest("label");
+    expect(dropzone).not.toBeNull();
+    fireEvent.drop(dropzone as HTMLElement, { dataTransfer: { files: [pdfFile()] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "开始面试" })).toBeEnabled();
+    });
   });
 
   it("continues an unfinished interview through restore", async () => {

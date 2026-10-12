@@ -26,10 +26,12 @@ export function MessageList({
 
   if (messages.length === 0) {
     return (
-      <Empty
-        title="还没有消息"
-        description={streaming ? "正在生成第一条回答…" : "在下面输入你的第一个问题"}
-      />
+      <div className={styles.empty}>
+        <Empty
+          title="还没有消息"
+          description={streaming ? "正在生成第一条回答…" : "在下面输入你的第一个问题"}
+        />
+      </div>
     );
   }
 

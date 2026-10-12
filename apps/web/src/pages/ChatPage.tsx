@@ -110,29 +110,26 @@ export function ChatPage() {
       />
 
       <main className={styles.main}>
-        <header className={styles.header}>
-          <h2 className={styles.title}>对话</h2>
-          <div className={styles.headerControls}>
-            <label className={styles.modelPicker}>
-              模型
-              <Select
-                aria-label="选择模型"
-                value={modelRef ?? ""}
-                onChange={(event) => {
-                  setModelRef(event.target.value || null);
-                }}
-              >
-                <option value="">默认</option>
-                {models.map((model) => (
-                  <option key={model.name} value={model.name} disabled={!model.configured}>
-                    {model.name}
-                    {model.configured ? "" : "（未配置密钥）"}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          </div>
-        </header>
+        <div className={styles.contextBar}>
+          <label className={styles.modelPicker}>
+            模型
+            <Select
+              aria-label="选择模型"
+              value={modelRef ?? ""}
+              onChange={(event) => {
+                setModelRef(event.target.value || null);
+              }}
+            >
+              <option value="">默认</option>
+              {models.map((model) => (
+                <option key={model.name} value={model.name} disabled={!model.configured}>
+                  {model.name}
+                  {model.configured ? "" : "（未配置密钥）"}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
 
         <div className={styles.messages}>
           {controller.failure ? (

@@ -8,7 +8,7 @@ import { useTtsPlayback } from "../audio/useTtsPlayback";
 import { Button, Empty, Spinner } from "../components";
 import { useInterviewRoom } from "../interview/useInterviewRoom";
 import { useRoomStore } from "../interview/roomStore";
-import { AnswerComposer, FeedbackCard, ProgressBar, QuestionCard } from "./interview/RoomParts";
+import { AnswerComposer, CategoryBadge, FeedbackCard, ProgressBar, QuestionCard } from "./interview/RoomParts";
 import styles from "./InterviewRoomPage.module.css";
 
 export function InterviewRoomPage() {
@@ -26,6 +26,8 @@ export function InterviewRoomPage() {
 
   const [answer, setAnswer] = useState("");
   const [notice, setNotice] = useState(false);
+  // 反馈区在窄屏默认折叠；断点块在 ≥1024 让它常显并隐掉开关。
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const answerRef = useRef("");
   // The transcript text we contributed into the box; realtime events replace this span.
   const transcriptSpanRef = useRef("");
@@ -46,9 +48,11 @@ export function InterviewRoomPage() {
   const transcription = useTranscription({ client: api, onTranscript });
 
   const answeredTurns = state.turns.filter((turn) => !turn.pending && turn.score !== null);
+  const latestTurnIndex = answeredTurns.length - 1;
   const current = state.currentQuestion
     ? (state.turns.find((turn) => turn.questionNo === state.currentQuestion?.question_no) ?? null)
     : null;
+  const category = state.currentQuestion?.category ?? null;
 
   if (controller.restoring) {
     return (
@@ -74,18 +78,18 @@ export function InterviewRoomPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h2 className={styles.brand}>模拟面试</h2>
-          <ProgressBar answered={state.answered} total={state.totalQuestions} />
+      <header className={styles.roomBar}>
+        <ProgressBar answered={state.answered} total={state.totalQuestions} />
+        <CategoryBadge category={category} />
+        <div className={styles.roomActions}>
+          <Button
+            variant="secondary"
+            loading={controller.finishing}
+            onClick={() => void controller.finish()}
+          >
+            结束并生成报告
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          loading={controller.finishing}
-          onClick={() => void controller.finish()}
-        >
-          结束并生成报告
-        </Button>
       </header>
 
       {state.error ? (
@@ -107,6 +111,7 @@ export function InterviewRoomPage() {
           {current ? (
             <QuestionCard
               turn={current}
+              category={category}
               speaking={speech.state === "playing"}
               onSpeak={(text) => void speech.speak(text)}
             />
@@ -124,11 +129,35 @@ export function InterviewRoomPage() {
         </section>
 
         <aside className={styles.side} aria-label="历史反馈">
-          {answeredTurns.length === 0 ? (
-            <p className={styles.hint}>提交第一题后，这里会显示评分与反馈。</p>
-          ) : (
-            answeredTurns.map((turn) => <FeedbackCard key={turn.questionNo} turn={turn} />)
-          )}
+          <div className={styles.feedbackToggle}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={feedbackOpen}
+              onClick={() => setFeedbackOpen((open) => !open)}
+            >
+              历史反馈（{answeredTurns.length}）
+            </Button>
+          </div>
+          <div className={styles.feedbackBody} data-open={feedbackOpen ? "true" : undefined}>
+            {answeredTurns.length === 0 ? (
+              <p className={styles.hint}>提交第一题后，这里会显示评分与反馈。</p>
+            ) : (
+              <ol className={styles.feedbackList} aria-label="反馈时间线">
+                {answeredTurns.map((turn, index) => (
+                  <li
+                    key={turn.questionNo}
+                    className={styles.feedbackItem}
+                    data-latest={index === latestTurnIndex ? "true" : undefined}
+                  >
+                    {index === latestTurnIndex ? <span className={styles.latestTag}>最新</span> : null}
+                    <FeedbackCard turn={turn} />
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </aside>
       </div>
 

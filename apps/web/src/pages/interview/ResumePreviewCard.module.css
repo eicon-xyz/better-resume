@@ -6,8 +6,15 @@
 
 .stats {
   display: flex;
-  gap: var(--br-space-5);
+  gap: var(--br-space-3);
   margin: 0 0 var(--br-space-3);
+}
+
+.stats > div {
+  flex: 1;
+  padding: var(--br-space-2) var(--br-space-3);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-surface-raised);
 }
 
 .stats dt {
@@ -72,6 +79,7 @@
   padding: var(--br-space-2) var(--br-space-3);
   /* allow: 降级提示左侧警示条宽度（3px 几何） */
   border-left: 3px solid var(--br-color-warning);
+  border-radius: var(--br-radius-md);
   background: var(--br-color-warning-bg);
   font-size: var(--br-text-sm);
 }

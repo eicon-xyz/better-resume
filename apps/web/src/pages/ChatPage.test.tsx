@@ -240,4 +240,20 @@ describe("ChatPage", () => {
 
     expect(await screen.findByText("还没有消息")).toBeInTheDocument();
   });
+
+  it("marks the open session in the sidebar as the current one", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat/s-1");
+
+    const item = await screen.findByRole("button", { name: /^第一个会话/ });
+    expect(item).toHaveAttribute("aria-current", "true");
+  });
+
+  it("leaves no session marked as current when the route has no session", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat");
+
+    const item = await screen.findByRole("button", { name: /^第一个会话/ });
+    expect(item).not.toHaveAttribute("aria-current");
+  });
 });

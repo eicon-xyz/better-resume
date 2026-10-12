@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
+import type { DragEvent } from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { InterviewSessionView } from "../api/types";
 import { useApi } from "../api/useApi";
-import { Button, Card, Empty, Input, Select } from "../components";
+import { Badge, Button, Card, Empty, Input, Select } from "../components";
 import { useSession } from "../chat/useSession";
 import { interviewKeys, useInterviewSessions } from "../interview/queries";
 import { INTERVIEW_TYPE_OPTIONS, interviewTypeLabel } from "../interview/interviewTypes";
@@ -14,6 +15,25 @@ import { ResumePreviewCard } from "./interview/ResumePreviewCard";
 import styles from "./InterviewIntroPage.module.css";
 
 const RESUMABLE = new Set(["ready", "in_progress"]);
+
+/** 面试侧重的逐行说明；原生 select 的 option 只渲染一行文本，说明接在同一行后面。 */
+const INTERVIEW_TYPE_NOTES: Record<string, string> = {
+  auto: "由简历内容自动决定考察侧重",
+  fundamentals: "集中考察八股基础与原理",
+  project: "围绕项目经历追问技术取舍",
+  internship: "围绕实习经历追问工程细节",
+};
+
+/** 可继续会话的状态徽章文案，取值只有 ready 与 in_progress 两种。 */
+const SESSION_STATUS_LABELS: Record<string, string> = {
+  ready: "待开始",
+  in_progress: "进行中",
+};
+
+/** 时间取接口返回串的前 16 位（YYYY-MM-DD HH:mm），不做时区换算，展示稳定可预测。 */
+function formatSessionTime(iso: string): string {
+  return iso.slice(0, 16).replace("T", " ");
+}
 
 export function InterviewIntroPage() {
   const api = useApi();
@@ -49,24 +69,31 @@ export function InterviewIntroPage() {
     }
   }
 
+  function onDropFile(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    void upload.selectFile(event.dataTransfer.files?.[0] ?? null);
+  }
+
   const busy = upload.stage === "uploading" || upload.stage === "generating";
+  const percent = Math.round(upload.progress * 100);
+  const stageLabel = upload.stage === "generating" ? "正在生成题目…" : "正在上传简历…";
+  const resumeMb = Math.round(MAX_RESUME_BYTES / 1024 / 1024);
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <h2 className={styles.brand}>模拟面试</h2>
+        <p className={styles.subtitle}>上传简历后生成一轮题目，再进入面试间作答。</p>
       </header>
 
       <div className={styles.grid}>
-        <Card title="第一步：上传简历">
-          <p className={styles.hint}>
-            支持带文本层的 PDF（上限 {Math.round(MAX_RESUME_BYTES / 1024 / 1024)}MB）。
-            扫描件请先用 OCR 转成可复制文本。
-          </p>
-
-          <label className={styles.focus}>
-            <span>面试侧重</span>
+        <Card title="第一步：上传简历" raised>
+          <div className={styles.focus}>
+            <label className={styles.focusLabel} htmlFor="interview-focus">
+              面试侧重
+            </label>
             <Select
+              id="interview-focus"
               aria-label="面试侧重"
               value={interviewType}
               onChange={(event) => {
@@ -75,13 +102,19 @@ export function InterviewIntroPage() {
             >
               {INTERVIEW_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {option.label} · {INTERVIEW_TYPE_NOTES[option.value] ?? ""}
                 </option>
               ))}
             </Select>
-          </label>
+          </div>
 
-          <label className={styles.dropzone}>
+          <label
+            className={styles.dropzone}
+            onDragOver={(event) => {
+              event.preventDefault();
+            }}
+            onDrop={onDropFile}
+          >
             <Input
               type="file"
               accept="application/pdf,.pdf"
@@ -90,7 +123,27 @@ export function InterviewIntroPage() {
                 void upload.selectFile(event.target.files?.[0] ?? null);
               }}
             />
-            <span>{upload.file ? upload.file.name : "点击选择 PDF 简历"}</span>
+            <span className={styles.dropIconWrap} aria-hidden="true">
+              <svg
+                className={styles.dropIcon}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 16V4" />
+                <path d="m7 9 5-5 5 5" />
+                <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+              </svg>
+            </span>
+            <span className={styles.dropTitle}>
+              {upload.file ? upload.file.name : "拖拽 PDF 到此处，或点击选择"}
+            </span>
+            <span className={styles.dropMeta}>
+              支持带文本层的 PDF（上限 {resumeMb}MB）；扫描件请先用 OCR 转成可复制文本
+            </span>
           </label>
 
           {upload.previewUrl ? (
@@ -101,11 +154,20 @@ export function InterviewIntroPage() {
 
           {busy ? (
             <div className={styles.progress} role="status">
+              <div className={styles.progressHead}>
+                <span>{stageLabel}</span>
+                <span className={styles.progressValue}>{percent}%</span>
+              </div>
               <div
-                className={styles.bar}
-                style={{ width: `${Math.round(upload.progress * 100)}%` }}
+                className={styles.track}
+                role="progressbar"
                 aria-label="上传进度"
-              />
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+              >
+                <div className={styles.bar} style={{ width: percent + "%" }} />
+              </div>
             </div>
           ) : null}
 
@@ -136,22 +198,51 @@ export function InterviewIntroPage() {
 
           <Card title="继续上次面试">
             {resumable.length === 0 ? (
-              <Empty title="没有进行中的面试" description="上传简历后即可开始一轮模拟面试" />
+              <Empty
+                title="没有进行中的面试"
+                description="上传简历后即可开始一轮模拟面试"
+                action={
+                  <span className={styles.emptyArt} aria-hidden="true">
+                    <svg
+                      className={styles.emptyIcon}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+                      <path d="M8 10h8" />
+                      <path d="M8 14h5" />
+                    </svg>
+                  </span>
+                }
+              />
             ) : (
               <ul className={styles.sessions}>
                 {resumable.map((item) => (
-                  <li key={item.id}>
-                    <span>
-                      {interviewTypeLabel(item.interview_type)} · {item.question_count} 题 ·{" "}
-                      {item.status}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void continueSession(item)}
-                    >
-                      继续
-                    </Button>
+                  <li key={item.id} className={styles.sessionRow}>
+                    <div className={styles.sessionInfo}>
+                      <span className={styles.sessionType}>
+                        {interviewTypeLabel(item.interview_type)}
+                      </span>
+                      <span className={styles.sessionMeta}>
+                        {item.question_count} 题 · {formatSessionTime(item.updated_at)}
+                      </span>
+                    </div>
+                    <div className={styles.sessionAction}>
+                      <Badge tone={item.status === "in_progress" ? "success" : "accent"}>
+                        {SESSION_STATUS_LABELS[item.status] ?? item.status}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void continueSession(item)}
+                      >
+                        继续
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>

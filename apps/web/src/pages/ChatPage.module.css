@@ -17,25 +17,13 @@
   min-width: 0;
 }
 
-.header {
+/* 主区头：页壳顶栏是唯一品牌与导航位，这里只留模型这个会话上下文操作。 */
+.contextBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--br-space-4);
-  padding: var(--br-space-3) var(--br-space-4);
-  /* allow: 页头底部分隔线线宽（1px 几何） */
-  border-bottom: 1px solid var(--br-color-border);
-}
-
-.title {
-  margin: 0;
-  font-size: var(--br-text-lg);
-}
-
-.headerControls {
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: var(--br-space-3);
+  padding: var(--br-space-3) var(--br-space-4) 0;
 }
 
 .modelPicker {
@@ -47,7 +35,9 @@
 }
 
 .messages {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   overflow-y: auto;
 }
 

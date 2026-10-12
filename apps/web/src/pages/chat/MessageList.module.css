@@ -1,3 +1,11 @@
+.empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: var(--br-space-5);
+}
+
 .list {
   display: flex;
   flex-direction: column;

@@ -1,21 +1,15 @@
 .bubble {
-  display: flex;
-  flex-direction: column;
-  gap: var(--br-space-2);
+  composes: card from "./Composer.module.css";
   /* allow: 消息气泡最大宽度（720px 版式几何） */
   max-width: 720px;
-  padding: var(--br-space-3) var(--br-space-4);
-  /* allow: 气泡发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
-  border: 1px solid var(--br-color-border);
-  border-radius: var(--br-radius-lg);
-  background: var(--br-color-surface-raised);
 }
 
 .assistant {
   align-self: flex-start;
 }
 
-.user {
+/* 用户气泡比 assistant 低一档底色；.bubble.user 提高特异性，不与共享卡片类的声明顺序耦合。 */
+.bubble.user {
   align-self: flex-end;
   background: var(--br-color-surface);
 }

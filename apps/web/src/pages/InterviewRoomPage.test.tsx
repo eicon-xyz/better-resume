@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,6 +71,8 @@ function submitView(options: {
   nextAction: string;
   score?: number;
   followUpReason?: string;
+  questionNo?: string;
+  feedback?: string;
 }): AnswerSubmitView {
   return {
     session: {
@@ -83,9 +85,9 @@ function submitView(options: {
       updated_at: "2026-09-13T00:00:00Z",
     },
     answer: {
-      question_no: "1",
+      question_no: options.questionNo ?? "1",
       score: options.score ?? 84,
-      feedback: "结构清晰，但缺少量化",
+      feedback: options.feedback ?? "结构清晰，但缺少量化",
       missing_points: ["量化"],
       follow_up_needed: Boolean(options.followUpReason),
       follow_up_reason: options.followUpReason ?? null,
@@ -159,8 +161,10 @@ describe("InterviewRoomPage", () => {
     renderRoom(fakeClient());
 
     expect(await screen.findByText("讲讲你最有挑战的项目")).toBeInTheDocument();
-    expect(screen.getByText("考察要点：取舍、量化")).toBeInTheDocument();
-    expect(screen.getByText("已答 0 / 2 题")).toBeInTheDocument();
+    const points = screen.getByRole("list", { name: "考察要点" });
+    expect(points).toHaveTextContent("取舍");
+    expect(points).toHaveTextContent("量化");
+    expect(screen.getByText("题 1 / 2")).toBeInTheDocument();
   });
 
   it("submits an answer once, shows feedback and moves on", async () => {
@@ -171,7 +175,7 @@ describe("InterviewRoomPage", () => {
     answer("我重构了写入链路");
 
     expect(await screen.findByText("结构清晰，但缺少量化")).toBeInTheDocument();
-    expect(screen.getByText("已答 1 / 2 题")).toBeInTheDocument();
+    expect(screen.getByText("题 2 / 2")).toBeInTheDocument();
     expect(await screen.findByText("如何做性能压测")).toBeInTheDocument();
 
     const [sessionId, body] = vi.mocked(client.submitInterviewAnswer).mock.calls[0] ?? [];
@@ -292,5 +296,79 @@ describe("InterviewRoomPage", () => {
 
     expect(await screen.findByText("无法恢复这场面试")).toBeInTheDocument();
     expect(screen.getByText("会话不存在")).toBeInTheDocument();
+  });
+
+  it("keeps the feedback timeline in submission order and highlights the newest entry", async () => {
+    let attempt = 0;
+    const client = fakeClient({
+      submitInterviewAnswer: vi.fn(() => {
+        attempt += 1;
+        return Promise.resolve(
+          attempt === 1
+            ? submitView({
+                nextQuestion: QUESTION_2,
+                nextAction: "next_question",
+                score: 84,
+                feedback: "第一条反馈",
+              })
+            : submitView({
+                nextQuestion: null,
+                nextAction: "next_question",
+                score: 61,
+                questionNo: "2",
+                feedback: "第二条反馈",
+              }),
+        );
+      }),
+    });
+    renderRoom(client);
+
+    await screen.findByText("讲讲你最有挑战的项目");
+    answer("第一题回答");
+    await screen.findByText("第一条反馈");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300)); // leave the debounce window
+    });
+    answer("第二题回答");
+    await screen.findByText("第二条反馈");
+
+    const toggle = screen.getByRole("button", { name: "历史反馈（2）" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    const timeline = screen.getByRole("list", { name: "反馈时间线" });
+    const entries = within(timeline).getAllByRole("listitem");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveTextContent("第一条反馈");
+    expect(entries[1]).toHaveTextContent("第二条反馈");
+    expect(entries[0]).not.toHaveTextContent("最新");
+    expect(entries[1]).toHaveTextContent("最新");
+    // 高亮态挂在 data-latest 上（CSS 由它挑最新一条），顺序与既有反馈数组一致。
+    expect(entries[0]).not.toHaveAttribute("data-latest");
+    expect(entries[1]).toHaveAttribute("data-latest", "true");
+  });
+
+  it("counts the answer characters from the box's own value", async () => {
+    renderRoom(fakeClient());
+
+    await screen.findByText("讲讲你最有挑战的项目");
+    expect(screen.getByText("0 字")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "我重构了写入链路" } });
+    expect(screen.getByText("8 字")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "   " } });
+    expect(screen.getByText("0 字")).toBeInTheDocument();
+  });
+
+  it("keeps submitting disabled while the room has no current question", async () => {
+    const view = restoreView(QUESTION_1);
+    view.current_question = null;
+    renderRoom(fakeClient({ restoreInterview: vi.fn(() => Promise.resolve(view)) }));
+
+    expect(await screen.findByText("没有待答题目")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交回答" })).toBeDisabled();
+    expect(screen.getByLabelText("你的回答")).toBeDisabled();
   });
 });

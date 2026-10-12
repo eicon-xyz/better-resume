@@ -9,13 +9,20 @@
 
 .header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--br-space-1);
 }
 
 .brand {
   margin: 0;
   font-size: var(--br-text-xl);
+  line-height: var(--br-leading-tight);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
 }
 
 .grid {
@@ -27,7 +34,7 @@
 
 @media (min-width: 1024px) {
   .grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   }
 }
 
@@ -37,24 +44,41 @@
   gap: var(--br-space-5);
 }
 
-.hint {
-  margin-top: 0;
+.focus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
+  margin-bottom: var(--br-space-4);
+}
+
+.focusLabel {
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
 }
 
 .dropzone {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* allow: 上传拖拽区最小高度（96px 组件几何） */
-  min-height: 96px;
-  padding: var(--br-space-4);
+  gap: var(--br-space-2);
+  /* allow: 上传拖拽区最小高度（220px 主视觉几何） */
+  min-height: 220px;
+  padding: var(--br-space-5) var(--br-space-4);
   /* allow: 拖拽区发丝虚线线宽（1px 几何） */
   border: 1px dashed var(--br-color-border);
   border-radius: var(--br-radius-lg);
   background: var(--br-color-surface-raised);
+  text-align: center;
   cursor: pointer;
+  transition:
+    border-color var(--br-duration-fast),
+    background var(--br-duration-fast);
+}
+
+.dropzone:hover {
+  border-color: var(--br-color-accent);
+  background: var(--br-color-accent-muted);
 }
 
 .dropzone input {
@@ -66,16 +90,60 @@
   opacity: 0;
 }
 
+.dropIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-space-7);
+  height: var(--br-space-7);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-gradient-hero);
+  color: var(--br-color-accent-contrast);
+}
+
+.dropIcon {
+  width: var(--br-space-5);
+  height: var(--br-space-5);
+}
+
+.dropTitle {
+  color: var(--br-color-text);
+  font-size: var(--br-text-md);
+  font-weight: 600;
+}
+
+.dropMeta {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
 .preview {
-  margin: var(--br-space-2) 0 0;
+  margin: var(--br-space-3) 0 0;
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
 }
 
 .progress {
+  margin-top: var(--br-space-3);
+}
+
+.progressHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.progressValue {
+  color: var(--br-color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
   /* allow: 进度条轨道高度（6px 几何） */
   height: 6px;
-  margin-top: var(--br-space-3);
+  margin-top: var(--br-space-2);
   border-radius: var(--br-radius-pill);
   background: var(--br-color-surface);
   overflow: hidden;
@@ -109,18 +177,65 @@
   list-style: none;
 }
 
-.sessions li {
+.sessionRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--br-space-3);
+  padding: var(--br-space-3);
   border-radius: var(--br-radius-md);
-  font-size: var(--br-text-sm);
-  transition: background var(--br-duration-fast);
+  background: var(--br-color-surface-raised);
+  transition:
+    background var(--br-duration-fast),
+    box-shadow var(--br-duration-fast);
 }
 
-.sessions li:hover {
+.sessionRow:hover {
   background: var(--br-color-accent-muted);
+  box-shadow: var(--br-shadow-sm);
+}
+
+.sessionInfo {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--br-space-1);
+}
+
+.sessionType {
+  overflow: hidden;
+  color: var(--br-color-text);
+  font-size: var(--br-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionMeta {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.sessionAction {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+}
+
+.emptyArt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-space-7);
+  height: var(--br-space-7);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-accent);
+}
+
+.emptyIcon {
+  width: var(--br-space-5);
+  height: var(--br-space-5);
 }
 
 .loading {
@@ -130,7 +245,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bar,
-  .sessions li {
+  .dropzone,
+  .sessionRow {
     transition: none;
   }
 }

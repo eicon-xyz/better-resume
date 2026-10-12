@@ -30,28 +30,84 @@
   gap: var(--br-space-2);
 }
 
-.grid {
+/* hero：渐变小徽条 + 综合分与雷达并排 + 四维小分条。 */
+.heroAccent {
+  display: block;
+  width: var(--br-space-7);
+  height: var(--br-space-1);
+  margin-bottom: var(--br-space-4);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-gradient-hero);
+}
+
+.heroMain {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--br-space-5);
-  align-items: start;
+  align-items: center;
 }
 
-@media (min-width: 1024px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
+.scoreBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
+}
+
+.scoreLabel {
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
 }
 
 .overall {
   margin: 0;
   font-size: var(--br-text-hero);
   line-height: 1.1;
+  background: var(--br-gradient-score);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .note {
+  margin: 0;
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
+}
+
+.dimensions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--br-space-3) var(--br-space-5);
+  margin: var(--br-space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dimension {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-1);
+}
+
+.dimensionLabel {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.dimensionTrack {
+  height: var(--br-space-1);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-border);
+  overflow: hidden;
+}
+
+.dimensionBar {
+  display: block;
+  height: 100%;
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent);
 }
 
 .summary {
@@ -59,14 +115,84 @@
 }
 
 .suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
   margin: var(--br-space-3) 0 0;
-  padding-left: var(--br-space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: var(--br-space-3);
   color: var(--br-color-text);
+}
+
+.suggestionNo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-space-5);
+  height: var(--br-space-5);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-accent);
+  font-family: var(--br-font-mono);
+  font-size: var(--br-text-xs);
 }
 
 .missing {
   margin: var(--br-space-3) 0 0;
   color: var(--br-color-danger);
+  font-size: var(--br-text-sm);
+}
+
+.categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+}
+
+.categoryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--br-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.categoryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--br-space-2);
+}
+
+.categoryBadge {
+  padding: var(--br-space-1) var(--br-space-2);
+  border-radius: var(--br-radius-xs);
+  background: var(--br-gradient-badge);
+  color: var(--br-color-accent);
+  font-size: var(--br-text-xs);
+}
+
+.categoryScore {
+  font-family: var(--br-font-mono);
+  font-size: var(--br-text-lg);
+}
+
+.categoryMeta {
+  margin: var(--br-space-2) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.categoryComment {
+  margin: var(--br-space-1) 0 0;
+  color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
 }
 
@@ -76,9 +202,30 @@
   gap: var(--br-space-3);
 }
 
-.turnsTitle {
+.turnsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--br-space-3);
+}
+
+.sectionTitle {
   margin: 0;
   font-size: var(--br-text-lg);
+}
+
+.turnGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+}
+
+.turnList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-3);
+  color: var(--br-color-text);
+  font-size: var(--br-text-md);
 }
 
 .turn {
@@ -86,7 +233,11 @@
   /* allow: 逐题回放卡发丝边框线宽（1px 几何） */
   border: 1px solid var(--br-color-border);
   border-radius: var(--br-radius-lg);
-  background: var(--br-color-surface);
+  background: var(--br-color-surface-raised);
+}
+
+.turnNested {
+  margin-left: var(--br-space-5);
 }
 
 .turnHeader {
@@ -103,7 +254,7 @@
 .badge {
   padding: var(--br-space-1) var(--br-space-2);
   border-radius: var(--br-radius-xs);
-  background: var(--br-color-surface-raised);
+  background: var(--br-color-surface);
   color: var(--br-color-text-muted);
   font-size: var(--br-text-xs);
 }
@@ -136,38 +287,16 @@
   height: 100%;
 }
 
-.categories ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--br-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+@media (min-width: 1024px) {
+  .heroMain {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
 
-.categories li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--br-space-3);
-}
+  .dimensions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-.categoryLabel {
-  /* allow: 维度名称列最小宽度（48px 表格列几何） */
-  min-width: 48px;
-}
-
-.categoryMeta {
-  color: var(--br-color-text-muted);
-  font-size: var(--br-text-sm);
-}
-
-.categoryScore {
-  /* allow: 维度分数列最小宽度（72px 表格列几何） */
-  min-width: 72px;
-  font-family: var(--br-font-mono);
-}
-
-.categoryComment {
-  color: var(--br-color-text-muted);
-  font-size: var(--br-text-sm);
+  .categoryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
