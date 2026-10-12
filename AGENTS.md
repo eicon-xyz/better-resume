@@ -23,7 +23,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D23），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
+- 决议记录在 `docs/DECISIONS.md`（D01–D25），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
 
 ## 技术栈
 
@@ -35,7 +35,7 @@
 - **语音**：`media` 模块，`TranscriptionChannel`（start/feed/stop/wait → `replace|archive|final` 事件）+ `TtsSynthesizer` 两个缝：
   - ASR：讯飞 AST（流式句池归并 pgs/rg/seg_id）、百炼 Qwen-Audio 批量（`qwen-asr`）、百炼 Paraformer 实时（`paraformer-rt`，边说边出字）。
   - TTS：edge-tts + 缓存。适配器由 `BR_MEDIA__TRANSCRIPTION_ADAPTER` 选择（scripted 为 CI/本地默认）。
-- **前端**：React 19 + Vite + TanStack Query + zustand + shadcn/ui；移植旧项目 lib 四件套（request / streamLimiter / audioTranscription / errors）。
+- **前端**：React 19 + Vite + TanStack Query + zustand；CSS Modules + 自研 `--br-*` 设计 token + 手写组件（不引 UI 组件库，D24）；移植旧项目 lib 四件套（request / streamLimiter / audioTranscription / errors）。
 - **契约**：后端 FastAPI → `openapi.json` → **openapi-typescript 生成前端类型**（`schema.d.ts`），根治前端猜字段（D17）。
 - **实时通道**：转写走 WebSocket（一次性 ticket 握手）、对话走 SSE；认证是 HttpOnly Cookie session（Redis，30 天滑动）+ WS ticket（D11）。
 - **测试**：pytest（**只 mock 系统边界**：LLM/时钟/Redis/讯飞/浏览器音频/IPC）+ Vitest；假上游 `apps/api/scripts/fake_openai.py`。
