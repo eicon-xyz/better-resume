@@ -204,7 +204,7 @@ uv run python scripts/extract_api_index.py --check
 - **前端转写合并在三层上都会发生**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect）：
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
 - **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**——不发头 = 浏览器启发式缓存 HTML，部署后还在跑旧 bundle（compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
-- **派活约定**：用子智能体做审计/评审/并行修复时的操作约定见 `docs/agents/subagents.md`（共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
+- **派活约定**：实现类交付物**一律派子代理**（主代理派活 + 机械验收，评审派异家族）；构建/审计/评审/并行修复的操作约定见 `docs/agents/subagents.md`（构建派活、共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
 - **harness 事实**：`run_code` 的 JS 模板字符串里**别出现反引号**（会截断字符串，报错形如 `Expected ',', got 'ident'`）——要反引号时用 `String.fromCharCode(96)` 或数组 `join`；长文本先 `write` 成文件再跑。`run_code` 的 `timeoutMs` 上限是 **600000**（不是 120000；默认 120000）。
 - **临时脚本一律 `set -euo pipefail` 且 `cd "$(mktemp -d)"`**：写成 `set -uo pipefail`（少 `-e`）时，`mkdir`／`cd` 失败不会中断，脚本会**留在当前目录继续跑**——在工作区里跑就等于往仓库里写。路径一律用 `mktemp -d`，不要自己拼。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。
