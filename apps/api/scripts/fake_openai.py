@@ -20,10 +20,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_CHUNKS = ("今天", "天气", "不错。")
 
+#: The controlled categories a generated question must carry (D23); cycled across questions.
+CATEGORY_VALUES = ("fundamentals", "project", "internship")
+
+#: A prompt carrying this marker asks for the no-category shape, so the D23 rule fallback
+#: stays exercised through the same fake (Q2). Without it the fake supplies a category.
+NO_CATEGORY_MARKER = "不给出 category"
+
 #: Non-streaming answers per interview scene. The api sends no scene header, so the fake
 #: sniffs the prompt text (each stage asks for a different JSON shape).
-#: tests/test_fake_openai.py validates every payload against the real pydantic contracts,
-#: so the fake cannot silently drift away from what the engine expects.
+#: tests/test_fake_openai.py reads the real pydantic contracts and checks that every controlled
+#: enum field is present and legal; a missing or unknown value fails the guard.
 SCORE_PAYLOAD = {
     "score": 55.0,
     "feedback": "回答覆盖了主要流程，但缺少量化结果与失败复盘。",
@@ -53,15 +60,19 @@ def _question_payload(text: str) -> dict:
     match = re.search(r"请出 (\d+) 道面试题", text)
     count = int(match.group(1)) if match else 3
     count = max(1, min(count, 10))
+    include_category = NO_CATEGORY_MARKER not in text
+    questions = []
+    for index in range(1, count + 1):
+        question = {
+            "topic": f"主题{index}",
+            "focus_points": [f"要点{index}A", f"要点{index}B"],
+            "text": f"第 {index} 题：请说明这个项目里你做过的一个具体取舍。",
+        }
+        if include_category:
+            question["category"] = CATEGORY_VALUES[(index - 1) % len(CATEGORY_VALUES)]
+        questions.append(question)
     return {
-        "questions": [
-            {
-                "topic": f"主题{index}",
-                "focus_points": [f"要点{index}A", f"要点{index}B"],
-                "text": f"第 {index} 题：请说明这个项目里你做过的一个具体取舍。",
-            }
-            for index in range(1, count + 1)
-        ],
+        "questions": questions,
         "resume_score": 72.0,
         "suggestions": ["补充量化结果"],
     }

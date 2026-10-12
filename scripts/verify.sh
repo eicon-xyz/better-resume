@@ -6,7 +6,7 @@
 #
 # Usage:
 #   scripts/verify.sh --list
-#   scripts/verify.sh --layer unit|contract|coverage|deploy|fault|soak|real|scripts|all \
+#   scripts/verify.sh --layer unit|contract|coverage|deploy|e2e|fault|soak|real|scripts|all \
 #     [--scope api|web|all] [--dry-run]
 #
 # --list renders the layer plan declared below instead of keeping a second, hand-written copy
@@ -111,6 +111,13 @@ build_deploy() {
   add all "bash scripts/compose_smoke.sh"
   add all "bash scripts/kill_instance_drill.sh"
 }
+build_e2e() {
+  # A business-path check, not a deploy check: it walks the interview flow through nginx against
+  # the fake vendor whose model row compose_smoke seeds, so it needs the stack. It therefore
+  # stays out of "all" (whose contract is a docker-free local closure) and out of the paid real
+  # layer; its default --assert walks the golden path plus the degradation and fallback shapes.
+  add all "cd apps/api && uv run python scripts/interview_smoke.py --model smoke-fake --assert"
+}
 build_fault() { add all "bash scripts/fault_injection_drill.sh"; }
 build_soak() {
   # P39: this runs with cwd=apps/api, so a relative json path landed in apps/api/var/evidence/
@@ -173,7 +180,7 @@ build_all() {
   build_scripts
 }
 
-LAYER_ORDER=(unit contract coverage deploy fault soak real scripts)
+LAYER_ORDER=(unit contract coverage deploy e2e fault soak real scripts)
 ALL_PARTS=(unit coverage contract scripts)
 
 render_list() {
@@ -213,8 +220,8 @@ case "$SCOPE" in
 esac
 
 case "$LAYER" in
-  unit|contract|coverage|deploy|fault|soak|real|scripts|all) ;;
-  "") echo "no --layer given; usage: verify.sh --layer unit|contract|coverage|deploy|fault|soak|real|scripts|all" >&2; exit 2 ;;
+  unit|contract|coverage|deploy|e2e|fault|soak|real|scripts|all) ;;
+  "") echo "no --layer given; usage: verify.sh --layer unit|contract|coverage|deploy|e2e|fault|soak|real|scripts|all" >&2; exit 2 ;;
   *) echo "unknown layer: $LAYER (see --list)" >&2; exit 2 ;;
 esac
 

@@ -1,6 +1,6 @@
 # P13-T5 — 手测清单按「已被哪一层覆盖」重划
 
-- Status: ready-for-agent
+- Status: done（红绿已过，待用户验收）
 - Blocked by: T2, T4
 - 唯一写入路径：`docs/MANUAL-TESTING.md`
 
@@ -40,3 +40,22 @@
 
 - 不动 §2（浏览器矩阵 / 蓝牙耳机 / 长段说话）、§3（等输入的项）、§5（结果回填）。
 - 不删任何仍须人验的项。
+
+## 意图复述
+
+（开工前，执行方复述）
+
+把 `docs/MANUAL-TESTING.md` §1.5 从「语义 + 渲染混在一张表里」改成每项两半：语义半边点名已由哪个层、哪条命令覆盖（层与命令指回 `bash scripts/verify.sh --list`），渲染/真模型半边留在手测；同时给 §4「已自动化」表加一行 `e2e` 层，写清覆盖内容与触发时机。只动 §1.5 与 §4，§1.1–§1.4、§2、§3、§5 一字不碰。语义半边只按 `apps/api/scripts/interview_smoke.py` 里真实存在的断言标注，覆盖不到的老实标未覆盖；不写任何端到端读数或「已验证」。
+
+## 实现决定交代
+
+（收工时；下表只列 spec 与交接包未明说、由我拍定的点）
+
+| spec 未覆盖、我自行拍定的决定 | 为什么这么拍 | 我明确没做的 |
+| --- | --- | --- |
+| §1.5 第 9 项的语义半边标「未纳入 `e2e` 断言」而非「已自动化」 | 交接包硬要求：逐字核对 `interview_smoke.py`，没有「`interview_type` 落库为 `project`」「非法值回退 `auto`」两条断言就不许标已自动化；宁可少标 | 没有把单位层 `tests/test_interview_api.py` / `tests/interview_engine/test_categories.py` 的既有覆盖当成已自动化理由写进 §1.5；没有把 `interview_type` 的语义从手测里摘掉 |
+| §1.5 改成四列：仍须手测步骤 / 仍须手测预期 / 已自动化（层 / 命令） | 票据要求每项拆成两半，且每项写清由哪个层、哪条命令覆盖 | 没有笼统写「已自动化」；没有删掉任何仍须人验的渲染/真模型项 |
+| §4 新增 `e2e` 行的触发写「**手动**：`bash scripts/verify.sh --layer e2e`；未接 nightly」 | 交接包要求触发时机如实；nightly 未接线就不许写 nightly | 没有把 `e2e` 写成 CI/nightly；没有抄 e2e 层的命令行原文 |
+| e2e 行覆盖内容只写「由哪层覆盖」，不写读数 | Q3：compose 端到端读数由用户在宿主机跑、尚未回填 | 没有出现任何具体 PASS/耗时/证据目录，也没有「已验证」字样 |
+| 命令一律指向 `bash scripts/verify.sh --list` | 红线：层名与命令指回单一真相源，不抄第二份命令原文 | 没有在文档里复制 `cd apps/api && uv run python scripts/interview_smoke.py ...` 这条原文 |
+
