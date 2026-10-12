@@ -141,6 +141,24 @@ describe("InterviewIntroPage", () => {
     expect(typeof uploadOptions?.onProgress).toBe("function");
   });
 
+  it("sends the chosen interview focus when creating the session", async () => {
+    const client = fakeClient();
+    renderPage(client);
+
+    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    fireEvent.change(screen.getByLabelText("面试侧重"), { target: { value: "project" } });
+    selectFile(pdfFile());
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "开始面试" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始面试" }));
+
+    await screen.findByText("房间已打开");
+    expect(vi.mocked(client.createInterviewSession)).toHaveBeenCalledWith({
+      interview_type: "project",
+    });
+  });
+
   it("surfaces a backend parse failure", async () => {
     const client = fakeClient({
       // The real client always rejects with ApiError; the hook must surface its message.

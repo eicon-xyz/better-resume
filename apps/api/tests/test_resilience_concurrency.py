@@ -1,4 +1,4 @@
-"""M3-T8: the four AI links through the real guard chain — keys, dedupe, taxonomy.
+"""the four AI links through the real guard chain — keys, dedupe, taxonomy.
 
 Service-level concurrency tests use the real database and the real ResilientAiResilience:
 only the vendor boundary is faked, exactly like the rest of the suite.
@@ -161,7 +161,7 @@ async def test_concurrent_identical_chat_streams_share_one_vendor_call(store_fac
     await asyncio.wait_for(gateway.started.wait(), timeout=5.0)  # the flight is open now
     follower = asyncio.create_task(one_turn())
     # The follower has DB work to do before it reaches the seam: poll the metric instead
-    # of guessing how many event-loop turns that takes (see PROBLEMS P9).
+    # of guessing how many event-loop turns that takes.
     for _ in range(200):
         # Real (tiny) sleeps: the follower's DB round trips need the loop to poll sockets,
         # which sleep(0) alone never does.

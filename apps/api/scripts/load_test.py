@@ -1,4 +1,4 @@
-"""M6-T6: a self-contained load test (asyncio + httpx) for the interview service.
+"""a self-contained load test (asyncio + httpx) for the interview service.
 
     # against the compose stack (nginx in front of two api instances) with the local fake
     # upstream; nothing leaves this machine

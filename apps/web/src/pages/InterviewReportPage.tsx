@@ -7,6 +7,9 @@ import { buildReportViewModel } from "../interview/radar";
 import { RadarChart } from "./interview/RadarChart";
 import styles from "./InterviewReportPage.module.css";
 
+//: What the backend writes for a category with too few scored questions (Q16).
+const THIN_SAMPLE = "样本不足";
+
 export function InterviewReportPage() {
   const api = useApi();
   const navigate = useNavigate();
@@ -34,6 +37,7 @@ export function InterviewReportPage() {
   }
 
   const view = buildReportViewModel(reportQuery.data);
+  const categories = reportQuery.data.categories ?? [];
 
   return (
     <div className={styles.page}>
@@ -88,6 +92,28 @@ export function InterviewReportPage() {
           ) : null}
         </Card>
       </div>
+
+      {categories.length > 0 ? (
+        <section className={styles.categories} aria-label="按类给分">
+          <h2 className={styles.turnsTitle}>按类给分</h2>
+          <ul>
+            {categories.map((item) => (
+              <li key={item.key}>
+                <span className={styles.categoryLabel}>{item.label}</span>
+                <span className={styles.categoryMeta}>{item.count} 题</span>
+                <span className={styles.categoryScore} aria-label={item.label + "得分"}>
+                  {item.score === null || item.score === undefined
+                    ? THIN_SAMPLE
+                    : item.score.toFixed(1)}
+                </span>
+                {item.comment && item.comment !== THIN_SAMPLE ? (
+                  <span className={styles.categoryComment}>{item.comment}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className={styles.turns} aria-label="逐题回放">
         <h2 className={styles.turnsTitle}>逐题回放</h2>

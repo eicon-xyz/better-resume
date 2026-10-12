@@ -44,11 +44,11 @@ export function mergeTranscript(local: string, merged: string): { text: string; 
 
 
 /**
- * Realtime merge (P28): the transcript is cumulative within a run, so each new text
+ * Realtime merge: the transcript is cumulative within a run, so each new text
  * REPLACES the span it contributed last time instead of being appended again. The box is
  * left untouched (with a notice) when the user edited inside that span — handwriting
  * must never be clobbered or interleaved. First contribution of a session keeps the
- * batch-era append rule (P23).
+ * batch-era append rule.
  */
 export function replaceTranscript(
   value: string,

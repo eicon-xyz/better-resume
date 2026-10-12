@@ -18,7 +18,7 @@ cookie 会话（Redis 或内存）+ WS 一次性票据。**不做**注册/密码
 
 ## 已知陷阱
 
-- 占位实现会一直"看起来没事"：`UnimplementedWsTicketStore` 直接抛错挂了三期，靠静态盘点才发现（M4 P1）。
+- 占位实现会一直"看起来没事"：`UnimplementedWsTicketStore` 直接抛错挂了三期，靠静态盘点才发现。
   到期该落地的占位要么落地要么删掉。
 - 票据 TTL 很短（30s）：前端必须在拿到票据后**立即**建 WS，否则 4401（M4 调试时踩过）。
 - Redis 不可达时测试用内存实现（`environment=test`），别在单测里连真 Redis——只有分布式用例才需要。

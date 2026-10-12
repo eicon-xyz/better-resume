@@ -40,7 +40,7 @@ def test_parses_english_resume_into_context() -> None:
     assert context.contact.email == "jane.doe@example.com"
     assert context.contact.phone == "13800138000"
     keys = [section.key for section in context.sections]
-    assert "experience" in keys
+    assert "work" in keys
     assert "skills" in keys
     assert any("Python" in skill for skill in context.skills)
     assert "warnings" in context.model_dump()

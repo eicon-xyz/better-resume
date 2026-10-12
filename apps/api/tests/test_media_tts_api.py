@@ -1,4 +1,4 @@
-"""M4-T4: the TTS HTTP surface — cache hits, taxonomy errors, path safety."""
+"""the TTS HTTP surface — cache hits, taxonomy errors, path safety."""
 
 from __future__ import annotations
 

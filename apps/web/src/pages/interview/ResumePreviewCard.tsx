@@ -1,5 +1,6 @@
 import { Card, Collapsible } from "../../components";
 import type { QuestionBatchView } from "../../api/types";
+import { degradedNotice } from "../../interview/degraded";
 import styles from "./ResumePreviewCard.module.css";
 
 export interface ResumePreviewCardProps {
@@ -11,12 +12,19 @@ export function ResumePreviewCard({ batch }: ResumePreviewCardProps) {
   if (!batch) return null;
   const score = batch.session.resume_score;
   const suggestions = batch.suggestions ?? [];
+  const degraded = degradedNotice(batch.degraded ? batch.degraded_reasons : []);
 
   return (
     <Card title="简历解析与题目">
       <p className={styles.source}>
         以下内容由**本地规则解析**得出（不经过 AI），出题才使用模型。
       </p>
+      {degraded ? (
+        <p className={styles.degraded} role="alert">
+          {degraded}
+        </p>
+      ) : null}
+
       <dl className={styles.stats}>
         <div>
           <dt>题目数</dt>

@@ -1,4 +1,4 @@
-"""M3-T4: circuit breaker driven by a manual clock (no real waiting)."""
+"""circuit breaker driven by a manual clock (no real waiting)."""
 
 from __future__ import annotations
 

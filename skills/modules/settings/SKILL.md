@@ -17,7 +17,7 @@
 ## 已知陷阱
 
 - `get_settings()` 有缓存：测试里改环境变量必须 `get_settings.cache_clear()`（见 `tests/conftest.py` 的 hermetic fixture）。
-- 嵌套模型字段名重复会踩 M4 P8（补丁把 tts 预算打进 `MediaSettings`，policy 读不到 → 78 例齐红）：
+- 嵌套模型字段名重复会踩 （补丁把 tts 预算打进 `MediaSettings`，policy 读不到 → 78 例齐红）：
   加字段时确认加在**正确的类**上。
 - `.env` 只在本地存在且被 gitignore；CI 靠 environment 变量。
 

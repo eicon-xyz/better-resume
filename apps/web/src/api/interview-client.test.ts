@@ -62,6 +62,7 @@ const BATCH = {
   suggestions: ["补充量化"],
   flow: { status: "asking", current_question_no: "1", total_questions: 2, follow_up_count: 0, max_follow_up: 2 },
   replayed: false,
+  degraded: false,
 } satisfies QuestionBatchView;
 
 function uploadWithFake(xhr: FakeXhr, options: UploadOptions = {}) {

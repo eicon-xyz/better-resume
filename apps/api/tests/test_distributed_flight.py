@@ -1,4 +1,4 @@
-"""M6-T2: cross-instance single flight — two RedisFlight instances, one upstream call."""
+"""cross-instance single flight — two RedisFlight instances, one upstream call."""
 
 from __future__ import annotations
 

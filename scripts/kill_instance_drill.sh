@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M6-T8: kill the api instance that is serving an interview and finish it on the survivor.
+# Kill the api instance that is serving an interview and finish it on the survivor.
 #
 #   bash scripts/kill_instance_drill.sh
 #

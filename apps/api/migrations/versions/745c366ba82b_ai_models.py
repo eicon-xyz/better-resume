@@ -1,4 +1,4 @@
-"""ai_models registry + DeepSeek seeds (M1-T2)
+"""ai_models registry + DeepSeek seeds
 
 Revision ID: 745c366ba82b
 Revises: b349260daa14

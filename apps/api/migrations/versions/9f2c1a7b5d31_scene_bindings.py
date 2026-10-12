@@ -1,4 +1,4 @@
-"""scene bindings (M5-T1)
+"""scene bindings
 
 Revision ID: 9f2c1a7b5d31
 Revises: c28d77ba4f32

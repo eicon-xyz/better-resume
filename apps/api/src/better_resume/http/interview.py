@@ -30,6 +30,7 @@ from ..interview_engine import (
     RestoreService,
     ResumeStorage,
 )
+from ..interview_engine.categories import coerce_interview_type
 from ..interview_engine.orm import InterviewQuestionRow
 from ..llm_gateway import LlmScene
 from .gateway import gateway_for
@@ -51,6 +52,8 @@ class InterviewSessionView(BaseModel):
     interview_type: str | None = None
     question_count: int = 0
     resume_score: float | None = None
+    resume_warnings: list[str] = Field(default_factory=list)
+    degraded_reasons: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -60,6 +63,7 @@ class GeneratedQuestionView(BaseModel):
     topic_no: int
     follow_up_index: int = 0
     kind: str = "main"
+    category: str | None = None
     text: str
     focus_points: list[str] = Field(default_factory=list)
 
@@ -78,6 +82,8 @@ class QuestionBatchView(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     flow: FlowView | None = None
     replayed: bool = False
+    degraded: bool = False
+    degraded_reasons: list[str] = Field(default_factory=list)
 
 
 def _session_view(session: InterviewSession) -> InterviewSessionView:
@@ -87,6 +93,8 @@ def _session_view(session: InterviewSession) -> InterviewSessionView:
         interview_type=session.interview_type,
         question_count=session.question_count,
         resume_score=session.resume_score,
+        resume_warnings=list(session.resume_warnings),
+        degraded_reasons=list(session.degraded_reasons),
         created_at=session.created_at,
         updated_at=session.updated_at,
     )
@@ -103,7 +111,7 @@ async def create_session(
         # One live interview per user: starting a new one abandons the previous.
         session = await repo.create(
             user_id=principal.user_id,
-            interview_type=payload.interview_type,
+            interview_type=coerce_interview_type(payload.interview_type).value,
             supersede_active=True,
         )
         await db.commit()
@@ -147,6 +155,7 @@ async def generate_questions(
         state.session_factory,
         resilience=state.ai_resilience,
         storage=ResumeStorage(state.settings.resume_storage_dir),
+        corpus_limit=state.settings.corpus_limit,
     )
 
     result = await service.generate(
@@ -175,6 +184,8 @@ async def generate_questions(
             else None
         ),
         replayed=result.replayed,
+        degraded=result.degraded,
+        degraded_reasons=list(result.degraded_reasons),
     )
 
 
@@ -236,6 +247,7 @@ async def _load_question_view(
         topic_no=row.topic_no,
         follow_up_index=row.follow_up_index,
         kind="follow_up" if row.follow_up_index else "main",
+        category=row.category,
         text=row.text,
         focus_points=list(row.focus_points or []),
     )
@@ -311,11 +323,20 @@ class DimensionView(BaseModel):
     score: float
 
 
+class CategoryScoreView(BaseModel):
+    key: str
+    label: str
+    count: int = 0
+    score: float | None = None
+    comment: str
+
+
 class ReportTurnView(BaseModel):
     question_no: str
     topic_no: int
     follow_up_index: int = 0
     kind: str = "main"
+    category: str | None = None
     question: str
     answer: str | None = None
     score: float | None = None
@@ -328,6 +349,7 @@ class InterviewReportView(BaseModel):
     session: InterviewSessionView
     overall_score: float | None = None
     dimensions: list[DimensionView] = Field(default_factory=list)
+    categories: list[CategoryScoreView] = Field(default_factory=list)
     turns: list[ReportTurnView] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
     summary: str | None = None
@@ -355,6 +377,7 @@ def _report_view(
         session=_session_view(session),
         overall_score=report.overall_score,
         dimensions=[DimensionView(**item) for item in report.dimensions],
+        categories=[CategoryScoreView(**item) for item in report.categories],
         turns=[ReportTurnView(**turn) for turn in report.turns],
         suggestions=list(report.suggestions),
         summary=report.summary,
@@ -428,7 +451,7 @@ async def finish_interview(
 ) -> InterviewReportView:
     state = request.app.state
     if state.settings.jobs_enabled:
-        # Queue the narrative and return the frozen numbers immediately (M6-T4).
+        # Queue the narrative and return the frozen numbers immediately.
         result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(
             session_id=session_id, user_id=principal.user_id
         )

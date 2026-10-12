@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
+from .categories import InterviewType, QuestionCategory
 from .session_fsm import SessionStatus
 
 #: P8 / resume_parser_db-03: the vocabulary lives in three places — the SessionStatus enum, this
@@ -31,6 +32,23 @@ from .session_fsm import SessionStatus
 #: one copy; tests/test_migrations.py reads the constraint back out of Postgres to pin the last
 #: one (alembic check cannot see CHECK text: it reports 0 operations for a changed definition).
 _STATUS_CHECK = "status IN (" + ", ".join(f"'{status.value}'" for status in SessionStatus) + ")"
+
+#: Same three-places rule as the status vocabulary: the enum, this constraint and the migration
+#: that added the column. NULL stays legal — rows written before categories existed keep meaning
+#: "not classified" instead of being retro-labelled.
+_CATEGORY_CHECK = (
+    "category IS NULL OR category IN ("
+    + ", ".join(f"'{category.value}'" for category in QuestionCategory)
+    + ")"
+)
+
+#: NULL stays legal for rows written by internal callers that never set a type; the HTTP surface
+#: always stores a concrete value, defaulting to auto.
+_INTERVIEW_TYPE_CHECK = (
+    "interview_type IS NULL OR interview_type IN ("
+    + ", ".join(f"'{item.value}'" for item in InterviewType)
+    + ")"
+)
 
 
 def _utcnow() -> datetime:
@@ -41,6 +59,7 @@ class InterviewSessionRow(Base):
     __tablename__ = "interview_sessions"
     __table_args__ = (
         CheckConstraint(_STATUS_CHECK, name="ck_interview_sessions_status"),
+        CheckConstraint(_INTERVIEW_TYPE_CHECK, name="ck_interview_sessions_interview_type"),
         Index("ix_interview_sessions_user_id_status", "user_id", "status"),
     )
 
@@ -52,6 +71,15 @@ class InterviewSessionRow(Base):
     resume_sha256: Mapped[str | None] = mapped_column(String(64))
     resume_size: Mapped[int | None] = mapped_column(Integer)
     resume_score: Mapped[float | None] = mapped_column(Float)
+    #: What the candidate has to be told about this generation (Q9 / Q18): the parser's quality
+    #: warnings and the degradation reasons. Kept on the session so the room and later replays
+    #: still show them after the upload response is gone.
+    resume_warnings: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")
+    )
+    degraded_reasons: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")
+    )
     question_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -72,6 +100,7 @@ class InterviewSessionRow(Base):
 class InterviewQuestionRow(Base):
     __tablename__ = "interview_questions"
     __table_args__ = (
+        CheckConstraint(_CATEGORY_CHECK, name="ck_interview_questions_category"),
         UniqueConstraint("session_id", "question_no", name="uq_interview_questions_session_no"),
         Index("ix_interview_questions_session_id_topic_no", "session_id", "topic_no"),
     )
@@ -84,6 +113,7 @@ class InterviewQuestionRow(Base):
     topic_no: Mapped[int] = mapped_column(Integer, nullable=False)
     follow_up_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, default="main")
+    category: Mapped[str | None] = mapped_column(String(24))
     text: Mapped[str] = mapped_column(Text, nullable=False)
     focus_points: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")

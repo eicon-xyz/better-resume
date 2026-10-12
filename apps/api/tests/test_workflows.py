@@ -1,4 +1,4 @@
-"""P2-T3: the heavy verification layers run on a schedule (public repo = free runners).
+"""the heavy verification layers run on a schedule (public repo = free runners).
 
 Plan A: nightly = deploy layer + fault drill with the quick soak; weekly = full fault layer
 (20-minute soak) + the 60-minute vendor-free soak. Both accept workflow_dispatch, cap their

@@ -117,7 +117,7 @@ class AnswerService:
             await repo.get_for_user(session_id, user_id)
             # Second check inside the lock: the previous holder may have finished this turn.
             existing = await AnswerRepository(db).find_by_request(session_id, request_id)
-            # A failed attempt is on record but is NOT a finished answer (P8/IE-01): the same
+            # A failed attempt is on record but is NOT a finished answer: the same
             # idempotency key must still produce a score once the vendor recovers, so the retry
             # re-scores that row in place instead of replaying score=None at the client.
             if existing is not None and existing.error_message is None:
@@ -311,7 +311,7 @@ class AnswerService:
                     rule_version=decision.rule_version,
                 )
             else:
-                # The retry reused a failed attempt's request_id: re-score that row (P8/IE-01).
+                # The retry reused a failed attempt's request_id: re-score that row.
                 record = await answers.overwrite(
                     resume_of,
                     answer=answer,

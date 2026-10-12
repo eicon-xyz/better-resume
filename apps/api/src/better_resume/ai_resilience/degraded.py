@@ -1,4 +1,4 @@
-"""Degradation policy for the shared bucket store (P7 / D19).
+"""Degradation policy for the shared bucket store (D19).
 
 When the shared store (Redis) is unavailable the limiter must not turn into a 503, and
 must not silently lift every limit either. It falls back to the per-replica bucket — the

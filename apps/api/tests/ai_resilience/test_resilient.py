@@ -1,4 +1,4 @@
-"""M3-T7: one run() hiding the whole guard chain (order, taxonomy, shutdown, stats)."""
+"""one run() hiding the whole guard chain (order, taxonomy, shutdown, stats)."""
 
 from __future__ import annotations
 
@@ -204,7 +204,7 @@ async def test_stream_budget_failure_reaches_the_consumer() -> None:
 
     stream = await service.run(Stage.CHAT, "chat|s|h", open_stream)
     assert await anext(stream) == "a"
-    # The producer must reach its next deadline wait before we move the clock (see P5).
+    # The producer must reach its next deadline wait before we move the clock.
     await settle()
 
     clock.advance(10.1)

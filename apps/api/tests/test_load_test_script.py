@@ -1,4 +1,4 @@
-"""M6-T6: the load-test script's own logic is tested — never its performance.
+"""the load-test script's own logic is tested — never its performance.
 
 There is no server and no network here: `httpx.MockTransport` is injected through the same
 seam the script uses in production (`run_scenario(..., transport=...)`). The mock plays the

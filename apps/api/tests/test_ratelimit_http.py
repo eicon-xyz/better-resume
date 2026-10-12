@@ -1,4 +1,4 @@
-"""M3-T6: the middleware surface — 429, headers, identity isolation, fail-open."""
+"""the middleware surface — 429, headers, identity isolation, fail-open."""
 
 from __future__ import annotations
 

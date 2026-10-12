@@ -1,4 +1,4 @@
-"""M5-T8: the two providers must agree on the contract for the same scene input."""
+"""the two providers must agree on the contract for the same scene input."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""P8 / media-01: the update -> event rule exists once, and it covers more than one sentence."""
+"""the update -> event rule exists once, and it covers more than one sentence."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def test_a_repeated_final_packet_does_not_re_archive() -> None:
 
 
 def test_the_adapters_do_not_carry_their_own_copy_again() -> None:
-    """A second copy is how this started (P8 / media-01); the rule lives in event_map only."""
+    """A second copy is how this started; the rule lives in event_map only."""
     directory = Path(adapters.__file__).parent
 
     for path in sorted(directory.glob("*.py")):

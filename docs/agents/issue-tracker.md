@@ -6,6 +6,7 @@
 ## 目录约定
 
 - 一个阶段 = 一个 feature = 一个目录：`docs/tickets/<stage>/`，`<stage>` 形如 `p4-xxx`（小写 + 连字符）。
+  **阶段收口后，整个目录移到 `docs/history_docs/tickets/<stage>/`**——历史记录不进活文档（见 `AGENTS.md` 硬规则）。
 - **spec**：`docs/tickets/<stage>/README.md`——即本仓库的「阶段提案」，固定六段：范围 / 不做 / 交付物 / 测试与验收口径 / 预估 / 需要用户决定的问题。
 - **票据**：一个票据一个文件，`docs/tickets/<stage>/T<N>-<slug>.md`，`N` 从 1 起按依赖顺序编号（blockers 在前）。
   **绝不把多个票据写进同一个文件**；沿用既有的 `T<N>-` 前缀，不用 `issues/NN-`。

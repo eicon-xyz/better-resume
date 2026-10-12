@@ -282,7 +282,7 @@ class XunfeiAstAdapter:
         await self._emit_update(update)
 
     async def _emit_update(self, update: TranscriptUpdate) -> None:
-        # The rule lives in one place now (P8 / media-01): this adapter only feeds packets.
+        # The rule lives in one place now: this adapter only feeds packets.
         for event in self._event_mapper.events(update):
             await self._emit(event)
 

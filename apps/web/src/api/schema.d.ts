@@ -429,6 +429,22 @@ export interface components {
             /** Model Ref */
             model_ref?: string | null;
         };
+        /** CategoryScoreView */
+        CategoryScoreView: {
+            /** Comment */
+            comment: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Score */
+            score?: number | null;
+        };
         /** ChatMessageView */
         ChatMessageView: {
             /** Client Message Id */
@@ -519,6 +535,8 @@ export interface components {
         };
         /** GeneratedQuestionView */
         GeneratedQuestionView: {
+            /** Category */
+            category?: string | null;
             /** Focus Points */
             focus_points?: string[];
             /**
@@ -545,6 +563,8 @@ export interface components {
         };
         /** InterviewReportView */
         InterviewReportView: {
+            /** Categories */
+            categories?: components["schemas"]["CategoryScoreView"][];
             /** Dimensions */
             dimensions?: components["schemas"]["DimensionView"][];
             /**
@@ -579,6 +599,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Degraded Reasons */
+            degraded_reasons?: string[];
             /** Id */
             id: string;
             /** Interview Type */
@@ -590,6 +612,8 @@ export interface components {
             question_count: number;
             /** Resume Score */
             resume_score?: number | null;
+            /** Resume Warnings */
+            resume_warnings?: string[];
             /** Status */
             status: string;
             /**
@@ -631,6 +655,13 @@ export interface components {
         };
         /** QuestionBatchView */
         QuestionBatchView: {
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /** Degraded Reasons */
+            degraded_reasons?: string[];
             flow?: components["schemas"]["FlowView"] | null;
             /** Questions */
             questions: components["schemas"]["GeneratedQuestionView"][];
@@ -647,6 +678,8 @@ export interface components {
         ReportTurnView: {
             /** Answer */
             answer?: string | null;
+            /** Category */
+            category?: string | null;
             /** Feedback */
             feedback?: string | null;
             /**

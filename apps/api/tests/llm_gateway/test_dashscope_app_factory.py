@@ -1,4 +1,4 @@
-"""P3: the DashScope application factory + resolver wiring (the third adapter kind)."""
+"""the DashScope application factory + resolver wiring (the third adapter kind)."""
 
 from __future__ import annotations
 

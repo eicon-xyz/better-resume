@@ -1,4 +1,4 @@
-"""M5-T1: scene bindings — vocabulary, seeds, upsert semantics, validation."""
+"""scene bindings — vocabulary, seeds, upsert semantics, validation."""
 
 from __future__ import annotations
 

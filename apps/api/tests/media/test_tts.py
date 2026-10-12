@@ -1,4 +1,4 @@
-"""M4-T4: TTS cache and the edge-tts adapter (the vendor engine is injected)."""
+"""TTS cache and the edge-tts adapter (the vendor engine is injected)."""
 
 from __future__ import annotations
 

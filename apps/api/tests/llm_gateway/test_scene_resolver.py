@@ -1,4 +1,4 @@
-"""M5-T2: resolver caching, honest configuration flags, and the /scenes endpoints."""
+"""resolver caching, honest configuration flags, and the /scenes endpoints."""
 
 from __future__ import annotations
 

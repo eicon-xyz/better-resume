@@ -1,4 +1,4 @@
-"""M5-T3/T4: the Xingyun adapter against a local fake workflow server (real HTTP + SSE)."""
+"""the Xingyun adapter against a local fake workflow server (real HTTP + SSE)."""
 
 from __future__ import annotations
 

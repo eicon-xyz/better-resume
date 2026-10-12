@@ -1,4 +1,4 @@
-"""P2-T4: the real layer is a budget-guarded, credential-checked, stage-closure MANDATORY
+"""the real layer is a budget-guarded, credential-checked, stage-closure MANDATORY
 suite. Its contract: list what it will do (dry-run), refuse without credentials, and refuse
 to overspend the vendor call budget. It never fakes a run and never silently skips."""
 

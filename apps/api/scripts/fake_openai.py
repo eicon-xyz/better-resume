@@ -1,4 +1,4 @@
-"""A deterministic OpenAI-compatible endpoint for the deploy smoke (M6-T5).
+"""A deterministic OpenAI-compatible endpoint for the deploy smoke.
 
 The compose smoke has to prove that nginx forwards SSE frames as they are produced and
 upgrades WebSockets. A real vendor would make that check flaky and would bill the account,

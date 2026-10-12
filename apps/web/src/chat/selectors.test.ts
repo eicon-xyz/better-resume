@@ -62,7 +62,7 @@ describe("mergeHistory", () => {
     expect(merged.map((message) => message.key)).toEqual(["server:2", "req-live"]);
   });
 
-  it("keeps a second identical answer while history is still behind (P8 / web-04)", () => {
+  it("keeps a second identical answer while history is still behind", () => {
     // Two answers with the same text: the older draft is replayed by history, the newer one is
     // not there yet. Matching on content dropped the newer one too, so the reply the user just
     // watched appear vanished until the refetch landed (and stayed gone if it failed).

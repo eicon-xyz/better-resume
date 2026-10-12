@@ -50,7 +50,7 @@ class RequestIdMiddleware:
 class InstanceIdMiddleware:
     """Stamp every response with the instance that produced it.
 
-    nginx spreads requests over several api containers (M6-T5), so this header is how an
+    nginx spreads requests over several api containers, so this header is how an
     operator - and the kill-an-instance drill - knows who answered.
     """
 

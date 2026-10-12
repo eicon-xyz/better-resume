@@ -1,7 +1,7 @@
 """Host-side deploy probe: everything here goes through nginx, never straight to a container.
 
 `scripts/compose_smoke.sh` runs the subcommands against the running stack and stores the
-output as the evidence for M6-T5/T8. Rest: session + model registry. SSE: the proxy must
+output as the evidence for the deploy smoke. Rest: session + model registry. SSE: the proxy must
 forward frames while the response is still open (heartbeat first, then the fake vendor's
 chunks). WS: the transcription socket must upgrade through the proxy.
 """

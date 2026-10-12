@@ -1,4 +1,4 @@
-"""P2-T6 round 2: per-module coverage floors for the deep modules.
+"""per-module coverage floors for the deep modules.
 
 Criterion (user decision, codebase-design vocabulary): a module gets a floor when it passes
 the deletion test, has a small stable interface, and hides thick implementation. Shallow
@@ -13,7 +13,7 @@ import json
 import sys
 
 #: module -> floor (percent of statements covered).
-#: Rationale: docs/tickets/p2-test-automation/README.md §5.5.
+#: Rationale: docs/history_docs/tickets/p2-test-automation/README.md §5.5.
 DEEP_MODULES: dict[str, float] = {
     "ai_resilience": 90.0,
     "identity": 90.0,

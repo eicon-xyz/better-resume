@@ -8,8 +8,8 @@
 # refuses to pretend it ran. Every experiment prints its own evidence:
 #   redis-pause    : Redis frozen for 20s -> request classes + time to first success
 #   redis-restart  : sessions live in Redis -> the old cookie must really stop working
-#   redis-partition: api<->redis network path cut for 20s -> semantics + self-heal (P1-D)
-#   redis-failover : replica promoted while the master is down -> worker must survive (P1-D)
+#   redis-partition: api<->redis network path cut for 20s -> semantics + self-heal
+#   redis-failover : replica promoted while the master is down -> worker must survive
 #   worker-crash   : a consumer dies holding a job -> XPENDING+XCLAIM must reclaim it
 #   soak           : sampled waves over 20 min (--quick: 2 min) -> growth of keys/connections/memory
 #

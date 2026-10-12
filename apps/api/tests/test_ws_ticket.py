@@ -1,4 +1,4 @@
-"""M4-T3: one-shot WS tickets (D11) — issue, consume once, expire."""
+"""one-shot WS tickets (D11) — issue, consume once, expire."""
 
 from __future__ import annotations
 

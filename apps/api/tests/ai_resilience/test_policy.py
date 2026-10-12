@@ -1,4 +1,4 @@
-"""M3-T1: per-stage policy derived from settings (no magic numbers at call sites)."""
+"""per-stage policy derived from settings (no magic numbers at call sites)."""
 
 from __future__ import annotations
 

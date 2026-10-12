@@ -1,4 +1,4 @@
-/** M5-T7: the AI settings panel — listing, switching, honest "not configured" state. */
+/** The AI settings panel — listing, switching, honest "not configured" state. */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";

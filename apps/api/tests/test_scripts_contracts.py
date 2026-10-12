@@ -1,4 +1,4 @@
-"""P2-T5: every scripts/*.py carries at least two regression contracts.
+"""every scripts/*.py carries at least two regression contracts.
 
 Universal contracts for all scripts (import isolation, argparse usability) plus
 per-script refusal/sync contracts for the vendor and drift-check paths, so a script can

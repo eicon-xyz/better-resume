@@ -2,6 +2,18 @@
 
 本文件面向人类协作者与 AI 智能体，说明 better-resume 的项目全貌、开发方式与协作规范。
 
+## 硬规则（最高优先级，覆盖本文件其余条款）
+
+1. **没有用户明确指令，禁止 `git commit` / `git push` / 开 PR / 合并。** 改动一律留在工作区，
+   等用户**自测通过并明确下令**后才提交。AI 不自行宣布完成。
+2. **文档与代码注释只描述当前状态，不记录任何 AI 的修改历史。** 不写「本次改动」「之前是 X、现在改为 Y」
+   「第 N 轮修复」「已废弃」「曾经踩过」这类叙述；读者看到的应当是这个项目**现在**长什么样、为什么这样。
+   - 临时性的开发阶段划分（如 phase1–phase5）**一律不进任何文档**；只按代码与项目现状更新描述。
+   - 被新决策取代的旧决策**不留痕迹**：文档只写当前生效的决策（如「决策 B」），不写「原方案 A 已作废」。
+3. **未经用户确认的实现偏差，不得写成新的业务规则。** 实现与既定规格不一致时，先报给用户；
+   用户确认后才更新文档。**不得把偏差追认成规则**（例：若某次实现偏离了提案，只能记为待确认的偏差，
+   不能反过来写成「本项目就该这么做」）。
+
 ## 项目简介
 
 - **AI 模拟面试平台**（求职作品集项目）：上传简历 → 出题 → 语音/文字答题 → 评分追问 → 报告雷达图 + AI 对话。
@@ -34,7 +46,7 @@
 
 - `uv` 在 `~/.local/bin`：新 shell 先 `export PATH="$HOME/.local/bin:$PATH"`。
 - 子智能体等沙箱里 `uv` 默认写工作区外的 `/root/.cache/uv` → 权限拒绝；先 `export UV_CACHE_DIR='/root/better resume/.cache/uv'`。
-  症状：`uv run pytest` 报 cache 错，而 `./.venv/bin/python -m pytest` 照跑（曾让 `test_real_layer` 两例假红）。
+  症状：`uv run pytest` 报 cache 错，而 `./.venv/bin/python -m pytest` 照跑。
 - pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped（不是失败，实测能一次吞掉 136 例）：
 
   ```bash
@@ -45,10 +57,10 @@
 
 - pytest 输出被 `-q` 压掉摘要：**一律 `--junitxml` 读数，且先 rm 旧 xml**（否则读到陈旧结果）。
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
-- 新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`）——本机 `NO_PROXY` 含裸 IPv6（P20/P24）。
+- 新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`）——本机 `NO_PROXY` 含裸 IPv6。
 - 真机凭据**只进仓库根 gitignored `.env`**；`.env.example` 只写变量名，任何密钥不得出现在代码/测试/票据/日志摘录里。
 
-> 端口表、Docker 构建代理与镜像站前缀、WSL 掉线恢复、出网 22 端口、`gh` 的中间人证书怪癖、改过 volume 挂载的文件要 `--force-recreate`——见 **`docs/HANDOFF.md` §4**（环境事实的单一真相源，本文不再抄第二份）。
+> 端口表、Docker 构建代理与镜像站前缀、**沙箱内 docker 构建为何跑不了**、WSL 掉线恢复、出网 22 端口、`gh` 的中间人证书怪癖、改过 volume 挂载的文件要 `--force-recreate`——见 **`docs/HANDOFF.md` §4**（环境事实的单一真相源，本文不再抄第二份）。
 
 ## 常用命令
 
@@ -56,7 +68,7 @@
 > 这里只留**看 `--list` 看不出来**的几条。
 
 ```bash
-# 单一入口（CI 与本地跑同一份命令，P2-T1）——先 --list 看全层
+# 单一入口（CI 与本地跑同一份命令）——先 --list 看全层
 bash scripts/verify.sh --list                 # 全部层与命令（CI 与本地同一份）
 bash scripts/verify.sh --layer all            # 本地收口：unit+contract+coverage+scripts（条数看 --dry-run，别抄进文档）
 bash scripts/verify.sh --layer real --dry-run # 真机清单 + 预算（不花钱）
@@ -70,7 +82,7 @@ cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 # 前端测试——必须从仓库根跑
 cd '/root/better resume' && pnpm -C apps/web test --run
 
-# 契约三件套：改过 REST 模型后必须一起跑 —— 漏一步的症状是「本地全绿、CI 直接红」（M6 P16）
+# 契约三件套：改过 REST 模型后必须一起跑 —— 漏一步的症状是「本地全绿、CI 直接红」
 cd apps/api && uv run python scripts/export_openapi.py
 pnpm -C apps/web gen:api
 uv run python scripts/extract_api_index.py --check
@@ -84,7 +96,7 @@ uv run python scripts/extract_api_index.py --check
 │   │   ├── settings/config.py       # 全部设置（BR_ 前缀；凭据字段空默认；嵌套用 BR_MEDIA__XX）
 │   │   ├── main.py                  # lifespan 装配
 │   │   ├── http/                    # REST/WS/SSE 端点；media.py 是转写 WS（票据→音频→事件→关闭码）
-│   │   ├── identity/                # Cookie session（Redis）+ WS ticket；后端不可用=503（P17）
+│   │   ├── identity/                # Cookie session（Redis）+ WS ticket；后端不可用=503
 │   │   ├── db/                      # SQLAlchemy async 引擎/session/migrations
 │   │   ├── llm_gateway/             # 场景绑定 resolver + 模型注册 + adapters（openai_compat/星云）
 │   │   ├── ai_resilience/           # 单飞/熔断/舱壁/超时/限流/分布式单飞（假时钟可测）
@@ -103,12 +115,14 @@ uv run python scripts/extract_api_index.py --check
 │   ├── src/audio/                   # capture/pcm/player/transcriptStore/transcriptionSocket
 │   ├── src/pages/ + scenes/         # 页面（面试间/聊天/报告/设置）与查询
 │   └── src/stream/                  # SSE 渲染
-├── docs/                            # HANDOFF.md、DECISIONS.md、tickets/<stage>/（一阶段一目录）、perf/
-│   └── audit/                       # 模块设计审计：MODULE-AUDIT.html（渲染产物）/ units/*.json（数据）/ FIXES.md（修复台账）
+├── docs/                            # HANDOFF.md、DECISIONS.md、audit/、perf/
+│   ├── tickets/<stage>/             # 在飞阶段：README + ACCEPTANCE + PROBLEMS + EVIDENCE
+│   ├── audit/                       # 模块设计审计：MODULE-AUDIT.html（渲染产物）/ units/*.json（数据）/ CONTRACT.md（口径）
+│   └── history_docs/                # 历史归档：tickets/**、HANDOFF-archive.md、audit/FIXES.md
 ├── GLOSSARY.md                      # 领域词汇表（单上下文；产品域 + 工程过程词，D21）
 ├── skills/                          # repo-map + modules/<模块>/SKILL.md + api-index（生成）
 ├── scripts/                         # verify.sh（单一入口）+ compose_smoke.sh / *_drill.sh + 审计与变异工具（build_module_audit.py / verify_audit_evidence.py / verify_mutation.sh）
-├── deploy/nginx.conf                # upstream 变量 + resolver（--scale 生效的关键，M6 P12）
+├── deploy/nginx.conf                # upstream 变量 + resolver（--scale 生效的关键）
 ├── compose.yaml                     # 部署最终形态（api/worker/postgres/redis/nginx/migrate/fake-llm）
 ├── .env.example                     # 变量名清单（真凭据只进 gitignored .env）
 └── .githooks/pre-commit             # 可选提交前检查（shell 语法 + 暂存 Python 的 ruff）
@@ -123,8 +137,8 @@ uv run python scripts/extract_api_index.py --check
 | 阶段 | 怎么起 | 做什么 | 产物 |
 | --- | --- | --- | --- |
 | **1 grill** | 你敲 `/grill-with-docs` | 就一个想法逐轮拷问（`grilling` + `domain-modeling`）：事实 AI 查，决策你拍 | `GLOSSARY.md` 术语、`docs/DECISIONS.md` 新决议（续编 D 号） |
-| **2 spec** | 你敲 `/to-spec` | 不采访，把已谈成的直接综合成 spec | `docs/tickets/<stage>/README.md`（= 原「阶段提案」六段） |
-| **3 implement** | 你敲 `/implement` | 驱动 `/tdd` 垂直切片（一个用例红 → 最小实现绿），常跑 typecheck/单测、收尾跑全量；结束自动调 `/code-review` | 代码 + 小步提交（提交信息说 WHAT） |
+| **2 spec** | 你敲 `/to-spec` | 不采访，把已谈成的直接综合成 spec | `docs/tickets/<stage>/README.md` |
+| **3 implement** | 你敲 `/implement` | 驱动 `/tdd` 垂直切片（一个用例红 → 最小实现绿），常跑 typecheck/单测、收尾跑全量；结束自动调 `/code-review` | 代码留在工作区（提交信息说 WHAT）——**用户下令前不提交** |
 | **4 review** | 阶段 3 自动调，或你敲 `/code-review` | 双轴**并行**评审：Standards（`CODING_STANDARDS.md`）／Spec（对照上面的 README） | 两轴发现清单（不合并、不重排） |
 | **5 retro** | 你敲 `/retro` | 读会话日志（`node ~/.dsh/tools/dsh-sessions.mjs --cwd "$PWD"`）找环境改进 | 落回 AGENTS.md / CODING_STANDARDS.md / 自动检查 |
 
@@ -152,21 +166,21 @@ uv run python scripts/extract_api_index.py --check
 
 ## 开发规范
 
-- 语言与沟通：全部使用简体中文（注释、文档、对话）；提交信息用英文短句说 WHAT（沿用现有风格，如 `fix(media): …(P1-A)`）。
-- **只 mock 系统边界**（LLM/时钟/Redis/讯飞/浏览器音频/IPC），不 mock 内部模块；测试必须 hermetic（P15）——断言不依赖 shell 里的代理变量/PATH/DB 地址。
-- **TDD 循环纪律**（P1-A 复盘，2026-09-15）：测试只写在事先向用户确认的缝上；**垂直切片**——一个用例红 → 最小实现绿 → 下一个，不整批铺测试（整批的代价：P1-A 绿灯期连修 3 个测试自身 bug）；任何行为变更（含验证期热修）先在旧代码上演示红再改；断言走公开行为或 fake 协作对象的入参捕获，不加测试专用属性。
+- 语言与沟通：全部使用简体中文（注释、文档、对话）；提交信息用英文短句说 WHAT（如 `fix(media): …`）。
+- **只 mock 系统边界**（LLM/时钟/Redis/讯飞/浏览器音频/IPC），不 mock 内部模块；测试必须 hermetic——断言不依赖 shell 里的代理变量/PATH/DB 地址。
+- **TDD 循环纪律**：测试只写在事先向用户确认的缝上；**垂直切片**——一个用例红 → 最小实现绿 → 下一个，不整批铺测试（整批铺测试会在绿灯期连修测试自身的 bug）；任何行为变更（含验证期热修）先在旧代码上演示红再改；断言走公开行为或 fake 协作对象的入参捕获，不加测试专用属性。
 - **所有供应商调用走 `ai_resilience` 链**（Stage 分类），不要裸调；时间用注入时钟测，不写真实 sleep 断言。
-- **错误语义**：依赖不可用/缺配置 → **503 + Retry-After** 并点名缺失变量（P17），不是 401 也不是 500；响应要能区分"你没登录"和"我这边坏了"。
-- **缓存**：跨进程可见的配置缓存必须带 TTL 或写路径失效（P18——多副本下"只在本地失效"= 配置漂移）。
-- **WS 转写**：成功路径显式 `close(1000)`（P21，否则客户端报 1006）；失败关 4411；前端转写文本**追加、同段去重、绝不覆盖手写**（P23）。
-- **WS/HTTP 客户端连接参数一律显式**：`open_timeout`、`close_timeout`（供应商会拖关闭握手，默认 10s 会让松手→final 变 10 秒，P24）、`proxy=None` 或 `trust_env=False` 兜底（P20）。
-- **证据诚实**：真模型响应必带 `usage`（流式需按模型行 `extra.stream_usage=true` 请求，P19）；fake 上游（`smoke-fake`）无 usage——不许拿假的冒充真的；未验证就写未验证。
+- **错误语义**：依赖不可用/缺配置 → **503 + Retry-After** 并点名缺失变量，不是 401 也不是 500；响应要能区分"你没登录"和"我这边坏了"。
+- **缓存**：跨进程可见的配置缓存必须带 TTL 或写路径失效——多副本下"只在本地失效"= 配置漂移。
+- **WS 转写**：成功路径显式 `close(1000)`（否则客户端报 1006）；失败关 4411；前端转写文本**追加、同段去重、绝不覆盖手写**。
+- **WS/HTTP 客户端连接参数一律显式**：`open_timeout`、`close_timeout`（供应商会拖关闭握手，默认 10s 会让松手→final 变 10 秒）、`proxy=None` 或 `trust_env=False` 兜底。
+- **证据诚实**：真模型响应必带 `usage`（流式需按模型行 `extra.stream_usage=true` 请求）；fake 上游（`smoke-fake`）无 usage——不许拿假的冒充真的；未验证就写未验证。
 - **依赖纪律**：不引入 LangChain / OpenTelemetry / 请求层重试库等被决议排除的依赖（D04/D17）；新增依赖先在提案里说明。
 - 设置新增走 `settings/config.py`（`BR_` 前缀；嵌套用 `__`）；compose 需要透传的新变量同步加到 `compose.yaml` 与 `.env.example`（只写变量名）。
-- 部署形态变更（compose/nginx）必须同步更新对应验收脚本并在票据里留证据；nginx upstream 用变量 + resolver，否则 `--scale` 不生效（M6 P12）。
+- 部署形态变更（compose/nginx）必须同步更新对应验收脚本并在票据里留证据；nginx upstream 用变量 + resolver，否则 `--scale` 不生效。
 - 清洁度：不留临时文件、注释掉的死代码、"默认关闭没人跑"的分支——要么真机跑通并设为默认，要么删掉。
-- **测试的共享状态自己还原**：用例动了跨进程可见的东西（如场景绑定表）必须由 fixture 快照还原——否则「全量跑绿、单跑子集红」。实测：一个用例留下 `chat=xingyun`，让另一个文件的 6 条用例假红（P8-N1）。
-- **审计与验证证据**：设计审计在 `docs/audit/`（`units/*.json` 是数据、`FIXES.md` 是台账）；`verify_audit_evidence.py` 分两级——CI 只跑结构级（`--structural`，不因代码漂移变红），逐字级（`--strict`）与 `verify_mutation.sh` 是收口手段（D22）。**改过被引用的文件后，引证行号要重锚**，否则逐字级门槛会红。
+- **测试的共享状态自己还原**：用例动了跨进程可见的东西（如场景绑定表）必须由 fixture 快照还原——否则「全量跑绿、单跑子集红」（一个用例留下的场景绑定会让另一个文件的用例假红）。
+- **审计与验证证据**：设计审计在 `docs/audit/`（`units/*.json` 是数据、`CONTRACT.md` 是口径）；`verify_audit_evidence.py` 分两级——CI 只跑结构级（`--structural`，不因代码漂移变红），逐字级（`--strict`）与 `verify_mutation.sh` 是收口手段（D22）。**改过被引用的文件后，引证行号要重锚**，否则逐字级门槛会红。
 
 ## 贡献指南（提交前检查清单）
 
@@ -182,14 +196,15 @@ uv run python scripts/extract_api_index.py --check
 - **开工顺序**：先读 `GLOSSARY.md`（术语）与 `docs/HANDOFF.md`（状态/怎么跑/坑），再按 `skills/repo-map/SKILL.md` 路由到对应模块的 `SKILL.md`；跨窗口断点在 `~/.dsh/session-memory/better resume.md`（仓库外）。
 - **版本差异**：Python 3.12（`asyncio.TimeoutError` 即 `TimeoutError`）；websockets ≥14 把 `extra_headers` 改名 `additional_headers` 且新增 `proxy` 参数——写适配器要兼容两种签名（见 `media/adapters/paraformer_rt.py:open_connection` 的写法）。
 - **供应商语义**：百炼批量 ASR（qwen-audio-3.0-asr-flash）= 整段一次返回；实时（paraformer-realtime-v2）= WS 增量，`result-generated.sentence.sentence_end` 区分 live/完结；二者共用同一 workspace 域名与 key。
-- **worker/Redis**：队列兼容 Redis 6.0 下限（无 `XAUTOCLAIM`，M6 P7）；worker 不允许死于依赖抖动——
-  **循环里每一次依赖调用（含心跳写）都必须在兜底 try 内**（P26：心跳写在 try 外，主从切换时 worker exit 1）；
+- **worker/Redis**：队列兼容 Redis 6.0 下限（无 `XAUTOCLAIM`）；worker 不允许死于依赖抖动——
+  **循环里每一次依赖调用（含心跳写）都必须在兜底 try 内**——心跳写在 try 外时，主从切换会让 worker exit 1；
   崩溃恢复时间 ≈ 接管阈值本身，不要美化数字。
-- **e2e 探针会撒谎**：探针"发完才收"会把服务器帧的到达时序塌缩（P25）；探针漏了前置状态（如 cookie）会把 503 读成 401（P27）——
-  证据工具必须先于结论被校准；演练的故障恢复动作必须放 `finally`；所有数字写清口径（探针超时会截断"接管耗时"这类测量，V6 教训）。
-- **前端转写合并历史上存在三层**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect，P28/P30 各漏过一层）：
+- **e2e 探针会撒谎**：探针"发完才收"会把服务器帧的到达时序塌缩；探针漏了前置状态（如 cookie）会把 503 读成 401——
+  证据工具必须先于结论被校准；演练的故障恢复动作必须放 `finally`；所有数字写清口径（探针超时会截断"接管耗时"这类测量）。
+- **前端转写合并在三层上都会发生**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect）：
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
-- **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**（P29：不发头=浏览器启发式缓存 HTML，部署后还在跑旧 bundle；compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
+- **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**——不发头 = 浏览器启发式缓存 HTML，部署后还在跑旧 bundle（compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
 - **派活约定**：用子智能体做审计/评审/并行修复时的操作约定见 `docs/agents/subagents.md`（共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
-- **harness 事实**：`run_code` 的 JS 模板字符串里**别出现反引号**（会截断字符串，报错形如 `Expected ',', got 'ident'`）——要反引号时用 `String.fromCharCode(96)` 或数组 `join`；长文本先 `write` 成文件再跑。`run_code` 的 `timeoutMs` 上限是 **600000**（不是 120000）。
+- **harness 事实**：`run_code` 的 JS 模板字符串里**别出现反引号**（会截断字符串，报错形如 `Expected ',', got 'ident'`）——要反引号时用 `String.fromCharCode(96)` 或数组 `join`；长文本先 `write` 成文件再跑。`run_code` 的 `timeoutMs` 上限是 **600000**（不是 120000；默认 120000）。
+- **临时脚本一律 `set -euo pipefail` 且 `cd "$(mktemp -d)"`**：写成 `set -uo pipefail`（少 `-e`）时，`mkdir`／`cd` 失败不会中断，脚本会**留在当前目录继续跑**——在工作区里跑就等于往仓库里写。路径一律用 `mktemp -d`，不要自己拼。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。

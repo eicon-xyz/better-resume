@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import type { InterviewSessionView } from "../api/types";
@@ -6,6 +7,7 @@ import { useApi } from "../api/useApi";
 import { Button, Card, Empty } from "../components";
 import { useSession } from "../chat/useSession";
 import { interviewKeys, useInterviewSessions } from "../interview/queries";
+import { INTERVIEW_TYPE_OPTIONS, interviewTypeLabel } from "../interview/interviewTypes";
 import { MAX_RESUME_BYTES, useResumeUpload } from "../interview/useResumeUpload";
 import { LoginGate } from "./LoginGate";
 import { ResumePreviewCard } from "./interview/ResumePreviewCard";
@@ -19,8 +21,10 @@ export function InterviewIntroPage() {
   const queryClient = useQueryClient();
   const session = useSession(api);
   const sessionsQuery = useInterviewSessions(api, session.isAuthenticated);
+  const [interviewType, setInterviewType] = useState("auto");
   const upload = useResumeUpload({
     client: api,
+    interviewType,
     onQuestionsReady: (sessionId) => {
       void queryClient.invalidateQueries({ queryKey: interviewKeys.sessions("local") });
       void navigate(`/interview/room/${sessionId}`);
@@ -62,6 +66,23 @@ export function InterviewIntroPage() {
             支持带文本层的 PDF（上限 {Math.round(MAX_RESUME_BYTES / 1024 / 1024)}MB）。
             扫描件请先用 OCR 转成可复制文本。
           </p>
+
+          <label className={styles.focus}>
+            <span>面试侧重</span>
+            <select
+              aria-label="面试侧重"
+              value={interviewType}
+              onChange={(event) => {
+                setInterviewType(event.target.value);
+              }}
+            >
+              {INTERVIEW_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className={styles.dropzone}>
             <input
@@ -124,7 +145,8 @@ export function InterviewIntroPage() {
                 {resumable.map((item) => (
                   <li key={item.id}>
                     <span>
-                      {item.interview_type ?? "模拟面试"} · {item.question_count} 题 · {item.status}
+                      {interviewTypeLabel(item.interview_type)} · {item.question_count} 题 ·{" "}
+                      {item.status}
                     </span>
                     <Button
                       size="sm"

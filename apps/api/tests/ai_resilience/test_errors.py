@@ -1,4 +1,4 @@
-"""M3-T1: failure taxonomy — three upstream states plus the non-retryable bucket."""
+"""failure taxonomy — three upstream states plus the non-retryable bucket."""
 
 from __future__ import annotations
 

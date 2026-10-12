@@ -62,7 +62,6 @@ from .llm_gateway import (
 from .media import ChannelRegistry, EdgeTtsSynthesizer, TtsCache
 from .observability import InstanceIdMiddleware, RequestIdMiddleware, configure_logging
 from .redis_client import RedisTopology
-from .resume_parser import ResumeParseError
 from .settings import Settings, get_settings
 
 
@@ -151,7 +150,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(IllegalSessionTransition, _conflict)
     app.add_exception_handler(IllegalFlowTransition, _conflict)
     app.add_exception_handler(InterviewEngineError, _unprocessable)
-    app.add_exception_handler(ResumeParseError, _bad_request)
     app.add_exception_handler(LlmError, _bad_gateway)
     # M3 taxonomy: 504 timeout, 503 shedding/unavailable, 502 malformed upstream.
     app.add_exception_handler(AiTimeout, _gateway_timeout)
@@ -194,12 +192,6 @@ async def _conflict(request: Request, exc: Exception) -> JSONResponse:
 
 async def _unprocessable(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
-
-
-async def _bad_request(request: Request, exc: Exception) -> JSONResponse:
-    """Resume parsing problems are the user's input, not a server fault."""
-    code = getattr(exc, "code", None)
-    return JSONResponse(status_code=400, content={"detail": str(exc), "code": code})
 
 
 async def _gateway_timeout(request: Request, exc: Exception) -> JSONResponse:

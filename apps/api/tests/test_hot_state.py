@@ -1,4 +1,4 @@
-"""M6-T3: hot state — cache hits, honest invalidation, cross-instance reads, degradation."""
+"""hot state — cache hits, honest invalidation, cross-instance reads, degradation."""
 
 from __future__ import annotations
 

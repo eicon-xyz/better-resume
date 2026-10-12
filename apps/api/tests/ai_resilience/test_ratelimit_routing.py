@@ -1,4 +1,4 @@
-"""P7 / D19: which buckets are shared, and what happens when Redis is not there.
+"""which buckets are shared, and what happens when Redis is not there.
 
 Q2's decision: only the vendor-cost buckets (AI_CALL / ANSWER / HEAVY) get the shared
 quota — they cap what we spend upstream. GENERAL / READ cap *our own* capacity, which grows

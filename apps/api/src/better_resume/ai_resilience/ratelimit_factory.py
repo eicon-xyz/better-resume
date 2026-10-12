@@ -1,4 +1,4 @@
-"""Assembly: which bucket store each bucket gets (P7 / D19).
+"""Assembly: which bucket store each bucket gets (D19).
 
 Kept out of `ratelimit.py` on purpose — the policy module must not know about Redis
 (`redis_buckets` imports `BucketScope` from it, so the dependency only ever points here).

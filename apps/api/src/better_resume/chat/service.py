@@ -169,7 +169,7 @@ class ChatService:
         self, store: SqlConversationStore, session: SessionRef, user_id: UserId
     ) -> Conversation:
         # One query for ownership + lookup: paging list_for_user() meant a user with more
-        # conversations than the page size could not open their older ones (P8 / chat-02).
+        # conversations than the page size could not open their older ones.
         return await store.get_owned(session, user_id)
 
     async def _is_duplicate(

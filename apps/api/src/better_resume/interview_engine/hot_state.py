@@ -1,4 +1,4 @@
-"""Session hot state (M6-T3): a Redis cache for the restore view, nothing more.
+"""Session hot state: a Redis cache for the restore view, nothing more.
 
 Postgres stays the single source of truth. This layer exists so a second api instance can
 answer `/restore` without re-deriving the whole interview, and so a killed instance does not

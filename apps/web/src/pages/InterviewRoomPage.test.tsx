@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiProvider } from "../api/ApiContext";
 import type { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
-import type { AnswerSubmitView, GeneratedQuestionView } from "../api/types";
+import type { AnswerSubmitView, GeneratedQuestionView, RestoreResponseView } from "../api/types";
 import { useRoomStore } from "../interview/roomStore";
 import { InterviewRoomPage } from "./InterviewRoomPage";
 
@@ -37,7 +37,7 @@ const FOLLOW_UP: GeneratedQuestionView = {
   focus_points: ["取舍"],
 };
 
-function restoreView(question: GeneratedQuestionView, answered = 0) {
+function restoreView(question: GeneratedQuestionView, answered = 0): RestoreResponseView {
   return {
     session: {
       id: "s-1",
@@ -45,6 +45,8 @@ function restoreView(question: GeneratedQuestionView, answered = 0) {
       interview_type: null,
       question_count: 2,
       resume_score: 70,
+      resume_warnings: [],
+      degraded_reasons: [],
       created_at: "2026-09-13T00:00:00Z",
       updated_at: "2026-09-13T00:00:00Z",
     },
@@ -60,6 +62,7 @@ function restoreView(question: GeneratedQuestionView, answered = 0) {
     total_questions: 2,
     last_answer: null,
     derived: false,
+    source: "derived",
   };
 }
 
@@ -139,6 +142,17 @@ function answer(text: string) {
 describe("InterviewRoomPage", () => {
   beforeEach(() => {
     useRoomStore.getState().reset();
+  });
+
+  it("shows the notices the session carries", async () => {
+    const view = restoreView(QUESTION_1);
+    view.session.degraded_reasons = ["corpus_no_match"];
+    view.session.resume_warnings = ["no_skills_found"];
+    renderRoom(fakeClient({ restoreInterview: vi.fn(() => Promise.resolve(view)) }));
+
+    const notices = await screen.findByLabelText("本次出题提示");
+    expect(notices).toHaveTextContent("没有匹配到八股语料");
+    expect(notices).toHaveTextContent("没有提取到技能标签");
   });
 
   it("restores the session and shows the current question", async () => {

@@ -1,4 +1,4 @@
-"""Cross-instance single flight on Redis (M6-T2).
+"""Cross-instance single flight on Redis.
 
 Layered *under* the in-process flight from M3: the local registry still absorbs same-process
 duplicates for free, and this module makes sure two *different* processes do not both call
@@ -289,7 +289,7 @@ class DistributedAiResilience:
         )
 
     def stats(self) -> dict[str, Any]:
-        """Answer for the chain this wraps (P8 / settings_observability-03)."""
+        """Answer for the chain this wraps."""
         return self._inner.stats()
 
     async def aclose(self) -> None:

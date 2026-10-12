@@ -1,4 +1,4 @@
-"""M6-T8: the drill must fail loudly when it cannot run, and never silently "pass".
+"""the drill must fail loudly when it cannot run, and never silently "pass".
 
 The full drill needs Docker and is executed by `scripts/kill_instance_drill.sh`; this test
 pins the prerequisite semantics and the parts of the contract the evidence depends on.
@@ -86,7 +86,7 @@ def test_wrapper_scales_to_two_instances_and_calls_the_driver() -> None:
 def test_missing_docker_exits_two_with_an_explanation(script: Path) -> None:
     # An empty PATH means neither docker nor uv exists: the drill must say so and exit 2.
     # A drill that silently "passes" is worse than no drill. compose_smoke.sh had no
-    # guard at all (P35 follow-up): it died inside `docker compose config` with a bare 127.
+    # guard at all: it died inside `docker compose config` with a bare 127.
     result = run_drill(path="/nonexistent", script=script)
 
     assert result.returncode == 2, result.stdout + result.stderr
@@ -181,7 +181,7 @@ def test_retry_after_seconds_parses_the_header_with_a_fallback(
 
 
 async def test_post_answer_honours_retry_after_then_succeeds() -> None:
-    # P36: the answer bucket is 2 rps (P1-B calibration) and the drill fires answers as fast
+    # The answer bucket is 2 rps and the drill fires answers as fast
     # as the fake vendor replies, so a 429 is expected. Retrying the same idempotent
     # request_id is the fix; crashing on `.json()["next_action"]` was the bug.
     calls: list[int] = []

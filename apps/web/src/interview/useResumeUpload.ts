@@ -25,6 +25,8 @@ export interface UseResumeUploadOptions {
   client: ApiClient;
   onQuestionsReady?: (sessionId: string, batch: QuestionBatchView) => void;
   uploadOptions?: Pick<UploadOptions, "xhrFactory">;
+  /** Controlled interview focus sent when the session is created; the backend coerces unknowns. */
+  interviewType?: string;
 }
 
 export interface ResumeUploadController extends ResumeUploadState {
@@ -51,6 +53,7 @@ export function useResumeUpload({
   client,
   onQuestionsReady,
   uploadOptions,
+  interviewType,
 }: UseResumeUploadOptions): ResumeUploadController {
   const [state, setState] = useState<ResumeUploadState>({
     file: null,
@@ -103,7 +106,9 @@ export function useResumeUpload({
 
     setState((current) => ({ ...current, stage: "uploading", error: null, progress: 0 }));
     try {
-      const session = await client.createInterviewSession({});
+      const session = await client.createInterviewSession(
+        interviewType ? { interview_type: interviewType } : {},
+      );
       setState((current) => ({ ...current, session, stage: "generating" }));
       const batch = await client.uploadResumeAndGenerateQuestions(session.id, file, {
         onProgress: (ratio) =>
@@ -117,7 +122,7 @@ export function useResumeUpload({
         error instanceof ApiError ? error.message : "出题失败，请稍后重试";
       setState((current) => ({ ...current, stage: "error", error: message }));
     }
-  }, [client, onQuestionsReady, state.file, uploadOptions]);
+  }, [client, interviewType, onQuestionsReady, state.file, uploadOptions]);
 
   const reset = useCallback(() => {
     if (previewRef.current) {

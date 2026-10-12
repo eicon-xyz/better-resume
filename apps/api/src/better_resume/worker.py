@@ -1,4 +1,4 @@
-"""Worker entry point (M6-T4): consume jobs until asked to stop.
+"""Worker entry point: consume jobs until asked to stop.
 
 Run it as `python -m better_resume.worker` (the compose service does exactly that). The
 loop handles SIGTERM/SIGINT by finishing the current job and then exiting, so a redeploy
@@ -155,8 +155,8 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
             try:
                 # The heartbeat is a Redis write like any other: during a failover it can
                 # time out, and that must throttle the loop instead of killing the process
-                # (P1-D/P26: the worker exited 1 while the replica was being promoted, which
-                # silently stopped every background job until someone restarted it).
+                # A failover must throttle the loop, never kill the process: an exit here
+                # silently stops every background job until someone restarts the worker.
                 await beat(
                     health,
                     key=key,

@@ -134,6 +134,8 @@ def _to_model(row: InterviewSessionRow) -> InterviewSession:
         resume_sha256=row.resume_sha256,
         resume_size=row.resume_size,
         resume_score=row.resume_score,
+        resume_warnings=list(row.resume_warnings or []),
+        degraded_reasons=list(row.degraded_reasons or []),
         question_count=row.question_count,
         started_at=row.started_at,
         finished_at=row.finished_at,

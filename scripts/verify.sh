@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# P2-T1: the single entry point for every verification layer.
+# The single entry point for every verification layer.
 #
-# CI and local MUST call this script instead of re-typing commands (M6 P16: "local green,
+# CI and local MUST call this script instead of re-typing commands ("local green,
 # CI red" happened because the two drifted). Evidence lands in var/evidence/<utc>-<layer>/.
 #
 # Usage:
@@ -10,7 +10,7 @@
 #     [--scope api|web|all] [--dry-run]
 #
 # --list renders the layer plan declared below instead of keeping a second, hand-written copy
-# of it: that copy had drifted in 5 of 21 lines (P44), and a substring test cannot see a wrong
+# of it: that copy had drifted in 5 of 21 lines, and a substring test cannot see a wrong
 # command. The map therefore ignores --scope and always shows the full plan.
 set -euo pipefail
 
@@ -121,7 +121,7 @@ build_soak() {
   add all "mkdir -p $evidence_dir && cd apps/api && uv run python -m scripts.fault_probe soak --base http://127.0.0.1:8080 --duration 3600 --wave-seconds 30 --requests 30 --concurrency 4 --json \"$ROOT/$evidence_dir/soak-60m.json\""
 }
 
-# P2-T4: the real layer is a budget-guarded, stage-closure MANDATORY suite. Its steps are data
+# The real layer is a budget-guarded, stage-closure MANDATORY suite. Its steps are data
 # because --list renders them too; the preflights (credentials, fixture audio, stack health)
 # stay on the execution path, so --list never touches a credential or the network.
 declare -a real_steps=(
@@ -153,7 +153,7 @@ build_contract() {
 build_coverage() {
   # The floor check judges the API coverage JSON, so --scope web has nothing to judge. It used
   # to run the whole API pytest anyway, i.e. --scope did nothing for this layer while unit and
-  # contract honoured it (P44).
+  # contract honoured it.
   if [[ "$SCOPE" == "web" ]]; then
     return 0
   fi
@@ -161,7 +161,7 @@ build_coverage() {
   add_coverage
 }
 build_all() {
-  # P31 + P8-retro: the advertised local closure. Every layer joins through its own builder so
+  # The advertised local closure. Every layer joins through its own builder so
   # the label in --list cannot drift from what actually runs. The coverage floors used to sit
   # outside this list entirely -- a broken floor was locally green and CI red.
   # Order matters: the floor check runs immediately after the pytest that writes its data.

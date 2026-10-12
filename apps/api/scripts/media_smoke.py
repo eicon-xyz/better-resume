@@ -147,7 +147,7 @@ async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
 
 
 async def paraformer_rt_transcription(settings: Settings, wav_path: Path) -> bool:
-    """P1-A: the realtime channel against the real vendor, paced at 1x like a microphone.
+    """The realtime channel against the real vendor, paced at 1x like a microphone.
 
     Unlike the batch adapter this exercises the incremental path: partial sentences are
     expected to arrive while the audio is still being fed.
@@ -229,7 +229,7 @@ async def main() -> int:
     parser.add_argument(
         "--paraformer-rt-real",
         action="store_true",
-        help="P1-A: run the realtime ASR channel against the real Bailian endpoint",
+        help="Run the realtime ASR channel against the real Bailian endpoint",
     )
     parser.add_argument(
         "--wav", type=Path, help="16 kHz mono WAV for --qwen-asr-real / --paraformer-rt-real"

@@ -1,4 +1,4 @@
-"""P1-C: replay REAL Bailian Paraformer-realtime increments through the M4 sentence pool.
+"""replay REAL Bailian Paraformer-realtime increments through the M4 sentence pool.
 
 The xunfei AST adapter is the production user of AstTranscriptionAssembler, and its vendor
 needs credentials this repo does not have. This probe drives the same pool with real
@@ -153,11 +153,11 @@ async def main() -> int:
     print(f"\n{'PASS' if ok else 'FAIL'}: committed text matches the vendor's archived sentences")
     if display != archived:
         print(
-            "KNOWN BOUNDARY (see P1-C-EVIDENCE.md): the pool matches by time overlap + evolves(), "
+            "KNOWN BOUNDARY: the pool matches by time overlap + evolves(), "
             "which does not recognise Paraformer's mid-sentence rewrites, so the live area keeps "
             f"every unmatched fragment ({pooled} pooled sentences vs {finals} real ones). No "
             "production path feeds this vendor into the pool: paraformer-rt maps replace/archive "
-            "directly (P1-A) and the pool serves the xunfei AST packet shape."
+            "directly and the pool serves the xunfei AST packet shape."
         )
     print("budget note: this probe spends exactly 1 real vendor call")
     return 0 if ok else 1

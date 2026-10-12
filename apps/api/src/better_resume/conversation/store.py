@@ -77,7 +77,7 @@ class SqlConversationStore:
             raise ConversationNotFoundError(f"conversation {session.session_id} not found")
 
     async def get_owned(self, session: SessionRef, user_id: UserId) -> Conversation:
-        """Ownership check and lookup in one query (P8 / conversation_chat-02).
+        """Ownership check and lookup in one query.
 
         Callers that need the row itself used to page through list_for_user() and scan the page,
         which silently failed for any conversation outside that page.

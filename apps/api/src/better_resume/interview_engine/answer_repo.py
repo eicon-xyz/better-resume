@@ -107,7 +107,7 @@ class AnswerRepository:
         rule_version: str | None,
         error_message: str | None,
     ) -> AnswerRecord:
-        """Write a new outcome onto an existing row (P8/IE-01).
+        """Write a new outcome onto an existing row.
 
         A retry that reuses a failed attempt's request_id must stay one row per
         (session_id, request_id) — the database enforces that uniqueness — so the retry's result

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M6-T5: start the real stack (nginx + 2x api + worker + postgres + redis) and walk the
+# Start the real stack (nginx + 2x api + worker + postgres + redis) and walk the
 # whole path through nginx. Every check prints PASS/FAIL; the exit code is 1 if any failed.
 #
 #   bash scripts/compose_smoke.sh
@@ -169,7 +169,7 @@ docker compose ps worker
 docker compose exec -T redis redis-cli --raw KEYS 'br:jobs:health' | grep -q br:jobs:health
 check $? "worker heartbeat key exists"
 
-step "shared rate limit: two replicas, one quota (P7 / D19)"
+step "shared rate limit: two replicas, one quota (D19)"
 shared_quota_probe "$BASE" "shared quota"
 check $? "a fresh identity's 7 requests release ~capacity (not 2x) with X-RateLimit-Scope: shared"
 

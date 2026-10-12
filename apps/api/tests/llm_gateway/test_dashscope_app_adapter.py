@@ -1,4 +1,4 @@
-"""P3: DashScope application-call adapter against a local fake app server (real HTTP + SSE).
+"""DashScope application-call adapter against a local fake app server (real HTTP + SSE).
 
 Protocol (verified against the Model Studio "call applications" doc, 2026-09-17):
 `POST {base}/api/v1/apps/{app_id}/completion` with `Authorization: Bearer <key>`, and

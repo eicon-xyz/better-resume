@@ -35,7 +35,7 @@ def test_classify_response_covers_the_whole_taxonomy() -> None:
 
 
 def test_parse_replica_link_reads_master_link_status() -> None:
-    """P1-D: the failover drill must decide "is the replica in sync?" from real INFO output."""
+    """The failover drill must decide "is the replica in sync?" from real INFO output."""
     assert (
         fault_probe.parse_replica_link("# Replication\r\nrole:slave\r\nmaster_link_status:up\r\n")
         == "up"

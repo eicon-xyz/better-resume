@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 import type { AnswerSubmitView, GeneratedQuestionView, RestoreResponseView } from "../api/types";
+import { degradedNotices, resumeWarningNotices } from "./degraded";
 
 export interface InterviewTurn {
   questionNo: string;
@@ -25,6 +26,8 @@ export interface RoomState {
   turns: InterviewTurn[];
   answered: number;
   totalQuestions: number;
+  /** What the candidate must be told about this generation (parser warnings, degradations). */
+  notices: string[];
   submitting: boolean;
   error: string | null;
 
@@ -44,6 +47,7 @@ const EMPTY = {
   turns: [] as InterviewTurn[],
   answered: 0,
   totalQuestions: 0,
+  notices: [] as string[],
   submitting: false,
   error: null,
 };
@@ -77,6 +81,10 @@ export const useRoomStore = create<RoomState>((set) => ({
       totalQuestions: view.total_questions ?? view.flow.total_questions ?? 0,
       answered,
       turns: view.current_question ? [toTurn(view.current_question)] : [],
+      notices: [
+        ...degradedNotices(view.session.degraded_reasons),
+        ...resumeWarningNotices(view.session.resume_warnings),
+      ],
     });
   },
 

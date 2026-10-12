@@ -16,8 +16,13 @@ from better_resume.interview_engine import (
     QuestionService,
     SessionStatus,
 )
+from better_resume.interview_engine.corpus import CorpusError
 from better_resume.interview_engine.errors import IllegalSessionTransition
-from better_resume.interview_engine.orm import InterviewFlowStateRow, InterviewQuestionRow
+from better_resume.interview_engine.orm import (
+    InterviewFlowStateRow,
+    InterviewQuestionRow,
+    InterviewSessionRow,
+)
 from better_resume.interview_engine.prompts import QuestionBatch
 from better_resume.llm_gateway import (
     ChatRequest,
@@ -265,29 +270,6 @@ async def test_vendor_failure_rolls_the_session_back_to_draft(factory, session_i
     assert stored.status is SessionStatus.DRAFT
 
 
-async def test_unparsable_resume_is_rejected_before_calling_the_vendor(
-    factory, session_id: str
-) -> None:
-    from better_resume.resume_parser import ResumeParseError
-
-    gateway = FakeGateway(make_batch(5))
-
-    with pytest.raises(ResumeParseError):
-        await service(factory).generate(
-            session_id=session_id,
-            user_id=USER,
-            resume_pdf=b"not a pdf at all",
-            request_id="req-gen-9",
-            count=5,
-            gateway=gateway,
-        )
-
-    assert gateway.requests == []
-    async with factory() as session:
-        stored = await InterviewSessionRepository(session).get(session_id)
-    assert stored.status is SessionStatus.DRAFT
-
-
 async def test_question_count_is_clamped(factory, session_id: str) -> None:
     gateway = FakeGateway(make_batch(10))
 
@@ -321,3 +303,203 @@ async def test_prompt_carries_resume_digest(factory, session_id: str) -> None:
     contents = "\n".join(message.content for message in gateway.requests[0].messages)
     assert "张三" in contents or "Jane" in contents
     assert gateway.requests[0].response_schema is QuestionBatch
+
+
+def category_batch() -> QuestionBatch:
+    """One valid label, one stray label (falls back to the project rule), one missing label."""
+    return QuestionBatch(
+        questions=[
+            {
+                "topic": "Redis",
+                "category": "fundamentals",
+                "focus_points": ["持久化"],
+                "text": "Redis 的持久化机制有哪些？",
+            },
+            {
+                "topic": "项目",
+                "category": "banana",
+                "focus_points": ["取舍"],
+                "text": "简历优化器的解析管线是怎么设计的？",
+            },
+            {
+                "topic": "基础",
+                "focus_points": ["原理"],
+                "text": "请说明一致性哈希的原理",
+            },
+        ],
+        resume_score=70.0,
+        suggestions=[],
+    )
+
+
+async def test_questions_carry_a_decided_category(factory, session_id: str) -> None:
+    result = await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_resume_pdf(),
+        request_id="req-gen-12",
+        count=3,
+        gateway=FakeGateway(category_batch()),
+    )
+
+    assert [question["category"] for question in result.questions] == [
+        "fundamentals",
+        "project",
+        "fundamentals",
+    ]
+
+    async with factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(InterviewQuestionRow).order_by(InterviewQuestionRow.topic_no)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert [row.category for row in rows] == ["fundamentals", "project", "fundamentals"]
+
+
+async def test_prompt_states_the_question_mix(factory, session_id: str) -> None:
+    gateway = FakeGateway(make_batch(5))
+
+    await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_resume_pdf(),
+        request_id="req-gen-13",
+        count=5,
+        gateway=gateway,
+    )
+
+    contents = "\n".join(message.content for message in gateway.requests[0].messages)
+    # The fixture resume carries one project and no internship.
+    assert "项目 2 道" in contents
+    assert "八股 3 道" in contents
+
+
+MATCHED_RESUME_LINES = [
+    ("Jane Doe", 16, True),
+    ("Email: jane@example.com", 9, False),
+    ("Skills", 13, True),
+    ("Python, Docker, Redis, MySQL", 10, False),
+]
+
+
+def build_matched_resume_pdf() -> bytes:
+    """The shared fixture writes separators the synthetic PDF font mangles; ASCII splits cleanly."""
+    from tests.resume_parser.conftest import build_pdf
+
+    return build_pdf(MATCHED_RESUME_LINES)
+
+
+UNMATCHED_RESUME_LINES = [
+    ("李四", 18, True),
+    ("邮箱：lisi@example.com 电话：13900139000", 9, False),
+    ("技能特长", 14, True),
+    ("COBOL、Fortran、Pascal、Ada", 10, False),
+]
+
+
+def build_unmatched_resume_pdf() -> bytes:
+    from tests.resume_parser.conftest import build_pdf
+
+    return build_pdf(UNMATCHED_RESUME_LINES)
+
+
+async def test_a_healthy_resume_is_not_reported_as_degraded(factory, session_id: str) -> None:
+    result = await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_matched_resume_pdf(),
+        request_id="req-gen-14",
+        count=5,
+        gateway=FakeGateway(make_batch(5)),
+    )
+
+    assert result.degraded is False
+    assert result.degraded_reasons == []
+
+
+async def test_unparsable_resume_still_produces_questions(factory, session_id: str) -> None:
+    gateway = FakeGateway(make_batch(5))
+
+    result = await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=b"not a pdf at all",
+        request_id="req-gen-15",
+        count=5,
+        gateway=gateway,
+    )
+
+    assert result.degraded is True
+    assert result.degraded_reasons == ["resume_unparsable"]
+    assert len(result.questions) == 5
+    assert gateway.requests, "the vendor is still asked, with an empty resume context"
+    async with factory() as session:
+        stored = await InterviewSessionRepository(session).get(session_id)
+    assert stored.status is SessionStatus.READY
+
+
+async def test_a_resume_matching_no_corpus_topic_is_flagged(factory, session_id: str) -> None:
+    result = await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_unmatched_resume_pdf(),
+        request_id="req-gen-16",
+        count=5,
+        gateway=FakeGateway(make_batch(5)),
+    )
+
+    assert result.degraded is True
+    assert result.degraded_reasons == ["corpus_no_match"]
+    assert len(result.questions) == 5
+
+
+async def test_a_broken_corpus_file_fails_loudly(factory, session_id: str, tmp_path) -> None:
+    """Q19: a missing or corrupt corpus is a release defect, never a silent degradation."""
+    broken = tmp_path / "questions.json"
+    broken.write_text("{ not json", encoding="utf-8")
+    svc = QuestionService(factory, resilience=DirectAiResilience(), corpus_path=broken)
+
+    with pytest.raises(CorpusError):
+        await svc.generate(
+            session_id=session_id,
+            user_id=USER,
+            resume_pdf=build_resume_pdf(),
+            request_id="req-gen-17",
+            count=5,
+            gateway=FakeGateway(make_batch(5)),
+        )
+
+    async with factory() as session:
+        stored = await InterviewSessionRepository(session).get(session_id)
+    assert stored.status is SessionStatus.DRAFT
+
+
+async def test_an_explicit_focus_reaches_the_prompt(factory, session_id: str) -> None:
+    """Q8: the upload page's override has to show up in what the model is asked for."""
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(InterviewSessionRow).where(InterviewSessionRow.id == session_id)
+            )
+        ).scalar_one()
+        row.interview_type = "project"
+        await session.commit()
+
+    gateway = FakeGateway(make_batch(5))
+    await service(factory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_resume_pdf(),
+        request_id="req-gen-18",
+        count=5,
+        gateway=gateway,
+    )
+
+    contents = "\n".join(message.content for message in gateway.requests[0].messages)
+    assert "项目 3 道" in contents

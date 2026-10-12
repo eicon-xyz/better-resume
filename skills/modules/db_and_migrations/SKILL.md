@@ -19,7 +19,7 @@ SQLAlchemy 2.0 async 引擎/会话工厂 + Alembic 迁移与默认数据。
 
 - `sqlalchemy.text` 会被同名映射列遮蔽（M2 踩过：`'MappedColumn' object is not callable`）→ 用 `text as sa_text`。
 - "脚本说已经改了"不算证据：迁移与文档都要用 `alembic check` / `git diff --stat` 复核
-  （M4 P13：README 的更新在一次 `git reset --hard` 里丢过两个里程碑）。
+  （README 的更新在一次 `git reset --hard` 里丢过两个里程碑）。
 - 本地原生 Postgres 在 5433（Docker 不可用时期的产物），compose 里是 5432；测试靠 `BR_DATABASE_URL`。
 - 迁移的 downgrade 也要能跑（drill/回滚演练会用到）。
 

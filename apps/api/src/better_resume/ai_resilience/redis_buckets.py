@@ -1,4 +1,4 @@
-"""Shared (cross-replica) bucket store on Redis — one atomic Lua round trip (P7 / D19).
+"""Shared (cross-replica) bucket store on Redis — one atomic Lua round trip (D19).
 
 Why a Lua script: read-modify-write on a bucket key cannot be two round trips, or two
 replicas both see the last token. The script's arithmetic mirrors the in-process

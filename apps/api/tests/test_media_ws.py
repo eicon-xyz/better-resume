@@ -1,4 +1,4 @@
-"""M4-T3: the transcription WebSocket — ticket handshake, events, single channel per user."""
+"""the transcription WebSocket — ticket handshake, events, single channel per user."""
 
 from __future__ import annotations
 

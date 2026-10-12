@@ -1,4 +1,4 @@
-"""M6-T8: kill the api instance serving an interview and finish it on the survivor.
+"""kill the api instance serving an interview and finish it on the survivor.
 
 Run it through scripts/kill_instance_drill.sh (it brings the stack up first):
 
@@ -43,7 +43,7 @@ def instance_of(response: httpx.Response) -> str:
 
 
 def retry_after_seconds(response: httpx.Response, *, default: float = 1.0) -> float:
-    """The limiter's Retry-After is part of its contract (P17); honour it, do not guess."""
+    """The limiter's Retry-After is part of its contract; honour it, do not guess."""
     raw = response.headers.get("retry-after")
     if raw is None:
         return default
@@ -56,7 +56,7 @@ def retry_after_seconds(response: httpx.Response, *, default: float = 1.0) -> fl
 async def post_answer(
     client: httpx.AsyncClient, url: str, body: dict[str, Any], *, attempts: int = 5
 ) -> httpx.Response:
-    """P36: the answer bucket is 2 rps with a 2x burst (P1-B calibration, M6 §2.7) and this
+    """The answer bucket is 2 rps with a 2x burst (calibration: docs/perf/capacity.md §2.7) and this
     drill fires answers as fast as the fake vendor replies, so a 429 is expected rather than a
     failure. Retry the same request_id (the endpoint is idempotent) after Retry-After. Any
     other error is raised with its body — a bare `KeyError: 'next_action'` hid this for a
@@ -105,7 +105,7 @@ def redis_key_counts() -> dict[str, int]:
 
 def snapshot(view: dict[str, Any]) -> dict[str, Any]:
     """What the client can observe about progress. The hot-layer marker is excluded: the hot
-    layer may serve the view before the kill and derive it after (that is the point of M6-T3),
+    layer may serve the view before the kill and derive it after (that is the point of hot state),
     the *state* must be identical."""
     flow = view.get("flow") or {}
     return {

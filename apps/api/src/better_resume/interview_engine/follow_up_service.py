@@ -82,6 +82,8 @@ class FollowUpService:
     ) -> QuestionRecord:
         next_index = await self._next_index(db, session_id, topic_no)
         question_no = str(QuestionNo(topic_no=topic_no, follow_up_index=next_index))
+        # Q12: a follow-up belongs to the same category as the question it deepens.
+        category = await self._main_category(db, session_id, topic_no)
 
         request = ChatRequest(
             messages=build_follow_up_messages(
@@ -109,6 +111,7 @@ class FollowUpService:
             topic_no=topic_no,
             follow_up_index=next_index,
             kind="follow_up",
+            category=category,
             text=payload.text,
             focus_points=list(missing_points),
             created_at=now,
@@ -128,6 +131,21 @@ class FollowUpService:
             focus_points=list(row.focus_points or []),
             created_at=row.created_at,
         )
+
+    @staticmethod
+    async def _main_category(db: AsyncSession, session_id: str, topic_no: int) -> str | None:
+        """The main question's category; NULL (a pre-category row) stays NULL."""
+        from sqlalchemy import select
+
+        return (
+            await db.execute(
+                select(InterviewQuestionRow.category).where(
+                    InterviewQuestionRow.session_id == session_id,
+                    InterviewQuestionRow.topic_no == topic_no,
+                    InterviewQuestionRow.follow_up_index == 0,
+                )
+            )
+        ).scalar_one_or_none()
 
     @staticmethod
     async def _next_index(db: AsyncSession, session_id: str, topic_no: int) -> int:

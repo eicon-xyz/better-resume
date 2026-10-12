@@ -65,3 +65,11 @@
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
 }
+
+.degraded {
+  margin: var(--br-space-3) 0 0;
+  padding: var(--br-space-2) var(--br-space-3);
+  border-left: 3px solid var(--br-color-warning, #d97706);
+  background: var(--br-color-warning-bg, rgba(217, 119, 6, 0.08));
+  font-size: var(--br-text-sm);
+}

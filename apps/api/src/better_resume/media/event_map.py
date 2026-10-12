@@ -1,4 +1,4 @@
-"""One mapping from assembler updates to transcript events (P8 / media-01).
+"""One mapping from assembler updates to transcript events.
 
 Two adapters carried this block line for line — `xunfei_ast` (the vendor channel) and `scripted`
 (the default channel in CI and local runs) — and nothing required them to stay equal: editing one

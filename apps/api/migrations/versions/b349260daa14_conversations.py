@@ -1,4 +1,4 @@
-"""conversations + conversation_messages (M1-T1)
+"""conversations + conversation_messages
 
 Revision ID: b349260daa14
 Revises: 0001_baseline
