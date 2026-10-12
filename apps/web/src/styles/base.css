@@ -16,6 +16,8 @@ body {
 }
 
 :focus-visible {
+  /* allow: 键盘焦点外框线宽（2px 几何） */
   outline: 2px solid var(--br-color-accent);
+  /* allow: 焦点外框与控件的偏移（2px 几何） */
   outline-offset: 2px;
 }

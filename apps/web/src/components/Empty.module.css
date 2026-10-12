@@ -4,6 +4,7 @@
   align-items: center;
   gap: var(--br-space-2);
   padding: var(--br-space-6) var(--br-space-4);
+  /* allow: 空态占位框发丝虚线线宽（1px 几何） */
   border: 1px dashed var(--br-color-border);
   border-radius: var(--br-radius-lg);
   color: var(--br-color-text-muted);

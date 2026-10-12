@@ -76,7 +76,7 @@ export function InterviewRoomPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.brand}>模拟面试</h1>
+          <h2 className={styles.brand}>模拟面试</h2>
           <ProgressBar answered={state.answered} total={state.totalQuestions} />
         </div>
         <Button

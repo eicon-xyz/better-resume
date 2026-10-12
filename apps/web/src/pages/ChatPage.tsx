@@ -6,7 +6,7 @@ import type { ModelView } from "../api/types";
 import { useApi } from "../api/useApi";
 import { replaceTranscript } from "../audio/transcriptStore";
 import { useTranscription } from "../audio/useTranscription";
-import { Button } from "../components";
+import { Button, Select } from "../components";
 import { DEFAULT_AUTH_EPOCH, flattenHistory, useChatHistory, useChatSessions, useModels } from "../chat/queries";
 import { mergeHistory } from "../chat/selectors";
 import { useChatStore } from "../chat/store";
@@ -111,11 +111,11 @@ export function ChatPage() {
 
       <main className={styles.main}>
         <header className={styles.header}>
-          <h1 className={styles.brand}>better-resume</h1>
+          <h2 className={styles.title}>对话</h2>
           <div className={styles.headerControls}>
             <label className={styles.modelPicker}>
               模型
-              <select
+              <Select
                 aria-label="选择模型"
                 value={modelRef ?? ""}
                 onChange={(event) => {
@@ -129,26 +129,8 @@ export function ChatPage() {
                     {model.configured ? "" : "（未配置密钥）"}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void navigate("/settings/ai")}
-            >
-              AI 设置
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                void api.logout().then(() => {
-                  void queryClient.invalidateQueries();
-                });
-              }}
-            >
-              退出
-            </Button>
           </div>
         </header>
 

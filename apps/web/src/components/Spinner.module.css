@@ -4,8 +4,11 @@
 }
 
 .dot {
+  /* allow: 加载点直径（12px 环径几何） */
   width: 12px;
+  /* allow: 加载点直径（12px 环径几何） */
   height: 12px;
+  /* allow: 加载环线宽（2px 几何） */
   border: 2px solid var(--br-color-border);
   border-top-color: var(--br-color-accent);
   border-radius: var(--br-radius-pill);

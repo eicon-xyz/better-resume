@@ -11,6 +11,7 @@
   justify-content: space-between;
   gap: var(--br-space-4);
   padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 页头底部分隔线线宽（1px 几何） */
   border-bottom: 1px solid var(--br-color-border);
 }
 
@@ -21,11 +22,17 @@
 
 .body {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--br-space-4);
   flex: 1;
   padding: var(--br-space-4);
   overflow-y: auto;
+}
+
+@media (min-width: 1024px) {
+  .body {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
 }
 
 .main,
@@ -59,8 +66,9 @@
 .notices {
   margin: 0;
   padding: var(--br-space-2) var(--br-space-4);
+  /* allow: 提示条底部分隔线线宽（1px 几何） */
   border-bottom: 1px solid var(--br-color-border);
-  background: var(--br-color-warning-bg, rgba(217, 119, 6, 0.08));
+  background: var(--br-color-warning-bg);
   color: var(--br-color-text);
   font-size: var(--br-text-sm);
   list-style: none;

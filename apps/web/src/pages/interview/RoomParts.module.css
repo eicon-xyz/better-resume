@@ -5,6 +5,7 @@
 }
 
 .questionNo {
+  /* allow: 题号列最小宽度（32px 列表几何） */
   min-width: 32px;
   color: var(--br-color-accent);
   font-family: var(--br-font-mono);
@@ -12,7 +13,7 @@
 }
 
 .badge {
-  padding: 2px var(--br-space-2);
+  padding: var(--br-space-1) var(--br-space-2);
   border-radius: var(--br-radius-pill);
   background: var(--br-color-surface);
   color: var(--br-color-text-muted);
@@ -63,6 +64,7 @@
   flex-direction: column;
   gap: var(--br-space-2);
   padding: var(--br-space-3) var(--br-space-4) var(--br-space-4);
+  /* allow: 作答区顶部分隔线线宽（1px 几何） */
   border-top: 1px solid var(--br-color-border);
   background: var(--br-color-bg);
 }
@@ -80,7 +82,9 @@
 }
 
 .progressBar {
+  /* allow: 进度条高度（6px 几何） */
   height: 6px;
+  /* allow: 进度条最小宽度（40px 几何） */
   min-width: 40px;
   border-radius: var(--br-radius-pill);
   background: var(--br-color-accent);
@@ -91,4 +95,10 @@
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBar {
+    transition: none;
+  }
 }

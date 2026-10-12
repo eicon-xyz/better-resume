@@ -4,6 +4,7 @@
 
 .svg {
   width: 100%;
+  /* allow: 雷达图画布最大宽度（260px 画布尺寸） */
   max-width: 260px;
   height: auto;
 }
@@ -31,5 +32,6 @@
 
 .label {
   fill: var(--br-color-text-muted);
+  /* allow: 雷达图轴标签字号（9px，随画布缩放） */
   font-size: 9px;
 }

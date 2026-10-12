@@ -91,9 +91,10 @@ add_web_contract() {
   add web "pnpm -C apps/web lint"
   add web "pnpm -C apps/web typecheck"
   add web "pnpm -C apps/web check:api"
+  add web "python3 scripts/check_web_style_guards.py"
 }
 build_scripts() {
-  add api "cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py"
+  add api "cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py tests/test_web_style_guards.py"
   # The drill scripts above are tested by pytest; the shell scripts next to them were not
   # (retro 2026-10-06: a proof script that always exited 0 shipped through a green CI).
   add all "for f in scripts/*.sh; do bash -n \"\$f\" || exit 1; done; echo 'shell syntax ok'"

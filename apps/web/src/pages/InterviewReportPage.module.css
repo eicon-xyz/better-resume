@@ -32,13 +32,20 @@
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--br-space-5);
   align-items: start;
 }
 
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 .overall {
   margin: 0;
+  /* allow: 综合分英雄数字的一次性展示字号（超出 --br-text-* 字阶，非间距/常规字阶） */
   font-size: 42px;
   line-height: 1.1;
 }
@@ -77,6 +84,7 @@
 
 .turn {
   padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 逐题回放卡发丝边框线宽（1px 几何） */
   border: 1px solid var(--br-color-border);
   border-radius: var(--br-radius-lg);
   background: var(--br-color-surface);
@@ -94,7 +102,7 @@
 }
 
 .badge {
-  padding: 2px var(--br-space-2);
+  padding: var(--br-space-1) var(--br-space-2);
   border-radius: var(--br-radius-pill);
   background: var(--br-color-surface-raised);
   color: var(--br-color-text-muted);
@@ -145,6 +153,7 @@
 }
 
 .categoryLabel {
+  /* allow: 维度名称列最小宽度（48px 表格列几何） */
   min-width: 48px;
 }
 
@@ -154,6 +163,7 @@
 }
 
 .categoryScore {
+  /* allow: 维度分数列最小宽度（72px 表格列几何） */
   min-width: 72px;
   font-family: var(--br-font-mono);
 }

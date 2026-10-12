@@ -43,7 +43,7 @@ export function InterviewReportPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.brand}>面试报告</h1>
+          <h2 className={styles.brand}>面试报告</h2>
           <p className={styles.meta}>
             共 {view.turns.length} 题 · 追问 {view.followUpCount} 次 · 会话 {sessionId.slice(0, 8)}
           </p>

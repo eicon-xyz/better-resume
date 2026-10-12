@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: var(--br-space-2);
   padding: var(--br-space-3) var(--br-space-4) var(--br-space-4);
+  /* allow: 输入区顶部分隔线线宽（1px 几何） */
   border-top: 1px solid var(--br-color-border);
   background: var(--br-color-bg);
 }

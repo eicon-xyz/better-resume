@@ -1,6 +1,13 @@
 .page {
   display: flex;
+  flex-direction: column;
   height: 100%;
+}
+
+@media (min-width: 1024px) {
+  .page {
+    flex-direction: row;
+  }
 }
 
 .main {
@@ -16,10 +23,11 @@
   justify-content: space-between;
   gap: var(--br-space-4);
   padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 页头底部分隔线线宽（1px 几何） */
   border-bottom: 1px solid var(--br-color-border);
 }
 
-.brand {
+.title {
   margin: 0;
   font-size: var(--br-text-lg);
 }

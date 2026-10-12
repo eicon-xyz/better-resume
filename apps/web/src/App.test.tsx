@@ -20,6 +20,6 @@ describe("App", () => {
     render(<App client={fakeClient()} queryClient={new QueryClient()} />);
 
     expect(await screen.findByRole("heading", { name: "better-resume" })).toBeInTheDocument();
-    expect(screen.getByText("还没有消息")).toBeInTheDocument();
+    expect(await screen.findByText("还没有消息")).toBeInTheDocument();
   });
 });

@@ -2,12 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
 import type { SceneView } from "../api/types";
 import { useApi } from "../api/useApi";
 import { describeApiError, toApiError } from "../api/errors";
-import { Button, Card } from "../components";
+import { Button, Card, Input, Select, Table } from "../components";
 import { sceneKeys } from "../scenes/queries";
 import styles from "./AiSettingsPage.module.css";
 
@@ -71,8 +70,7 @@ export function AiSettingsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.brand}>AI 设置</h1>
-        <Link to="/chat">返回对话</Link>
+        <h2 className={styles.brand}>AI 设置</h2>
       </header>
 
       <Card title="场景绑定">
@@ -85,7 +83,7 @@ export function AiSettingsPage() {
             {error}
           </p>
         ) : null}
-        <table className={styles.table}>
+        <Table>
           <thead>
             <tr>
               <th>场景</th>
@@ -106,7 +104,7 @@ export function AiSettingsPage() {
                     <code className={styles.sceneName}>{scene.scene}</code>
                   </td>
                   <td>
-                    <select
+                    <Select
                       aria-label={`${scene.label} 供应商`}
                       value={draft.adapter}
                       onChange={(event) =>
@@ -121,10 +119,10 @@ export function AiSettingsPage() {
                           {adapter}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td>
-                    <input
+                    <Input
                       aria-label={`${scene.label} 目标`}
                       value={draft.targetRef}
                       onChange={(event) =>
@@ -165,7 +163,7 @@ export function AiSettingsPage() {
               );
             })}
           </tbody>
-        </table>
+        </Table>
       </Card>
     </div>
   );

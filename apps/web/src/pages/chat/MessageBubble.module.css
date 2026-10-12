@@ -2,8 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--br-space-2);
+  /* allow: 消息气泡最大宽度（720px 版式几何） */
   max-width: 720px;
   padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 气泡发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
   border: 1px solid var(--br-color-border);
   border-radius: var(--br-radius-lg);
   background: var(--br-color-surface-raised);
@@ -48,8 +50,10 @@
 
 .cursor {
   display: inline-block;
+  /* allow: 流式光标块固定宽度（8px 几何） */
   width: 8px;
   height: 1em;
+  /* allow: 光标块与文字的固定间距（2px 几何） */
   margin-left: 2px;
   background: var(--br-color-accent);
   vertical-align: text-bottom;
@@ -66,4 +70,10 @@
   margin: 0;
   color: var(--br-color-danger);
   font-size: var(--br-text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+  }
 }

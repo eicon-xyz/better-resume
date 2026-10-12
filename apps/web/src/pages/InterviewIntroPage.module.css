@@ -18,16 +18,17 @@
   font-size: var(--br-text-xl);
 }
 
-.back {
-  color: var(--br-color-text-muted);
-  font-size: var(--br-text-sm);
-}
-
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--br-space-5);
   align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
 }
 
 .side {
@@ -46,8 +47,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* allow: 上传拖拽区最小高度（96px 组件几何） */
   min-height: 96px;
   padding: var(--br-space-4);
+  /* allow: 拖拽区发丝虚线线宽（1px 几何） */
   border: 1px dashed var(--br-color-border);
   border-radius: var(--br-radius-lg);
   background: var(--br-color-surface-raised);
@@ -56,7 +59,9 @@
 
 .dropzone input {
   position: absolute;
+  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
   width: 1px;
+  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
   height: 1px;
   opacity: 0;
 }
@@ -68,6 +73,7 @@
 }
 
 .progress {
+  /* allow: 进度条轨道高度（6px 几何） */
   height: 6px;
   margin-top: var(--br-space-3);
   border-radius: var(--br-radius-pill);
@@ -114,4 +120,10 @@
 .loading {
   padding: var(--br-space-6);
   color: var(--br-color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
 }

@@ -19,7 +19,7 @@
 | 现状 | 依据 |
 | --- | --- |
 | 样式体系 = CSS Modules + 35 个自研 `--br-*` token，无 Tailwind/shadcn；只有 6 个手写原子组件（Button/Card/Collapsible/Empty/Spinner/Textarea） | `apps/web/src/styles/tokens.css:4-47`；`apps/web/src/components/index.ts`；`apps/web/package.json` 依赖清单 |
-| **token 漂移**：设置页基本脱节（裸 px/hex），且有 **4 个被引用但从未定义的假变量**（`--br-text-muted` / `--br-border` / `--br-color-warning` / `--br-color-warning-bg`） | `apps/web/src/pages/AiSettingsPage.module.css`；`RoomParts.module.css:63`；`ResumePreviewCard.module.css:72-73` |
+| **token 漂移**：设置页基本脱节（裸 px/hex），且有 **4 个被引用但从未定义的假变量**（`--br-text-muted` / `--br-border` / `--br-color-warning` / `--br-color-warning-bg`） | `apps/web/src/pages/AiSettingsPage.module.css`；`InterviewRoomPage.module.css:63`；`ResumePreviewCard.module.css:72-73` |
 | **无页壳**：无 AppShell/顶栏/页脚，6 个页面各写各的 header（5 个 h1）；聊天页独占固定 260px 会话侧栏 | `apps/web/src/App.tsx:31-38`；各页面 `header` 标签；`SessionSidebar.module.css:5` |
 | **全站 0 个宽度断点**：两列栅格与侧栏窄屏不塌缩；仅有的 @media 是深色与 reduced-motion | 全 src `@media` 仅 `tokens.css:49`、`Spinner.module.css:21` |
 | **动效近乎为零**：transition×4、keyframes×2、hover 仅 1 条、active 0 条；focus 只有浏览器全局外框；无骨架屏 | `Button.module.css:11,45`；`base.css:18-21`；grep skeleton=0 |
@@ -88,7 +88,7 @@
 | 样式化组件补齐：Select / Input / Table / Badge / Skeleton | `apps/web/src/components/` |
 | 5 条守卫脚本并接入 verify 的 web 契约层（会红） | `scripts/`（守卫脚本）+ `scripts/verify.sh` + 守卫自身测试 |
 | 逐页版式改造（按 §1.4 线框） | `apps/web/src/pages/**` 各 module.css 与 JSX 布局 |
-| 前后对照截图 | `docs/design/`（入库，兼作品集素材） |
+| 前后对照截图（后续整体设计阶段统一拍） | `docs/design/`（入库，兼作品集素材） |
 | 手测清单更新（渲染半边 + hover/active 人工项） | `docs/MANUAL-TESTING.md` |
 | 验收包 | `docs/tickets/p14-web-redesign/ACCEPTANCE.md` |
 
@@ -100,15 +100,15 @@
 | --- | --- | --- |
 | 既有逻辑测试保绿 | 172 例只增不减；tsc/eslint 门槛不松 | `pnpm -C apps/web test --run` |
 | **带逻辑的新组件**行为单测 | 页壳导航高亮、折叠分组开合、Skeleton 开关等**外部可见行为** | 现有页面级测试（`ChatPage.test.tsx` 等 8 个） |
-| **守卫 5 条**（先红后绿，守卫脚本自身要对坏输入红一次） | ① token 零假变量 ② 页面 CSS 零裸 hex/px（白名单注释制）③ 全站 ≥1 条宽度断点 ④ 动画必有 `prefers-reduced-motion` ⑤ 页面不裸用 `select/input/table` | `tests/test_verify_script.py` 的层图钉法；`check_scripts.py` 语法扫描族 |
+| **守卫 5 条**（先红后绿，守卫脚本自身要对坏输入红一次） | ① token 零假变量（引用的每个 --br-* 都有定义；--br-color-* / --br-gradient-* / --br-shadow-* 深浅双定义） ② 全 CSS 树零裸 hex/px（styles/tokens.css 除外，白名单注释制）③ 全站 ≥1 条宽度断点 ④ 动画与过渡必有 `prefers-reduced-motion` ⑤ 页面不裸用 `select/input/table` | `tests/test_verify_script.py` 的层图钉法；`check_scripts.py` 语法扫描族 |
 | 纯样式 | **不写测试**（不引快照） | — |
 
 「每个交互元素有 hover/active」**不进守卫**（判不了真伪）：进手测清单 + 评审口径。
 
 ### 4.2 阶段验收（两批，D25）
 
-1. **基建批**：守卫 5 条红-绿证据 + 页壳/断点截图 + 172 例/tsc/eslint 全绿。
-2. **页面批**：逐页「线框 vs 实现」对照截图（`docs/design/`）+ 手测渲染半边复验 + hover/active 人工项。
+1. **基建批**：守卫 5 条红-绿证据 + 172 例/tsc/eslint 全绿；截图在后续整体设计阶段统一拍。
+2. **页面批**：逐页「线框 vs 实现」对照（`docs/design/`）+ 手测渲染半边复验 + hover/active 人工项；截图在后续整体设计阶段统一拍。
 
 ### 4.3 复跑命令与回归底线
 

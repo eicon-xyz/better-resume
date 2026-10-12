@@ -7,8 +7,8 @@
 > 依据 README §4.1 守卫清单、D22/D25。纪律：先红后绿；守卫自身必须先对**构造的坏输入**红一次，不许写成恒绿检查。
 ## 目标
 把三条可机器判定的守卫做成会红的闸门并接进 verify 的 web 契约层：
-① **token 零假变量**：CSS 里引用的每个 `--br-*` 必须有定义；② **页面 CSS 零裸 hex/px**（白名单注释制：`/* allow: <理由> */` 前一行放行）；④ **所有动画有 `prefers-reduced-motion` 处理**。
-同时把存量违规清到零（守卫进 CI 即绿）：4 个假变量（`--br-text-muted` / `--br-border` / `--br-color-warning` / `--br-color-warning-bg`，见 `RoomParts.module.css:63`、`ResumePreviewCard.module.css:72-73`、`AiSettingsPage.module.css`）要么补定义要么换真 token；`MessageBubble.module.css:56` 的 blink 补 reduced-motion；`AiSettingsPage.module.css` 的裸 px/hex 改走 token（最小改动，版式重修属 T8）。
+① **token 零假变量**：CSS 里引用的每个 `--br-*` 必须有定义，--br-color-* / --br-gradient-* / --br-shadow-* 在 :root 定义的必须在深色块重述；② **全 CSS 树零裸 hex/px**（styles/tokens.css 除外；白名单注释制：`/* allow: <理由> */` 前一行放行）；④ **所有动画与过渡有 `prefers-reduced-motion` 处理**。
+同时把存量违规清到零（守卫进 CI 即绿）：4 个假变量（`--br-text-muted` / `--br-border` / `--br-color-warning` / `--br-color-warning-bg`，见 `InterviewRoomPage.module.css:63`、`ResumePreviewCard.module.css:72-73`、`AiSettingsPage.module.css`）要么补定义要么换真 token；`MessageBubble.module.css:56` 的 blink 补 reduced-motion；`AiSettingsPage.module.css` 的裸 px/hex 改走 token（最小改动，版式重修属 T8）。
 ## 红-绿切片
 | # | 用例 | 断言 |
 | --- | --- | --- |

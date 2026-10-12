@@ -10,6 +10,7 @@ export interface SessionSidebarProps {
   onDelete: (sessionId: string) => void;
 }
 
+/** 聊天页会话侧栏（页内二级栏）：窄屏在顶部折叠，≥1024 恢复为左侧定宽列。 */
 export function SessionSidebar({
   sessions,
   activeId,
@@ -26,32 +27,35 @@ export function SessionSidebar({
         </Button>
       </div>
 
-      <ul className={styles.list}>
-        {sessions.map((session) => (
-          <li key={session.id} className={styles.item}>
-            <button
-              type="button"
-              className={`${styles.session} ${session.id === activeId ? styles.active : ""}`}
-              onClick={() => {
-                onSelect(session.id);
-              }}
-            >
-              <span className={styles.sessionTitle}>{session.title || "未命名会话"}</span>
-              <span className={styles.count}>{session.message_count}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.delete}
-              aria-label={`删除 ${session.title || "未命名会话"}`}
-              onClick={() => {
-                onDelete(session.id);
-              }}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
+      <details className={styles.details}>
+        <summary className={styles.summary}>会话列表（{sessions.length}）</summary>
+        <ul className={styles.list}>
+          {sessions.map((session) => (
+            <li key={session.id} className={styles.item}>
+              <button
+                type="button"
+                className={`${styles.session} ${session.id === activeId ? styles.active : ""}`}
+                onClick={() => {
+                  onSelect(session.id);
+                }}
+              >
+                <span className={styles.sessionTitle}>{session.title || "未命名会话"}</span>
+                <span className={styles.count}>{session.message_count}</span>
+              </button>
+              <button
+                type="button"
+                className={styles.delete}
+                aria-label={`删除 ${session.title || "未命名会话"}`}
+                onClick={() => {
+                  onDelete(session.id);
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
     </aside>
   );
 }

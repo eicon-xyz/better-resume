@@ -1,10 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import type { InterviewSessionView } from "../api/types";
 import { useApi } from "../api/useApi";
-import { Button, Card, Empty } from "../components";
+import { Button, Card, Empty, Input, Select } from "../components";
 import { useSession } from "../chat/useSession";
 import { interviewKeys, useInterviewSessions } from "../interview/queries";
 import { INTERVIEW_TYPE_OPTIONS, interviewTypeLabel } from "../interview/interviewTypes";
@@ -54,10 +54,7 @@ export function InterviewIntroPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.brand}>模拟面试</h1>
-        <Link className={styles.back} to="/chat">
-          返回对话
-        </Link>
+        <h2 className={styles.brand}>模拟面试</h2>
       </header>
 
       <div className={styles.grid}>
@@ -69,7 +66,7 @@ export function InterviewIntroPage() {
 
           <label className={styles.focus}>
             <span>面试侧重</span>
-            <select
+            <Select
               aria-label="面试侧重"
               value={interviewType}
               onChange={(event) => {
@@ -81,11 +78,11 @@ export function InterviewIntroPage() {
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <label className={styles.dropzone}>
-            <input
+            <Input
               type="file"
               accept="application/pdf,.pdf"
               aria-label="选择简历 PDF"

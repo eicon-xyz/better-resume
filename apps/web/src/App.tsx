@@ -6,6 +6,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ApiProvider } from "./api/ApiContext";
 import { createApiClient } from "./api/client";
 import type { ApiClient } from "./api/client";
+import { AppShell } from "./components";
 import { AiSettingsPage } from "./pages/AiSettingsPage";
 import { ChatPage } from "./pages/ChatPage";
 import { InterviewIntroPage } from "./pages/InterviewIntroPage";
@@ -27,16 +28,18 @@ export function App({ client, queryClient }: AppProps = {}) {
     <QueryClientProvider client={activeQueryClient}>
       <ApiProvider client={activeClient}>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Navigate to="/chat" replace />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/chat/:sessionId" element={<ChatPage />} />
-            <Route path="/settings/ai" element={<AiSettingsPage />} />
-            <Route path="/interview" element={<InterviewIntroPage />} />
-            <Route path="/interview/room/:sessionId" element={<InterviewRoomPage />} />
-            <Route path="/interview/report/:sessionId" element={<InterviewReportPage />} />
-            <Route path="*" element={<Navigate to="/chat" replace />} />
-          </Routes>
+          <AppShell>
+            <Routes>
+              <Route path="/" element={<Navigate to="/chat" replace />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:sessionId" element={<ChatPage />} />
+              <Route path="/settings/ai" element={<AiSettingsPage />} />
+              <Route path="/interview" element={<InterviewIntroPage />} />
+              <Route path="/interview/room/:sessionId" element={<InterviewRoomPage />} />
+              <Route path="/interview/report/:sessionId" element={<InterviewReportPage />} />
+              <Route path="*" element={<Navigate to="/chat" replace />} />
+            </Routes>
+          </AppShell>
         </BrowserRouter>
       </ApiProvider>
     </QueryClientProvider>

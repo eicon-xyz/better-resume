@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { Button, Card, Collapsible, Empty, Spinner, Textarea } from ".";
+import { Button, Card, Collapsible, Empty, Skeleton, Spinner, Textarea } from ".";
 
 describe("Button", () => {
   it("renders its label and handles clicks", async () => {
@@ -94,5 +94,27 @@ describe("Empty", () => {
     expect(screen.getByText("还没有会话")).toBeInTheDocument();
     expect(screen.getByText("先问一个问题")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建" })).toBeInTheDocument();
+  });
+});
+
+describe("Skeleton", () => {
+  it("shows the placeholder while loading and the real content after", () => {
+    const { rerender } = render(
+      <Skeleton loading label="加载报告">
+        <span>报告内容</span>
+      </Skeleton>,
+    );
+
+    expect(screen.getByRole("status", { name: "加载报告" })).toBeInTheDocument();
+    expect(screen.queryByText("报告内容")).not.toBeInTheDocument();
+
+    rerender(
+      <Skeleton loading={false}>
+        <span>报告内容</span>
+      </Skeleton>,
+    );
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText("报告内容")).toBeInTheDocument();
   });
 });

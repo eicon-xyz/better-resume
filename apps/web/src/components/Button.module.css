@@ -3,6 +3,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--br-space-2);
+  /* allow: 按钮发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
   border: 1px solid transparent;
   border-radius: var(--br-radius-md);
   font-family: inherit;
@@ -44,4 +45,10 @@
 
 .ghost:hover:not(:disabled) {
   color: var(--br-color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
 }
