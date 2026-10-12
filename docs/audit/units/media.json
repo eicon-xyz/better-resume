@@ -152,10 +152,10 @@
  "title": "AstTranscriptionAssembler.pool 是公开属性，内部 SentencePool 的 12 个方法都进了模块接口",
  "where": [
  "apps/api/src/better_resume/media/assembler.py:146-147",
- "apps/api/scripts/assembler_real_probe.py:147-149"
+ "apps/api/scripts/assembler_real_probe.py:146-148"
  ],
- "evidence": "146: def __init__(self) -> None:\n147: self.pool = SentencePool()\n--- apps/api/scripts/assembler_real_probe.py\n147: committed = assembler.pool.committed_text()\n148: display = assembler.pool.display_text()\n149: pooled = len(assembler.pool.ordered())",
- "why": "读结果本来只需要 snapshot()（committed/display/live 都在返回里），但真机探针 apps/api/scripts/assembler_real_probe.py:147-149 与 tests/media/test_assembler.py 共 9 处都直接摸 pool → upsert/append/replace_range/next_segment_id/ordered… 全变成必须保持兼容的接口面，任何「段存储换 key/换结构」的内部重构都会同时打断探针与测试，而它们本该只依赖 TranscriptUpdate。跨模块证据：探针在 media 之外，说明这份内部结构已经泄漏到脚本层。",
+ "evidence": "146: def __init__(self) -> None:\n147: self.pool = SentencePool()\n--- apps/api/scripts/assembler_real_probe.py\n146: committed = assembler.pool.committed_text()\n147: display = assembler.pool.display_text()\n148: pooled = len(assembler.pool.ordered())",
+ "why": "读结果本来只需要 snapshot()（committed/display/live 都在返回里），但真机探针 apps/api/scripts/assembler_real_probe.py:146-148 与 tests/media/test_assembler.py 共 9 处都直接摸 pool → upsert/append/replace_range/next_segment_id/ordered… 全变成必须保持兼容的接口面，任何「段存储换 key/换结构」的内部重构都会同时打断探针与测试，而它们本该只依赖 TranscriptUpdate。跨模块证据：探针在 media 之外，说明这份内部结构已经泄漏到脚本层。",
  "fix": "pool 改私有（_pool），探针所需的段数/committed 通过 snapshot() 或一个只读视图方法暴露。"
  },
  {

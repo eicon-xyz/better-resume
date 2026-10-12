@@ -97,18 +97,18 @@ GUARD_EXIT=0
 ~~~
 $ rm -f /tmp/t3.xml; cd apps/api && uv run pytest tests/test_web_style_guards.py tests/test_verify_script.py -q --junitxml=/tmp/t3.xml
 PIPE_EXIT=0
-<testsuite name="pytest" errors="0" failures="0" skipped="0" tests="40" ...>
+<testsuite name="pytest" errors="0" failures="0" skipped="0" tests="42" ...>
 ~~~
 
-数字：40 例（守卫 13 + verify 层图钉 27），0 failed / 0 errors / 0 skipped。单跑守卫：<testsuite ... tests="13" errors="0" failures="0" skipped="0" ...>。守卫用例 ≥12 达标；层图钉法（--list / --dry-run 逐条相等、coverage 顺序）未破。
+数字：42 例（守卫 15 + verify 层图钉 27），0 failed / 0 errors / 0 skipped。单跑守卫：<testsuite ... tests="15" errors="0" failures="0" skipped="0" ...>。守卫用例 ≥12 达标；层图钉法（--list / --dry-run 逐条相等、coverage 顺序）未破。
 
 守卫文件新增/改动的用例（行号见 apps/api/tests/test_web_style_guards.py）：
 
-- test_a_tree_without_a_width_breakpoint_is_reported（G3，第 182 行）
-- test_raw_select_input_and_table_in_pages_are_reported（G5，第 201 行）
-- test_styled_controls_in_pages_pass（G5，第 229 行）
-- test_page_test_files_are_exempt_from_g5（G5，第 251 行）
-- test_component_implementations_are_out_of_scope_for_g5（G5，第 262 行）
+- test_a_tree_without_a_width_breakpoint_is_reported（G3，第 179 行）
+- test_raw_select_input_and_table_in_pages_are_reported（G5，第 198 行）
+- test_styled_controls_in_pages_pass（G5，第 226 行）
+- test_page_test_files_are_exempt_from_g5（G5，第 248 行）
+- test_component_implementations_are_out_of_scope_for_g5（G5，第 259 行）
 - write_clean_tokens 夹具补一条宽度断点，使既有 G1/G2/G4 用例仍满足 G3。
 
 ### 3.4 前端（验收命令 7）
@@ -125,22 +125,22 @@ $ pnpm -C apps/web lint
 LINT_EXIT=0
 ~~~
 
-数字：183 → 186（新增 AppShell 导航高亮 2 例 + Skeleton 开关 1 例），底线只增不减；typecheck / lint 退出码 0。
+数字：186 例（含 AppShell 导航高亮 2 例 + Skeleton 开关 1 例），底线只增不减；typecheck / lint 退出码 0。
 新增行为单测断言走公开属性/可见行为：导航项 aria-current="page"（非选中项无该属性）；Skeleton 在 loading 时 role="status" 可见、结束后占位消失且 children 可见。
 
 ### 3.5 verify --layer all（验收命令 8）
 
 ~~~
 ...
-ALL PASS (17 commands) -- evidence: var/evidence/20261012T073033Z-all
+ALL PASS (17 commands) -- evidence: var/evidence/20261012T113103Z-all
 VERIFY_ALL_EXIT=0
 ~~~
 
 从该 evidence 目录抽出的读数：
 
 ~~~
-TOTAL                                                      6553    305    95%
-995 passed, 3 warnings in 81.03s (0:01:21)
+TOTAL                                                      6553    304    95%
+997 passed, 3 warnings in 83.42s (0:01:23)
  Test Files  26 passed (26)
       Tests  186 passed (186)
 All checks passed!
@@ -148,10 +148,10 @@ All checks passed!
 openapi.json is up to date
 API index is up to date
 check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
-99 passed, 2 warnings in 6.40s
+101 passed, 2 warnings in 6.75s
 ~~~
 
-数字：17 条命令全过、末行 ALL PASS、退出码 0；API 995 passed（含守卫新增 5 例）；coverage floors 过、TOTAL 95%；web 186 passed；contract 的 openapi / api-index / schema.d.ts 零 diff。
+数字：17 条命令全过、末行 ALL PASS、退出码 0；API 997 passed；coverage floors 过、TOTAL 95%；web 186 passed；contract 的 openapi / api-index / schema.d.ts 零 diff。
 
 ### 3.6 变异证明（验收命令 9，取推荐 (a)：删导航项 aria-current）
 

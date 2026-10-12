@@ -1,12 +1,11 @@
-"""dual-provider parity smoke — same scene, two adapters, one schema.
+"""双供应商一致性冒烟——同一场景、两个适配器、一份 schema。
 
-    uv run python scripts/adapter_smoke.py --scene answer_evaluation   # DeepSeek vs fake Xingyun
-    uv run python scripts/adapter_smoke.py --scene chat --offline             # two fake vendors
+    uv run python scripts/adapter_smoke.py --scene answer_evaluation   # DeepSeek vs 假 Xingyun
+    uv run python scripts/adapter_smoke.py --scene chat --offline             # 两个假供应商
     uv run python scripts/adapter_smoke.py --scene answer_evaluation --real-xingyun
 
-Prints one row per provider (request shape, latency, parsed fields) and asserts both sides
-produce the same field set. Without credentials the Xingyun side runs against a local fake
-workflow server: that is contract-level evidence, never a real-machine claim.
+每个供应商打印一行（请求形状、延迟、解析出的字段），并断言两侧产出同一字段集。没有凭据时
+Xingyun 侧打到本地假 workflow 服务器：那是契约级证据，绝不是真机声明。
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ SCORE_JSON = '{"score": 78, "feedback": "结构清晰但缺少量化", "missing_
 class FakeWorkflow(BaseHTTPRequestHandler):
     frames: list[dict[str, Any]] = []
 
-    def do_POST(self) -> None:  # noqa: N802 - http.server API
+    def do_POST(self) -> None:  # noqa: N802 - http.server 的 API
         length = int(self.headers.get("Content-Length", "0"))
         self.rfile.read(length)
         self.send_response(200)
@@ -150,7 +149,7 @@ async def main() -> int:
             if not api_key:
                 print("BR_DEEPSEEK_API_KEY is missing -> use --offline or set it in .env")
                 return 2
-            # trust_env=False: the local shell carries a malformed NO_PROXY that httpx rejects.
+            # trust_env=False：本地 shell 带了一个 httpx 拒绝的畸形 NO_PROXY。
             async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
                 gateway = OpenAICompatAdapter(SPEC, api_key=api_key, client=client)
                 rows.append(await run_provider("openai_compat", gateway, request, scene))
@@ -173,7 +172,7 @@ async def main() -> int:
                 scene=scene,
                 flow_id="fake-flow",
                 api_key="k",
-                api_secret="s",  # noqa: S106 - a throwaway value for the local fake server
+                api_secret="s",  # noqa: S106 - 本地假服务器的一次性值
                 base_url=fake_url,
             )
         rows.append(await run_provider("xingyun", gateway, request, scene))

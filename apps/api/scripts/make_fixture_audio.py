@@ -1,15 +1,13 @@
-"""rebuild the ASR fixture audio from scratch (no binary blobs in git).
+"""从零重建 ASR 夹具音频（git 里不放二进制大块）。
 
-The wav is synthesized (edge-tts voice, fixed script text) and downsampled to 16 kHz mono,
-so any machine can regenerate the input for the real-machine probes. PINNED_SHA256 guards
-against silent fixture drift: --check exits 2 when the local bytes differ from the pin
-(regeneration may legitimately produce different bytes -- then update the pin consciously
-and note it in the evidence).
+wav 由 edge-tts 语音按固定脚本文本合成，并降采样为 16 kHz 单声道，任何机器都能重新生成真机
+探针的输入。PINNED_SHA256 防止夹具静默漂移：本地字节与 pin 不一致时 --check 退出 2（重新
+生成完全可能产生不同字节——那就自觉地更新 pin，并在证据里注明）。
 
-Usage:
-  uv run python scripts/make_fixture_audio.py --check              # no network
-  uv run python scripts/make_fixture_audio.py --generate           # needs network (edge-tts)
-  uv run python scripts/make_fixture_audio.py --check --file PATH  # check any file
+用法：
+  uv run python scripts/make_fixture_audio.py --check              # 不联网
+  uv run python scripts/make_fixture_audio.py --generate           # 需要网络（edge-tts）
+  uv run python scripts/make_fixture_audio.py --check --file PATH  # 检查任意文件
 """
 
 from __future__ import annotations

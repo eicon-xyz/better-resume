@@ -59,8 +59,8 @@ T2 只在 token 层完成「产品工具风 + Linear 细节」的体系扩充：
 ### 2.6 消费点与旧名处置口径
 
 - 未改名、未删除任何既有 token：37 个既有名字全部保留为主名（逐个读数与处置见 §3.3）。因此 apps/web/src/**/*.module.css 不需要任何替换，本票在该路径上零改动。
-- accent 的「消费点迁移」集中在 token 本身：--br-color-accent 取靛蓝后，其 15 处 var() 消费点（Button.primary、MessageBubble.streaming、RadarChart 等）自动渲染靛蓝，无需逐文件改；不存在别名层。
-- 既有非本票引入的无消费点 token（--br-radius-sm、--br-shadow-md、--br-z-overlay）保持原样，登记为既有预留；本票不顺手删除，避免越界。
+- accent 的「消费点迁移」集中在 token 本身：--br-color-accent 取靛蓝后，其 19 处 var() 消费点（Button.primary、MessageBubble.streaming、RadarChart 等）自动渲染靛蓝，无需逐文件改；不存在别名层。
+- 既有非本票引入的无消费点 token（--br-shadow-md、--br-z-overlay）保持原样，登记为既有预留；本票不顺手删除，避免越界。
 - 新增的 hover/active/muted、三个渐变、shadow-sticky、radius-xs、space-7 在本票无消费点，全部按票据允许的「预留槽位」登记，并写明预计消费票（§3.5）。
 
 ### 2.7 守卫与变异
@@ -83,11 +83,11 @@ export BR_REDIS_URL='redis://127.0.0.1:6379/0'
 
 ~~~text
 $ python3 scripts/check_web_style_guards.py
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
 EXIT=0
 ~~~
 
-数字：退出码 0；扫描 21 个 .css；违规 0 条；末行 check_web_style_guards: ok。
+数字：退出码 0；扫描 27 个 .css；违规 0 条；末行 check_web_style_guards: ok。
 
 ### 3.2 深浅双定义变异证明
 
@@ -99,7 +99,7 @@ $ bash scripts/verify_mutation.sh --test 'python3 scripts/check_web_style_guards
     --file '/root/better resume/apps/web/src/styles/tokens.css' \
     --find '    --br-color-accent-hover: #a5b4fc;' --replace ''; echo MUT_EXIT=$?
 == 1/3 baseline: the test must PASS on the untouched implementation ==
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
 == 2/3 mutate: apply --find/--replace to /root/better resume/apps/web/src/styles/tokens.css ==
 mutated 1 occurrence in /root/better resume/apps/web/src/styles/tokens.css
 == 2/3 red: the test must FAIL on the mutated implementation ==
@@ -107,59 +107,59 @@ styles/tokens.css:15: G1 --br-color-accent-hover 深色块缺定义（守卫① 
 check_web_style_guards: 1 violation(s)
 ok: mutation was caught
 == 3/3 restore: the test must PASS again ==
-restored: /root/better resume/apps/web/src/styles/tokens.css sha256=062a3de69a295f87…
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
+restored: /root/better resume/apps/web/src/styles/tokens.css sha256=7acc1f8bbcac8e30…
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
 PASS: baseline green -> mutation red -> restored green (/root/better resume/apps/web/src/styles/tokens.css)
 MUT_EXIT=0
 $ sha_after=$(sha256sum apps/web/src/styles/tokens.css | cut -d' ' -f1)
-sha_before=062a3de69a295f87b90d22da65c2eb4fde193d6ec588fec0540c9fb891810b37
-sha_after=062a3de69a295f87b90d22da65c2eb4fde193d6ec588fec0540c9fb891810b37
+sha_before=7acc1f8bbcac8e300a3c073a6b1ed8f23e222baf267d9f27fdff4ae0b46cd6db
+sha_after=7acc1f8bbcac8e300a3c073a6b1ed8f23e222baf267d9f27fdff4ae0b46cd6db
 ~~~
 
 数字：基线绿 → 变异红（G1 点名 styles/tokens.css:15）→ 恢复绿；恢复后 sha256 与变异前逐字节一致（同一 hash）；--file 用绝对路径。
 
 ### 3.3 既有 token 逐个 grep 读数与处置
 
-命令：grep -rn -- '<旧名>' apps/web/src | wc -l（逐名一条）；「var() 消费点」是同一棵树上 var(--br-<名>) 的精确出现次数，用于区分前缀同名（如 --br-color-text 会匹配到 --br-color-text-muted 的行）。本票未改任何 module.css，因此 var() 消费数与 T1 收口状态一致。
+命令：grep -rn -- '<旧名>' apps/web/src | wc -l（逐名一条）；「var() 消费点」是同一棵树上 var(--br-<名>) 的精确出现次数，用于区分前缀同名（如 --br-color-text 会匹配到 --br-color-text-muted 的行）。var() 消费点为当前实测值。
 
 | 既有 token | grep 读数 | var() 消费点 | 深浅定义 | 处置 |
 | --- | --- | --- | --- | --- |
 | --br-color-bg | 5 | 3 | 2 | 保留 |
-| --br-color-surface | 19 | 8 | 2 | 保留 |
-| --br-color-surface-raised | 9 | 7 | 2 | 保留 |
-| --br-color-border | 21 | 19 | 2 | 保留 |
-| --br-color-text | 45 | 8 | 2 | 保留（grep 读数含 --br-color-text-muted 的前缀行） |
-| --br-color-text-muted | 35 | 33 | 2 | 保留 |
-| --br-color-accent | 26 | 15 | 2 | 保留为主名；值取靛蓝阶（§2.1）；grep 读数含 hover/active/muted/contrast 前缀行 |
+| --br-color-surface | 26 | 12 | 2 | 保留 |
+| --br-color-surface-raised | 12 | 10 | 2 | 保留 |
+| --br-color-border | 25 | 23 | 2 | 保留 |
+| --br-color-text | 53 | 12 | 2 | 保留（grep 读数含 --br-color-text-muted 的前缀行） |
+| --br-color-text-muted | 39 | 37 | 2 | 保留 |
+| --br-color-accent | 32 | 19 | 2 | 保留为主名；值取靛蓝阶（§2.1）；grep 读数含 hover/active/muted/contrast 前缀行 |
 | --br-color-accent-contrast | 3 | 1 | 2 | 保留 |
-| --br-color-danger | 14 | 8 | 2 | 保留 |
-| --br-color-danger-surface | 4 | 2 | 2 | 保留 |
-| --br-color-success | 3 | 1 | 2 | 保留 |
-| --br-color-warning | 8 | 2 | 2 | 保留（T1 补定）；读数含 warning-bg 前缀行 |
-| --br-color-warning-bg | 4 | 2 | 2 | 保留（T1 补定） |
-| --br-space-1 | 11 | 10 | 1 | 保留 |
-| --br-space-2 | 35 | 34 | 1 | 保留 |
-| --br-space-3 | 39 | 39 | 1 | 保留 |
-| --br-space-4 | 26 | 27 | 1 | 保留（有行内一次写两个 var，grep 行数少于出现次数） |
-| --br-space-5 | 11 | 10 | 1 | 保留 |
+| --br-color-danger | 16 | 9 | 2 | 保留 |
+| --br-color-danger-surface | 5 | 3 | 2 | 保留 |
+| --br-color-success | 4 | 2 | 2 | 保留 |
+| --br-color-warning | 10 | 3 | 2 | 保留（T1 补定）；读数含 warning-bg 前缀行 |
+| --br-color-warning-bg | 5 | 3 | 2 | 保留（T1 补定） |
+| --br-space-1 | 14 | 13 | 1 | 保留 |
+| --br-space-2 | 40 | 39 | 1 | 保留 |
+| --br-space-3 | 46 | 46 | 1 | 保留 |
+| --br-space-4 | 28 | 29 | 1 | 保留（有行内一次写两个 var，grep 行数少于出现次数） |
+| --br-space-5 | 13 | 12 | 1 | 保留 |
 | --br-space-6 | 5 | 4 | 1 | 保留 |
-| --br-radius-sm | 1 | 0 | 1 | 保留（既有预留，本票未引入） |
-| --br-radius-md | 8 | 7 | 1 | 保留 |
+| --br-radius-sm | 2 | 1 | 1 | 保留（既有预留，本票未引入） |
+| --br-radius-md | 11 | 10 | 1 | 保留 |
 | --br-radius-lg | 6 | 5 | 1 | 保留 |
-| --br-radius-pill | 6 | 5 | 1 | 保留 |
+| --br-radius-pill | 7 | 6 | 1 | 保留 |
 | --br-font-sans | 2 | 1 | 1 | 保留 |
 | --br-font-mono | 6 | 5 | 1 | 保留 |
-| --br-text-xs | 8 | 7 | 1 | 保留 |
-| --br-text-sm | 34 | 33 | 1 | 保留 |
+| --br-text-xs | 9 | 8 | 1 | 保留 |
+| --br-text-sm | 38 | 37 | 1 | 保留 |
 | --br-text-md | 8 | 7 | 1 | 保留 |
-| --br-text-lg | 11 | 10 | 1 | 保留 |
+| --br-text-lg | 12 | 11 | 1 | 保留 |
 | --br-text-xl | 3 | 2 | 1 | 保留 |
 | --br-leading-tight | 3 | 2 | 1 | 保留 |
 | --br-leading-normal | 3 | 2 | 1 | 保留 |
 | --br-shadow-sm | 3 | 1 | 2 | 保留（卡片级，Card.module.css:11 消费） |
 | --br-shadow-md | 2 | 0 | 2 | 保留（浮层级，既有预留） |
 | --br-duration-fast | 4 | 4 | 1 | 保留 |
-| --br-duration-normal | 2 | 1 | 1 | 保留 |
+| --br-duration-normal | 3 | 2 | 1 | 保留 |
 | --br-z-overlay | 1 | 0 | 1 | 保留（既有预留，本票未引入） |
 
 数字：既有 token 37 个，改名 0、删除 0、保留 37；因无删除名，「删除名 grep 归零」的检查集合为空。保留名的别名兼容说明：全部继续作为唯一主名使用，消费点写法不变，无别名层；--br-color-accent 值取靛蓝后所有消费点自动生效。
@@ -168,7 +168,7 @@ sha_after=062a3de69a295f87b90d22da65c2eb4fde193d6ec588fec0540c9fb891810b37
 
 ~~~text
 $ grep -rn 'allow:' apps/web/src | wc -l
-44
+48
 ~~~
 
 逐条（文件:行号 — 理由，均位于违规行上一行）：
@@ -220,11 +220,11 @@ apps/web/src/pages/InterviewReportPage.module.css:150:  /* allow: 维度名称�
 apps/web/src/pages/InterviewReportPage.module.css:160:  /* allow: 维度分数列最小宽度（72px 表格列几何） */
 ~~~
 
-数字：实测 44 条；上面逐条与实际 grep 输出集合完全一致（差异条数 0）。本票新增 allow 0 条（白名单维持 44），未走 token 的放行全部是几何类。
+数字：实测 48 条；上面逐条与实际 grep 输出集合完全一致（差异条数 0）。本票新增 allow 0 条（白名单维持 48），未走 token 的放行全部是几何类。
 
 ### 3.5 新 token 清单表
 
-新增 9 个 token（既有 --br-color-accent 是同名值迁移，不重复计入；token 总数由 37 增至 46）。
+新增 9 个 token（既有 --br-color-accent 是同名值迁移，不重复计入；tokens.css 当前 token 总数 47）。
 
 | 新 token | 浅色值 | 深色值 | 消费点 / 预留槽位 |
 | --- | --- | --- | --- |
@@ -244,8 +244,8 @@ apps/web/src/pages/InterviewReportPage.module.css:160:  /* allow: 维度分数�
 
 ~~~text
 $ pnpm -C apps/web test --run
- Test Files  25 passed (25)
-      Tests  183 passed (183)
+ Test Files  26 passed (26)
+      Tests  186 passed (186)
 $ pnpm -C apps/web typecheck
 $ tsc --noEmit
 TYPECHECK_EXIT=0
@@ -254,15 +254,15 @@ $ eslint .
 LINT_EXIT=0
 ~~~
 
-数字：25 文件 / 183 例全绿，只增不减（README §1.2 记 172 为旧数，T1 实测亦 183）；typecheck 与 lint 退出码 0。本票未增删任何前端测试。
+数字：26 文件 / 186 例全绿，只增不减（README §1.2 记 172）；typecheck 与 lint 退出码 0。本票未增删任何前端测试。
 
 ### 3.7 verify --layer all
 
 ~~~text
 $ bash scripts/verify.sh --layer all
-[1/17] cd apps/api && uv run pytest ... → 990 passed, 3 warnings in 94.00s
+[1/17] cd apps/api && uv run pytest ... → 997 passed, 3 warnings in 83.42s
 [2/17] check_coverage_floors.py → floors ok（TOTAL 95%，deep-module 各项达下限）
-[3/17] pnpm -C apps/web exec vitest run → 25 passed (25) / 183 passed (183)
+[3/17] pnpm -C apps/web exec vitest run → 26 passed (26) / 186 passed (186)
 [4/17] cd apps/api && uv run ruff check . → All checks passed!
 [5/17] cd apps/api && uv run ruff format --check . → 268 files already formatted
 [6/17] alembic upgrade head → ok
@@ -273,16 +273,16 @@ $ bash scripts/verify.sh --layer all
 [11/17] pnpm -C apps/web typecheck → exit 0
 [12/17] pnpm -C apps/web check:api → src/api/schema.d.ts 无 diff
 [13/17] python3 scripts/check_web_style_guards.py
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
-[14/17] ... pytest tests/test_fault_probe.py ... → 94 passed, 2 warnings in 7.54s
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
+[14/17] ... pytest tests/test_fault_probe.py ... → 101 passed, 2 warnings in 6.75s
 [15/17] for f in scripts/*.sh; do bash -n "$f" || exit 1; done → shell syntax ok
 [16/17] check_scripts.py → script syntax ok (24 python scripts, SyntaxWarning treated as an error)
 [17/17] verify_audit_evidence.py --structural → structure ok: 10 units / 122 issues / 341 citations
-ALL PASS (17 commands) -- evidence: var/evidence/20261012T065939Z-all
+ALL PASS (17 commands) -- evidence: var/evidence/20261012T113103Z-all
 VERIFY_ALL_EXIT=0
 ~~~
 
-数字：17 条命令全过，末行 ALL PASS，退出码 0；API 990 passed；coverage floors ok（TOTAL 95%）；web 183 passed；守卫绿。
+数字：17 条命令全过，末行 ALL PASS，退出码 0；API 997 passed；coverage floors ok（TOTAL 95%）；web 186 passed；守卫绿。
 
 ### 3.8 改动面自查
 
@@ -358,5 +358,5 @@ VERIFY_ALL_EXIT=0
 1. 阴影命名保留 --br-shadow-sm（卡片）/ --br-shadow-md（浮层）为主名，新增 --br-shadow-sticky 覆盖吸底；未改成 --br-shadow-card / --br-shadow-overlay。理由是票面拍死「以保留现有语义名为主名」。若页面批更倾向角色名，请在 T3/T4 指定后统一改名。
 2. --br-radius-xs（2px）与 --br-space-7（40px）的具体取值由执行方按现有步长最小补档选定，票据只写「圆角微调 / 间距补档」未给档位与数值；请确认这两个取值。
 3. 字阶未新增、未改值：票面禁改字号语义档位，且字号牵动页面版式（T4–T8）；「字阶微调」在本票落成「维持现有五档」，如需 hero 大字号请在 T4 与 T1 遗留的 42px allow 一并裁定。
-4. 本票未改任何 module.css，也未新增任何 allow（白名单维持 44 条）；「消费点迁移」体现为 --br-color-accent 的集中值迁移，而非逐文件替换。
+4. 本票未改任何 module.css，也未新增任何 allow（白名单 48 条）；「消费点迁移」体现为 --br-color-accent 的集中值迁移，而非逐文件替换。
 5. 9 个新 token 全部无本票消费点，按「预留槽位」登记，预计消费票见 §3.5；若要求在 T2 内接入消费点，需要把 T3 的组件样式提前，超出本票「不做组件样式」的边界。

@@ -1,20 +1,18 @@
-"""Interview smoke: walk the product path and either print it or assert it.
+"""面试冒烟：走一遍产品路径，要么打印它，要么断言它。
 
-Two invocations, one implementation:
+两种调用，一份实现：
 
-    # real vendor: a configured model key is required; the golden path is printed
+    # 真实供应商：需要配置好的模型 key；打印黄金路径
     uv run python scripts/interview_smoke.py [base_url]
 
-    # fake vendor: every scenario is asserted, a failure exits non-zero
+    # 假供应商：每个场景都被断言，失败退出非零
     uv run python scripts/interview_smoke.py --model smoke-fake --assert
 
-The assertion run talks to the compose entry point (nginx) by default and names its upstream
-smoke-fake: that vendor carries no usage, so a passing assertion run is never evidence about a
-real model. It walks every scenario by default: the golden path, the two degradations (a resume
-without a text layer, and one whose skills match no corpus topic), and the no-category shape
-whose D23 rule fallback still has to land on a legal category. --scenario filters one out for
-debugging. --expect-questions injects the contract value under test, which is what makes the
-"wrong expectation -> non-zero exit" demo a single command.
+断言运行默认打到 compose 入口（nginx），并点名其上游 smoke-fake：该供应商不携带 usage，所以
+通过的断言运行绝不是关于真实模型的证据。它默认走遍每个场景：黄金路径、两种降级（没有文本层的
+简历，以及技能匹配不到任何语料主题的简历），还有那条其 D23 规则回退仍须落到合法类别的无
+category 形状。--scenario 过滤出其中一个用于调试。--expect-questions 注入被测试的契约值，
+这正是让「错误期望 -> 非零退出」演示成为单条命令的原因。
 """
 
 from __future__ import annotations
@@ -52,12 +50,12 @@ LEGAL_CATEGORIES = ("fundamentals", "project", "internship")
 DIMENSION_KEYS = ("accuracy", "depth", "coverage", "completeness")
 MIN_SCORED_PER_CATEGORY = 2
 THIN_SAMPLE_COMMENT = "样本不足"
-#: The answer bucket is 2/s (capacity 4); a fast walk honours Retry-After this many times.
+#: 答题桶是 2/s（容量 4）；快速走完全程时最多照 Retry-After 重试这么多次。
 RATE_LIMIT_RETRIES = 5
-#: Degradation codes the engine stores on the session (mirrored in the scenario fixtures).
+#: 引擎存在会话上的降级码（场景夹具里有镜像）。
 RESUME_UNPARSABLE = "resume_unparsable"
 CORPUS_NO_MATCH = "corpus_no_match"
-#: Prompt marker the fake vendor watches for; it switches to the no-category shape (Q2).
+#: 假供应商盯的提示标记；它据此切到无 category 形状（Q2）。
 NO_CATEGORY_MARKER = "不给出 category"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -95,7 +93,7 @@ SESSIONS_SQL = (
 
 
 def build_resume_pdf() -> bytes:
-    with contextlib.suppress(KeyError):  # already registered in this process
+    with contextlib.suppress(KeyError):  # 本进程内已注册
         pdfmetrics.registerFont(UnicodeCIDFont(CJK_FONT))
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer)
@@ -110,7 +108,7 @@ def build_resume_pdf() -> bytes:
 
 
 def build_no_text_layer_pdf() -> bytes:
-    """A page with no extractable text: the scan case that degrades to a generic interview."""
+    """一页没有可提取文本：会降级为通用面试的扫描件情形。"""
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer)
     pdf.rect(50, 700, 300, 120, fill=1)
@@ -120,8 +118,8 @@ def build_no_text_layer_pdf() -> bytes:
 
 
 def build_unmatched_resume_pdf() -> bytes:
-    """A resume whose skills match no corpus topic; it also carries parser warnings."""
-    with contextlib.suppress(KeyError):  # already registered in this process
+    """技能匹配不到任何语料主题的简历；它还带着解析器警告。"""
+    with contextlib.suppress(KeyError):  # 本进程内已注册
         pdfmetrics.registerFont(UnicodeCIDFont(CJK_FONT))
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer)
@@ -133,8 +131,8 @@ def build_unmatched_resume_pdf() -> bytes:
 
 
 def build_no_category_resume_pdf() -> bytes:
-    """The golden resume plus the marker that makes the fake vendor omit category (Q2)."""
-    with contextlib.suppress(KeyError):  # already registered in this process
+    """黄金简历加上让假供应商省略 category 的标记（Q2）。"""
+    with contextlib.suppress(KeyError):  # 本进程内已注册
         pdfmetrics.registerFont(UnicodeCIDFont(CJK_FONT))
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer)
@@ -152,7 +150,7 @@ def build_no_category_resume_pdf() -> bytes:
 
 @dataclass(frozen=True)
 class Scenario:
-    """One upload-and-walk variant, plus the degradation the contract expects from it."""
+    """一个上传并走完全程的变体，外加契约期望它产生的降级。"""
 
     name: str
     title: str
@@ -214,12 +212,12 @@ def _query_hint(session_id: str) -> str:
 
 
 def _psql_query(sql: str, session_id: str) -> list[str] | None:
-    """Run one fixed query inside the compose stack; None when docker is not usable."""
+    """在 compose 栈内跑一条固定查询；docker 不可用时为 None。"""
     docker = shutil.which("docker")
     if docker is None:
         return None
     try:
-        result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        result = subprocess.run(  # noqa: S603 - 固定 argv，不走 shell
             [
                 docker,
                 "compose",
@@ -255,13 +253,11 @@ def _psql_query(sql: str, session_id: str) -> list[str] | None:
 
 
 def probe_db_rows(session_id: str) -> dict[str, Any] | None:
-    """Read the persisted session notices and question rows.
+    """读取持久化的会话通知与问题行。
 
-    None means the docker/psql probe itself is unusable; a query that ran and found no
-    sessions row returns a snapshot flagged session_row_missing so the assertion can fail
-    it instead of skipping. Feeds both the failure diagnostic and the persistence
-    assertions, so a scenario's degradation has to be visible in Postgres, not just in
-    the HTTP response.
+    None 表示 docker/psql 探针本身不可用；查询跑了但没找到 sessions 行时返回一个标记为
+    session_row_missing 的快照，让断言能判它失败而不是跳过。它同时喂给失败诊断和持久化断言，
+    所以一个场景的降级必须在 Postgres 里可见，而不只是在 HTTP 响应里。
     """
     session_lines = _psql_query(SESSIONS_SQL, session_id)
     question_lines = _psql_query(QUESTIONS_SQL, session_id)
@@ -300,7 +296,7 @@ def probe_db_rows(session_id: str) -> dict[str, Any] | None:
 
 
 class GoldenPathChecks:
-    """Golden-path assertions; every failure names the step, the raw body and a DB lookup."""
+    """黄金路径断言；每个失败都点名步骤、原始响应体与一次 DB 查询。"""
 
     def __init__(
         self,
@@ -619,11 +615,10 @@ class GoldenPathChecks:
         )
 
     def persistence_checks(self) -> None:
-        """Confirm what the response showed also landed in Postgres.
+        """确认响应展示的内容也落到了 Postgres。
 
-        An unusable docker/psql probe prints an explicit SKIPPED line and never fails the
-        run; a query that ran but found no sessions row is a named failure. The per-row
-        checks still re-derive the categories from the stored rows.
+        不可用的 docker/psql 探针会打印一行明确的 SKIPPED，绝不判这次运行失败；查询跑了但
+        没找到 sessions 行是一次具名失败。逐行检查仍会从存储的行里重新推导类别。
         """
         if self.db_probe is None or self.session_id is None:
             print("[golden-path] SKIPPED (no docker probe): no db probe was configured")
@@ -700,7 +695,7 @@ class GoldenPathChecks:
 
 
 def _decode(response: httpx.Response, checks: GoldenPathChecks | None, step: str) -> Any | None:
-    """Success -> parsed JSON. A non-2xx or malformed body is named and returns None."""
+    """成功 -> 解析后的 JSON。非 2xx 或畸形响应体会被点名并返回 None。"""
     if checks is not None:
         if not checks.expect_status(step, response):
             return None
@@ -723,7 +718,7 @@ def _decode(response: httpx.Response, checks: GoldenPathChecks | None, step: str
 
 
 def _rate_limit_delay(response: httpx.Response) -> float:
-    """Honour the server Retry-After; a fast answer walk will otherwise trip the 2/s bucket."""
+    """照服务端的 Retry-After 办；否则快速答题会撞上 2/s 桶。"""
     raw = response.headers.get("Retry-After")
     try:
         return max(0.0, float(raw)) if raw else 1.0
@@ -739,7 +734,7 @@ async def _send(
     url: str,
     **kwargs: Any,
 ) -> httpx.Response | None:
-    """A transport error is a named step failure, never a bare traceback."""
+    """传输错误是一次具名步骤失败，绝不是裸 traceback。"""
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
             response = await client.request(method, url, **kwargs)
@@ -752,7 +747,7 @@ async def _send(
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
         delay = _rate_limit_delay(response)
-        # Both invocations need the backoff; a real run must not retry silently.
+        # 两种调用都需要这个退避；真实运行不得静默重试。
         print(f"[golden-path] retry {step}: HTTP 429, waiting {delay:g}s")
         await asyncio.sleep(delay)
     return response
@@ -787,7 +782,7 @@ async def run(
     db_probe: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> int:
     scenarios = select_scenarios(args.scenarios) if args.assert_mode else [SCENARIOS[0]]
-    # The real run keeps the baseline identity; only an assertion run mints a unique user.
+    # 真实运行保留基线身份；只有断言运行才会生成唯一用户。
     run_user = (
         f"{SMOKE_USER_PREFIX}-{uuid.uuid4().hex[:8]}" if args.assert_mode else SMOKE_USER_PREFIX
     )
@@ -893,8 +888,8 @@ async def _run_scenario(
         for question in batch["questions"]:
             print(f"  {question['question_no']}. {question['text'][:60]}")
 
-        # The real run has always stopped after six answers; the assertion run walks the
-        # contract path (every topic may take MAX_FOLLOW_UP follow-ups) to its end.
+        # 真实运行一直答完六题就停；断言运行走完契约路径（每个主题最多取 MAX_FOLLOW_UP 次追问）
+        # 直到结束。
         max_answers = args.count * (1 + MAX_FOLLOW_UP) if checks is not None else 6
         asked = 0
         completed = False

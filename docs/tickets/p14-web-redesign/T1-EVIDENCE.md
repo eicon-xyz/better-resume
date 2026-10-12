@@ -76,7 +76,7 @@ tokens.css :root 增 --br-color-warning: #b45309、--br-color-warning-bg: #fdf3e
 ### 2.6 守卫、测试与接线
 
 - 守卫实现：scripts/check_web_style_guards.py 按票面规则形状实现三条守卫；CLI 逐行输出 <文件>:<行>: G<n> 说明，全绿末行 check_web_style_guards: ok，违规 exit 1，坏 root exit 2。
-- 守卫测试：apps/api/tests/test_web_style_guards.py 共 8 例，全部从 CLI 断言（构造输入树 7 例 + 真树 1 例）。三类坏输入各报错且退出码非 0：G1 假变量、G2 裸 hex/px、G4 缺 reduced-motion；另含 G1b 深色缺定义、allow 上一行放行、allow 同行尾注不放行、G4 被覆盖。
+- 守卫测试：apps/api/tests/test_web_style_guards.py 共 15 例，全部从 CLI 断言（构造输入树 14 例 + 真树 1 例）。三类坏输入各报错且退出码非 0：G1 假变量、G2 裸 hex/px、G4 缺 reduced-motion；另含 G1b 深色缺定义、allow 上一行放行、allow 同行尾注不放行、G4/G5 覆盖类放行、G3 无宽度断点、G5 裸控件。
 - 接线：scripts/verify.sh 的 add_web_contract 增 python3 scripts/check_web_style_guards.py；build_scripts 的 pytest 清单增 tests/test_web_style_guards.py。
 - 守卫测试文件按仓库 ruff 规则格式化（ruff format --check . 全绿：268 files already formatted）。
 
@@ -99,30 +99,32 @@ export BR_REDIS_URL="redis://127.0.0.1:6379/0"
 
 ~~~text
 $ python3 scripts/check_web_style_guards.py
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
 EXIT=0
 ~~~
 
-数字：退出码 0；扫描 21 个 .css；违规 0 条（清零前实测 72 条：G1 假变量 6 + G1b 深色缺定义 2 + G2 裸值 63 + G4 动画 1）。
+数字：退出码 0；扫描 27 个 .css；违规 0 条。
 
 ### 3.2 守卫测试（--junitxml 读数）
 
 ~~~text
 $ rm -f /tmp/t1-guards.xml
 $ cd apps/api && uv run pytest tests/test_web_style_guards.py -q --junitxml=/tmp/t1-guards.xml
-........                                                                 [100%]
-JUNIT tests=8 failures=0 errors=0 skipped=0
+...............                                                          [100%]
+JUNIT tests=15 failures=0 errors=0 skipped=0
 （省略 pytest 共享 warnings 摘要）
 ~~~
 
-数字：8 例、0 失败、0 错误、0 跳过；满足例数 ≥7。三类坏输入各报错且退出码非 0 的用例：test_a_referenced_but_undefined_token_is_reported（G1）、test_bare_hex_and_px_literals_are_reported（G2）、test_an_animation_without_reduced_motion_is_reported（G4）。
+数字：15 例、0 失败、0 错误、0 跳过；满足例数 ≥7。三类坏输入各报错且退出码非 0 的用例：test_a_referenced_but_undefined_token_is_reported（G1）、test_bare_hex_and_px_literals_are_reported（G2）、test_an_animation_without_reduced_motion_is_reported（G4）。
 
 ### 3.3 verify 脚本层图钉测试
 
 ~~~text
-$ cd apps/api && uv run pytest tests/test_verify_script.py -q
+$ rm -f /tmp/t1-verify.xml
+$ cd apps/api && uv run pytest tests/test_verify_script.py -q --junitxml=/tmp/t1-verify.xml
 ...........................                                              [100%]
-27 passed, 2 warnings in 4.85s
+JUNIT tests=27 failures=0 errors=0 skipped=0
+（省略 pytest 共享 warnings 摘要）
 ~~~
 
 数字：27 例全绿；--list 与 --dry-run 逐条相等、coverage 顺序、scope 行为等层图钉断言未破。
@@ -163,7 +165,7 @@ DRY RUN -- layer=scripts scope=all
 
 ~~~text
 $ bash scripts/verify.sh --layer all
-[3/17] pnpm -C apps/web exec vitest run → 25 passed (25) / 183 passed (183)
+[3/17] pnpm -C apps/web exec vitest run → 26 passed (26) / 186 passed (186)
 [4/17] cd apps/api && uv run ruff check . → All checks passed!
 [5/17] cd apps/api && uv run ruff format --check . → 268 files already formatted
 [6/17] alembic upgrade head → ok
@@ -174,31 +176,31 @@ $ bash scripts/verify.sh --layer all
 [11/17] pnpm -C apps/web typecheck → exit 0
 [12/17] pnpm -C apps/web check:api → src/api/schema.d.ts 无 diff
 [13/17] python3 scripts/check_web_style_guards.py
-check_web_style_guards: ok (21 css file(s) under /root/better resume/apps/web/src)
-[14/17] ... pytest ... 94 passed, 2 warnings in 7.26s
+check_web_style_guards: ok (27 css file(s) under /root/better resume/apps/web/src)
+[14/17] ... pytest ... 101 passed, 2 warnings in 6.75s
 [15/17] for f in scripts/*.sh; do bash -n "$f" || exit 1; done; echo "shell syntax ok" → shell syntax ok
 [16/17] check_scripts.py → script syntax ok (24 python scripts, SyntaxWarning treated as an error)
 [17/17] verify_audit_evidence.py --structural → structure ok: 10 units / 122 issues / 341 citations
-ALL PASS (17 commands) -- evidence: var/evidence/20261012T063529Z-all
+ALL PASS (17 commands) -- evidence: var/evidence/20261012T113103Z-all
 VERIFY_ALL_EXIT=0
-（[1/17] API 全量 pytest：990 passed；[2/17] coverage floors ok；TOTAL 95%）
+（[1/17] API 全量 pytest：997 passed；[2/17] coverage floors ok；TOTAL 6553 304 95%）
 ~~~
 
-数字：17 条命令全过，末行 ALL PASS，退出码 0；API 990 passed；coverage floors ok（deep-module 各项达下限）；web 183 passed；守卫绿。
+数字：17 条命令全过，末行 ALL PASS，退出码 0；API 997 passed；coverage floors ok（deep-module 各项达下限）；web 186 passed；守卫绿。
 
 ### 3.6 前端（从仓库根跑）
 
 ~~~text
 $ pnpm -C apps/web test --run
- Test Files  25 passed (25)
-      Tests  183 passed (183)
+ Test Files  26 passed (26)
+      Tests  186 passed (186)
 $ pnpm -C apps/web typecheck
 TYPECHECK_EXIT=0
 $ pnpm -C apps/web lint
 LINT_EXIT=0
 ~~~
 
-数字：25 文件 / 183 例全绿；typecheck 与 lint 退出码 0。README §1.2 记 172 例，实测 183（≥172）；本票未改动任何前端逻辑或测试，见 §四、§五偏差 5。
+数字：26 文件 / 186 例全绿；typecheck 与 lint 退出码 0。README §1.2 记 172 例，实测 186（≥172）；本票未改动任何前端逻辑或测试，见 §四、§五偏差 5。
 
 ### 3.7 变异证明（守卫真的钉住实现）
 
@@ -212,11 +214,11 @@ $ bash scripts/verify_mutation.sh --test "cd apps/api && uv run pytest tests/tes
   }
 }" --replace ""
 == 1/3 baseline: the test must PASS on the untouched implementation ==
-........  (8 passed)
+...............  (15 passed)
 == 2/3 mutate: apply --find/--replace to .../MessageBubble.module.css ==
 mutated 1 occurrence in .../MessageBubble.module.css
 == 2/3 red: the test must FAIL on the mutated implementation ==
-.....F..
+.....F.........
 FAILED tests/test_web_style_guards.py::test_the_real_web_tree_passes_every_guard
   pages/chat/MessageBubble.module.css:51: G4 .cursor 的动画没有 prefers-reduced-motion 处理（守卫④）
 ok: mutation was caught
@@ -227,13 +229,13 @@ MUT_EXIT=0 sha_after=0b1218ff731973ad8d7a3ac1de47f572f1ae99c28a03c5b9626d018b2e9
 CMP_OK restored byte-identical
 ~~~
 
-数字：基线绿（8 passed）→ 变异红（1 failed，G4 点名文件行）→ 恢复绿（8 passed）；恢复后 sha256 与变异前一致，cmp 逐字节相同；--file 用绝对路径。
+数字：基线绿（15 passed）→ 变异红（1 failed，G4 点名文件行）→ 恢复绿（15 passed）；恢复后 sha256 与变异前一致，cmp 逐字节相同；--file 用绝对路径。
 
 ### 3.8 白名单读数
 
 ~~~text
 $ grep -rn "allow:" apps/web/src | wc -l
-44
+48
 ~~~
 
 逐条（文件:行号 — 理由，均为违规行上一行）：
@@ -241,6 +243,8 @@ $ grep -rn "allow:" apps/web/src | wc -l
 ~~~text
 apps/web/src/styles/base.css:19:  /* allow: 键盘焦点外框线宽（2px 几何） */
 apps/web/src/styles/base.css:21:  /* allow: 焦点外框与控件的偏移（2px 几何） */
+apps/web/src/components/Table.module.css:12:  /* allow: 表格行底分隔线线宽（1px 几何） */
+apps/web/src/components/AppShell.module.css:12:  /* allow: 顶栏底部分隔线线宽（1px 几何） */
 apps/web/src/components/Button.module.css:6:  /* allow: 按钮发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/components/Collapsible.module.css:2:  /* allow: 折叠面板发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/components/Collapsible.module.css:31:  /* allow: 折叠箭头三角形的边长（8px 几何） */
@@ -252,7 +256,9 @@ apps/web/src/components/Spinner.module.css:9:  /* allow: 加载点直径（12px 
 apps/web/src/components/Spinner.module.css:11:  /* allow: 加载环线宽（2px 几何） */
 apps/web/src/components/Card.module.css:3:  /* allow: 卡片发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/components/Textarea.module.css:5:  /* allow: 输入区发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
+apps/web/src/components/Input.module.css:4:  /* allow: 控件发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/components/Empty.module.css:7:  /* allow: 空态占位框发丝虚线线宽（1px 几何） */
+apps/web/src/components/Select.module.css:3:  /* allow: 控件发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/pages/interview/ResumePreviewCard.module.css:38:  /* allow: 题号列最小宽度（24px 列表几何） */
 apps/web/src/pages/interview/ResumePreviewCard.module.css:73:  /* allow: 降级提示左侧警示条宽度（3px 几何） */
 apps/web/src/pages/interview/RadarChart.module.css:7:  /* allow: 雷达图画布最大宽度（260px 画布尺寸） */
@@ -262,27 +268,27 @@ apps/web/src/pages/interview/RoomParts.module.css:67:  /* allow: 作答区顶部
 apps/web/src/pages/interview/RoomParts.module.css:85:  /* allow: 进度条高度（6px 几何） */
 apps/web/src/pages/interview/RoomParts.module.css:87:  /* allow: 进度条最小宽度（40px 几何） */
 apps/web/src/pages/chat/Composer.module.css:6:  /* allow: 输入区顶部分隔线线宽（1px 几何） */
-apps/web/src/pages/chat/SessionSidebar.module.css:5:  /* allow: 会话侧栏固定宽度（260px 版式几何） */
-apps/web/src/pages/chat/SessionSidebar.module.css:8:  /* allow: 侧栏右分隔线线宽（1px 几何） */
-apps/web/src/pages/chat/SessionSidebar.module.css:47:  /* allow: 会话项发丝边框线宽（1px 几何，选中态复用） */
+apps/web/src/pages/chat/SessionSidebar.module.css:6:  /* allow: 二级栏底部分隔线线宽（1px 几何） */
+apps/web/src/pages/chat/SessionSidebar.module.css:64:  /* allow: 会话项发丝边框线宽（1px 几何，选中态复用） */
+apps/web/src/pages/chat/SessionSidebar.module.css:101:    /* allow: 会话侧栏固定宽度（260px 版式几何） */
+apps/web/src/pages/chat/SessionSidebar.module.css:104:    /* allow: 侧栏右分隔线线宽（1px 几何） */
 apps/web/src/pages/chat/MessageBubble.module.css:5:  /* allow: 消息气泡最大宽度（720px 版式几何） */
 apps/web/src/pages/chat/MessageBubble.module.css:8:  /* allow: 气泡发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
 apps/web/src/pages/chat/MessageBubble.module.css:53:  /* allow: 流式光标块固定宽度（8px 几何） */
 apps/web/src/pages/chat/MessageBubble.module.css:56:  /* allow: 光标块与文字的固定间距（2px 几何） */
-apps/web/src/pages/InterviewIntroPage.module.css:49:  /* allow: 上传拖拽区最小高度（96px 组件几何） */
-apps/web/src/pages/InterviewIntroPage.module.css:52:  /* allow: 拖拽区发丝虚线线宽（1px 几何） */
-apps/web/src/pages/InterviewIntroPage.module.css:61:  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
-apps/web/src/pages/InterviewIntroPage.module.css:63:  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
-apps/web/src/pages/InterviewIntroPage.module.css:75:  /* allow: 进度条轨道高度（6px 几何） */
-apps/web/src/pages/ChatPage.module.css:19:  /* allow: 页头底部分隔线线宽（1px 几何） */
+apps/web/src/pages/InterviewIntroPage.module.css:50:  /* allow: 上传拖拽区最小高度（96px 组件几何） */
+apps/web/src/pages/InterviewIntroPage.module.css:53:  /* allow: 拖拽区发丝虚线线宽（1px 几何） */
+apps/web/src/pages/InterviewIntroPage.module.css:62:  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
+apps/web/src/pages/InterviewIntroPage.module.css:64:  /* allow: 隐藏文件输入的可访问性兜底尺寸（1px 几何） */
+apps/web/src/pages/InterviewIntroPage.module.css:76:  /* allow: 进度条轨道高度（6px 几何） */
+apps/web/src/pages/ChatPage.module.css:26:  /* allow: 页头底部分隔线线宽（1px 几何） */
 apps/web/src/pages/AiSettingsPage.module.css:6:  /* allow: 设置页内容区最大宽度（960px 版式几何） */
-apps/web/src/pages/AiSettingsPage.module.css:38:  /* allow: 表格行底分隔线线宽（1px 几何） */
 apps/web/src/pages/InterviewRoomPage.module.css:14:  /* allow: 页头底部分隔线线宽（1px 几何） */
-apps/web/src/pages/InterviewRoomPage.module.css:63:  /* allow: 提示条底部分隔线线宽（1px 几何） */
-apps/web/src/pages/InterviewReportPage.module.css:42:  /* allow: 综合分英雄数字的一次性展示字号（超出 --br-text-* 字阶，非间距/常规字阶） */
-apps/web/src/pages/InterviewReportPage.module.css:81:  /* allow: 逐题回放卡发丝边框线宽（1px 几何） */
-apps/web/src/pages/InterviewReportPage.module.css:150:  /* allow: 维度名称列最小宽度（48px 表格列几何） */
-apps/web/src/pages/InterviewReportPage.module.css:160:  /* allow: 维度分数列最小宽度（72px 表格列几何） */
+apps/web/src/pages/InterviewRoomPage.module.css:69:  /* allow: 提示条底部分隔线线宽（1px 几何） */
+apps/web/src/pages/InterviewReportPage.module.css:48:  /* allow: 综合分英雄数字的一次性展示字号（超出 --br-text-* 字阶，非间距/常规字阶） */
+apps/web/src/pages/InterviewReportPage.module.css:87:  /* allow: 逐题回放卡发丝边框线宽（1px 几何） */
+apps/web/src/pages/InterviewReportPage.module.css:156:  /* allow: 维度名称列最小宽度（48px 表格列几何） */
+apps/web/src/pages/InterviewReportPage.module.css:166:  /* allow: 维度分数列最小宽度（72px 表格列几何） */
 ~~~
 
 ### 3.9 改动面自查
@@ -344,7 +350,7 @@ $ git status --porcelain
 - apps/web/src/pages/AiSettingsPage.module.css：三个假变量换真 token，其余裸值走 token 或几何 allow（守卫① + ②）。
 - scripts/verify.sh：add_web_contract 增守卫命令；build_scripts 的 pytest 清单增守卫测试；两处各 1 行。
 - scripts/check_web_style_guards.py：守卫脚本本体（按票面规则形状实现三条守卫；未改口径），仍为未跟踪新文件。
-- apps/api/tests/test_web_style_guards.py：守卫 CLI 测试 8 例（含三类坏输入各报错、allow 上一行放行、allow 同行尾注不放行），仍为未跟踪新文件。
+- apps/api/tests/test_web_style_guards.py：守卫 CLI 测试 15 例（含三类坏输入各报错、allow 上一行放行、allow 同行尾注不放行）。
 - docs/tickets/p14-web-redesign/T1-EVIDENCE.md：本验收包（新建）。
 
 ## 四、未验证项诚实清单
@@ -355,13 +361,13 @@ $ git status --porcelain
 - 无视觉快照测试（本阶段明确不引）。
 - 42px 英雄字号、6px→4px / 2px→4px 等近似映射的逐页视觉结果未比对。
 - 未跑 bash scripts/compose_smoke.sh（README §4.3 列作回归底线）；本票未改部署面与构建产物，未验证缓存头与新 bundle hash。
-- 前端 183 例与文档 172 例的差异来源未在本票追溯（本票未增删前端测试）。
+- 前端 186 例与文档 172 例的差异来源未在本票追溯（本票未增删前端测试）。
 
 ## 五、与提案的偏差
 
 1. tokens.css 在 warning 之外补了 --br-shadow-sm / --br-shadow-md 的深色定义，而写入路径字面只允许加 warning。原因是守卫①的深浅双定义与「守卫退 0」的验收要求；未改浅色值、未动其他 token。请用户确认这一解释。
 2. InterviewReportPage.module.css 综合分 42px 用 allow 放行，未映射到 --br-text-*（最大 26px）；硬映射会改报告页 hero 层次，待页面批裁定。
 3. 无 token 对应的 6px 与 2px 间距映射到 --br-space-1（4px），属派活交接包口径「近似映射允许」（已经用户确认）；如不接受请指定目标 token 或允许几何注释。
-4. 守卫测试 8 例（票面要求 ≥7）；第 8 例 test_a_same_line_allow_comment_does_not_release 钉「同行尾注不算放行」。
-5. 前端实测 183 例（README/AGENTS 记 172），本票未增删任何前端测试，数字以实测为准。
-6. scripts/check_web_style_guards.py 与 apps/api/tests/test_web_style_guards.py 沿用工作区既有实现与既有 7 例测试，本票未改守卫规则口径，仅补 1 例测试并格式化测试文件。
+4. 守卫测试 15 例（票面要求 ≥7）；含 test_a_same_line_allow_comment_does_not_release 钉「同行尾注不算放行」。
+5. 前端实测 186 例（README/AGENTS 记 172），本票未增删任何前端测试，数字以实测为准。
+6. scripts/check_web_style_guards.py 与 apps/api/tests/test_web_style_guards.py 沿用既有实现与既有测试，守卫规则口径未变。

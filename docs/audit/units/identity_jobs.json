@@ -201,10 +201,10 @@
    "where": [
     "apps/api/src/better_resume/jobs/queue.py:89-91",
     "apps/api/src/better_resume/jobs/queue.py:226-228",
-    "apps/api/scripts/fault_probe.py:881-883"
+    "apps/api/scripts/fault_probe.py:875-877"
    ],
-   "evidence": "# apps/api/src/better_resume/jobs/queue.py:89-91\n89: async def status(self, task_id: str) -> dict[str, Any] | None:\n90: data = await self._client.hgetall(f\"{self.stream}:status:{task_id}\")\n91: return data or None\n\n# apps/api/scripts/fault_probe.py:881-883\n881: pending = docker(\n882: \"compose\", \"exec\", \"-T\", \"redis\", \"redis-cli\", \"XPENDING\", \"br:jobs\", \"br:workers\"\n883: )",
-   "why": "删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:881-883，且它在 837 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。",
+   "evidence": "# apps/api/src/better_resume/jobs/queue.py:89-91\n89: async def status(self, task_id: str) -> dict[str, Any] | None:\n90: data = await self._client.hgetall(f\"{self.stream}:status:{task_id}\")\n91: return data or None\n\n# apps/api/scripts/fault_probe.py:875-877\n875: pending = docker(\n876: \"compose\", \"exec\", \"-T\", \"redis\", \"redis-cli\", \"XPENDING\", \"br:jobs\", \"br:workers\"\n877: )",
+   "why": "删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:875-877，且它在 832 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。",
    "fix": "要么把状态面接给真实消费者（报告页轮询/运维接口）保留 status()，要么删到只剩 xlen/pending 并在演练里调 queue.pending()，让键名只有一处来源。"
   },
   {

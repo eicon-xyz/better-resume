@@ -1,9 +1,9 @@
-"""Soak sampling and fault injection for the distributed pieces.
+"""分布式部件的 soak 采样与故障注入。
 
-Everything here talks to the stack through nginx (never straight into a container) and injects
-faults with docker, so the evidence is "what a client saw while Redis/worker were broken".
+这里一切都经 nginx 打到栈上（绝不直连容器），并用 docker 注入故障，所以证据是「Redis/worker
+坏掉时客户端看到了什么」。
 
-Run it through `scripts/fault_injection_drill.sh`, or by hand:
+通过 `scripts/fault_injection_drill.sh` 运行，或手动：
 
     uv run python -m scripts.fault_probe soak --duration 1200
     uv run python -m scripts.fault_probe fault --scenario redis-pause --seconds 20
@@ -34,13 +34,13 @@ import httpx
 from scripts.interview_smoke import ANSWERS, build_resume_pdf
 from scripts.kill_instance_drill import bind_every_scene_to_the_fake
 
-#: A client that waits longer than this is reporting its own patience, not the outage.
+#: 等待超过这个时长的客户端只是在报告它自己的耐心，而不是这次故障。
 PROBE_TIMEOUT_SECONDS = 2.0
 
 DOCKER = shutil.which("docker") or "docker"
-#: The throwaway replica used by the failover drill.
+#: failover 演练使用的一次性副本。
 REPLICA_NAME = "br-redis-replica"
-#: P5: the sentinel-managed drill (compose `drill` profile). One sentinel is enough to ask.
+#: P5：哨兵托管的演练（compose `drill` profile）。问一个哨兵就够了。
 SENTINEL_SERVICE = "redis-sentinel-1"
 SENTINEL_PORT = "26379"
 DEFAULT_MASTER_NAME = "br-master"
@@ -59,7 +59,7 @@ _COUNTER_KEYS = (
 
 
 def docker(*args: str) -> str:
-    """Fixed argv, no shell: the probe only ever runs docker/redis-cli/psql commands."""
+    """固定 argv，不走 shell：探针只跑 docker/redis-cli/psql 命令。"""
     result = subprocess.run(  # noqa: S603
         [DOCKER, *args], capture_output=True, text=True, check=False, timeout=180
     )
@@ -69,7 +69,7 @@ def docker(*args: str) -> str:
 
 
 def parse_replica_link(info: str) -> str:
-    """'up' / 'down' / 'unknown' from a replica's INFO replication output."""
+    """从副本的 INFO replication 输出得到 'up' / 'down' / 'unknown'。"""
     for line in info.splitlines():
         key, _, value = line.strip().partition(":")
         if key == "master_link_status":
@@ -196,7 +196,7 @@ def try_docker(*args: str) -> None:
 
 
 def classify_response(*, status: int | None = None, exc: BaseException | None = None) -> str:
-    """One name per outcome, so a fault window can be read as counts instead of prose."""
+    """每种结果一个名字，让故障窗口能读成计数而不是散文。"""
     if exc is not None:
         if isinstance(exc, httpx.TimeoutException):
             return "timeout"
@@ -299,7 +299,7 @@ def failover_report(verdict: str) -> tuple[int, str]:
 
 
 def summarise_waves(waves: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate per-wave counters plus the first->last growth of the sampled gauges."""
+    """聚合每轮计数，外加被采样仪表值从首轮到末轮的增长。"""
     kinds: dict[str, int] = {}
     for wave in waves:
         for key in _COUNTER_KEYS:
@@ -336,12 +336,12 @@ def summarise_waves(waves: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-# ---- gauges ---------------------------------------------------------------------
+# ---- 仪表 -----------------------------------------------------------------------
 
 
 def redis_gauges() -> dict[str, float]:
-    """Keys, sessions and memory. Sessions are the probe's own churn (30-day TTL), so the
-    interesting number is everything else plus the memory trend."""
+    """key、会话与内存。会话是探针自己制造的churn（30 天 TTL），所以真正有意义的数字是
+    其余部分加内存趋势。"""
     keys = docker("compose", "exec", "-T", "redis", "redis-cli", "DBSIZE")
     sessions = docker(
         "compose", "exec", "-T", "redis", "redis-cli", "--scan", "--pattern", "session:*"
@@ -389,7 +389,7 @@ def api_memory_mb() -> float:
     return round(total, 1)
 
 
-# ---- probes ---------------------------------------------------------------------
+# ---- 探针 -----------------------------------------------------------------------
 
 
 def _session_payload() -> dict[str, str]:
@@ -397,10 +397,10 @@ def _session_payload() -> dict[str, str]:
 
 
 async def probe_once(client: httpx.AsyncClient, *, create_session: bool = True) -> str:
-    """Liveness plus a Redis/DB read; only some probes write a new session.
+    """存活检查加一次 Redis/DB 读取；只有部分探针会写新会话。
 
-    Creating a session on every probe would dwarf every other Redis number (30-day TTL),
-    so the soak logs in once and re-reads "/auth/me" for the rest of the run."""
+    每次探针都创建会话会让其他所有 Redis 数字相形见绌（30 天 TTL），所以 soak 只登录一次，
+    其余时间重读 "/auth/me"。"""
     try:
         health = await client.get("/healthz", timeout=PROBE_TIMEOUT_SECONDS)
     except httpx.HTTPError as exc:
@@ -460,7 +460,7 @@ async def run_wave(
 ) -> dict[str, int]:
     counts: dict[str, int] = {}
     for index in range(requests):
-        create = index < logins  # a couple of writes per wave, then reads only
+        create = index < logins  # 每轮几次写，之后只读
         outcome = await probe_once(client, create_session=create)
         counts[outcome] = counts.get(outcome, 0) + 1
         if (index + 1) % concurrency == 0:
@@ -471,13 +471,11 @@ async def run_wave(
 async def login_with_retry(
     client: httpx.AsyncClient, *, attempts: int = 5, delay: float = 1.0
 ) -> httpx.Response:
-    """P37: a fault experiment leaves brief stale connections behind, and a 503 is the
-    documented "dependency is down" answer — retry the login instead of aborting the
-    next experiment on one bad response.
+    """P37：故障实验会留下短暂的陈旧连接，而 503 是文档化的「依赖不可用」回答——重试登录，
+    而不是因为一个坏响应就中止下一个实验。
 
-    The soak grew this loop first ("observed after a failover"); worker-crash runs straight
-    after the failover experiment and hit the same 503, so the loop lives here now and both
-    callers share it.
+    这个循环先在 soak 里长出来（"observed after a failover"）；worker-crash 紧跟在 failover
+    实验之后运行并撞上同一个 503，所以循环现在住在这里，两个调用方共用。
     """
     response = await client.post("/api/v1/auth/session", json=_session_payload())
     for attempt in range(attempts - 1):
@@ -491,12 +489,11 @@ async def login_with_retry(
 
 
 def write_json(path: str, payload: dict[str, Any]) -> None:
-    """P39: never lose a run to a missing directory.
+    """P39：绝不因为目录缺失而弄丢一次运行。
 
-    An hour-long soak finished, passed, and then died writing its evidence: `verify.sh --layer
-    soak` runs with cwd=apps/api, so `--json var/evidence/soak-60m.json` pointed at
-    apps/api/var/evidence/ (which does not exist) while the weekly workflow collects
-    var/evidence/ from the repo root.
+    一次长达一小时的 soak 跑完、通过，却在写证据时死掉：`verify.sh --layer soak` 以
+    cwd=apps/api 运行，所以 `--json var/evidence/soak-60m.json` 指向 apps/api/var/evidence/
+    （不存在），而每周工作流是从仓库根收集 var/evidence/。
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -506,11 +503,9 @@ def write_json(path: str, payload: dict[str, Any]) -> None:
 async def wait_until_the_stack_is_usable(
     client: httpx.AsyncClient, *, model: str, budget_seconds: float, delay: float = 2.0
 ) -> None:
-    """worker-crash runs straight after the failover experiment puts the original
-    master back, and the scene/registry caches answer 503 for a while after that
-    ("dependency unavailable"). The experiment is about reclaiming a crashed consumer's job,
-    not about surviving a cold cache — so wait for the stack to be usable, and still fail
-    loudly if it never is.
+    """worker-crash 紧跟在 failover 实验把原主放回之后运行，之后一段时间场景/注册表缓存会
+    回 503（"dependency unavailable"）。这个实验关心的是回收崩溃消费者的作业，不是在冷缓存
+    下存活——所以等栈可用，若始终不可用仍要大声失败。
     """
     try:
         async with asyncio.timeout(budget_seconds):
@@ -592,8 +587,8 @@ async def fault(args: argparse.Namespace) -> int:
         elif args.scenario == "redis-partition":
             redis_ct = service_container("redis")
             network = compose_network(redis_ct)
-            # A session must exist BEFORE the cut, otherwise /auth/me answers 401 for the
-            # (correct) reason "no cookie" and hides the question we are actually asking.
+            # 会话必须在切断之前就存在，否则 /auth/me 会以（正确的）原因「没有 cookie」回 401，
+            # 掩盖我们真正在问的问题。
             login = await client.post("/api/v1/auth/session", json=_session_payload())
             login.raise_for_status()
             # 先等共享桶就位：上一个实验可能刚把限流器打进降级冷却窗口（默认 30s）。
@@ -677,7 +672,7 @@ async def fault(args: argparse.Namespace) -> int:
                             notes.append(f"auth_during_partition={type(exc).__name__}")
                 await asyncio.sleep(0.2)
         finally:
-            # The drill must never leave the stack cut off, whatever happened above.
+            # 无论上面发生了什么，演练都绝不能把栈留在被切断的状态。
             if args.scenario == "redis-partition":
                 docker("network", "connect", "--alias", "redis", network, redis_ct)
         if args.scenario == "redis-partition":
@@ -844,14 +839,13 @@ asyncio.run(main())
 
 
 async def worker_crash(args: argparse.Namespace) -> int:
-    """A consumer that dies holding a job must not lose it: the worker reclaims it.
+    """持有作业的消费者死掉不能把作业弄丢：worker 会回收它。
 
-    The job is claimed by a one-off container that exits without acking, which is exactly
-    what a crash looks like from Redis' side; the real worker then has to take it over
-    through XPENDING+XCLAIM once the entry has been idle for the reclaim threshold.
+    作业被一个领取后不 ack 就退出的一次性容器拿走，这正是崩溃在 Redis 眼里的样子；一旦该条目
+    空闲超过回收阈值，真正的 worker 就必须通过 XPENDING+XCLAIM 接管它。
     """
     async with httpx.AsyncClient(base_url=args.base, trust_env=False, timeout=60.0) as client:
-        # Rebinding scenes needs a session, and the previous experiment may still be settling.
+        # 重新绑定场景需要会话，而上一个实验可能还在稳定中。
         await wait_until_the_stack_is_usable(
             client, model=args.model, budget_seconds=args.ready_timeout
         )

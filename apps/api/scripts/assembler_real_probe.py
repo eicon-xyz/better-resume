@@ -1,15 +1,14 @@
-"""replay REAL Bailian Paraformer-realtime increments through the M4 sentence pool.
+"""通过 M4 句池重放真实百炼 Paraformer-realtime 增量。
 
-The xunfei AST adapter is the production user of AstTranscriptionAssembler, and its vendor
-needs credentials this repo does not have. This probe drives the same pool with real
-Paraformer increments instead: every result-generated re-sends the current sentence
-(cumulative, sometimes corrected) with begin/end times — the "vendor re-sent a sentence"
-shape that AstPacket(pgs=None) exists for.
+讯飞 AST 适配器是 AstTranscriptionAssembler 的生产使用者，而它的供应商需要本仓库没有的
+凭据。本探针改用真实的 Paraformer 增量驱动同一个句池：每次 result-generated 都会重发当前
+句子（累计、有时是纠正后的）连同 begin/end 时间——这正是 AstPacket(pgs=None) 为之存在的
+「供应商重发了句子」形态。
 
-It prints both sides (vendor sentences vs pool snapshots) so the evidence file can state
-what the pool does with real rewrite patterns, and asserts the invariant we rely on.
+它打印两侧（供应商句子 vs 句池快照），让证据文件能说明句池面对真实重写模式时的行为，并断言
+我们依赖的不变式。
 
-Usage: uv run python scripts/assembler_real_probe.py [--wav PATH]
+用法：uv run python scripts/assembler_real_probe.py [--wav PATH]
 """
 
 from __future__ import annotations
@@ -40,7 +39,7 @@ def read_pcm(path: pathlib.Path) -> bytes:
 
 
 async def collect(settings, pcm: bytes) -> list[dict]:
-    """One real vendor call; returns the raw sentence frames in arrival order."""
+    """一次真实供应商调用；按到达顺序返回原始句子帧。"""
     ws_url = settings.media.asr_ws_url or derive_realtime_ws_url(settings.media.asr_url)
     headers = {
         "Authorization": f"Bearer {settings.dashscope_api_key}",

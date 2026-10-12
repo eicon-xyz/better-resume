@@ -1,9 +1,9 @@
-"""Validate the bundled fundamentals corpus (D23).
+"""校验随包发布的基础知识语料（D23）。
 
-Structure and quotas only: the corpus is data shipped with the package, so a build that drops
-the file, breaks its JSON or starves a topic must fail here rather than at question time.
+只查结构与配额：语料是随包发布的数据，所以丢文件、坏 JSON 或让某个主题挨饿的构建必须在这里
+失败，而不是等到出题时才炸。
 
-Run from apps/api:
+在 apps/api 下运行：
     uv run python scripts/check_corpus.py
 """
 
@@ -26,7 +26,7 @@ MIN_SOURCES = 12
 
 
 def problems(entries: Sequence[CorpusEntry]) -> list[str]:
-    """Every reason this corpus must not ship; empty means it is good to go."""
+    """这份语料不能发布的每一条理由；为空表示可以发布。"""
     found: list[str] = []
     if not MIN_ENTRIES <= len(entries) <= MAX_ENTRIES:
         found.append(f"entry count {len(entries)} is outside {MIN_ENTRIES}-{MAX_ENTRIES}")
@@ -60,7 +60,7 @@ def problems(entries: Sequence[CorpusEntry]) -> list[str]:
 def main() -> int:
     try:
         entries = load_corpus()
-    except Exception as error:  # noqa: BLE001 - the loader already names the offending file
+    except Exception as error:  # noqa: BLE001 - loader 已点名出问题的文件
         print(f"corpus unreadable: {error}")
         return 1
 
