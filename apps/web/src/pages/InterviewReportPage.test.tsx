@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -142,7 +142,8 @@ describe("InterviewReportPage", () => {
   it("replays every turn including the follow-up", async () => {
     renderReport(fakeClient());
 
-    expect(await screen.findByText("讲讲你的项目")).toBeInTheDocument();
+    const group = await screen.findByRole("region", { name: "讲讲你的项目" });
+    expect(within(group).getByText("讲讲你的项目")).toBeInTheDocument();
     expect(screen.getByText("我的回答：我重构了写入链路")).toBeInTheDocument();
     expect(screen.getByText("当时为什么这么选？")).toBeInTheDocument();
     expect(screen.getByText("追问")).toBeInTheDocument();
@@ -157,6 +158,24 @@ describe("InterviewReportPage", () => {
       await screen.findByText(/未生成总结（模型不可用或未配置）/),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("综合得分")).toHaveTextContent("72.5");
+  });
+
+  it("waits for the summary while it is still generating", async () => {
+    renderReport(fakeClient({ ...REPORT, summary: null, summary_pending: true }));
+
+    expect(await screen.findByText("总结生成中…")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/未生成总结（模型不可用或未配置）/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the degraded summary copy when nothing is pending", async () => {
+    renderReport(fakeClient({ ...REPORT, summary: null, summary_pending: false }));
+
+    expect(
+      await screen.findByText(/未生成总结（模型不可用或未配置）/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("总结生成中…")).not.toBeInTheDocument();
   });
 
   it("notes when dimensions had to be synthesised", async () => {
@@ -203,49 +222,55 @@ describe("InterviewReportPage", () => {
   it("opens only the first question group by default", async () => {
     renderReport(fakeClient(GROUPED));
 
-    const first = await screen.findByRole("button", { name: "第 1 题 · 主问题一" });
-    const second = screen.getByRole("button", { name: "第 2 题 · 主问题二" });
+    const first = await screen.findByRole("button", { name: "主问题一" });
+    const second = screen.getByRole("button", { name: "主问题二" });
 
     expect(first).toHaveAttribute("aria-expanded", "true");
     expect(second).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("主问题一")).toBeInTheDocument();
-    expect(screen.queryByText("主问题二")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "主问题一" })).getByText("主问题一"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "主问题二" })).not.toBeInTheDocument();
   });
 
   it("toggles one question group from its header", async () => {
     renderReport(fakeClient(GROUPED));
 
-    const first = await screen.findByRole("button", { name: "第 1 题 · 主问题一" });
+    const first = await screen.findByRole("button", { name: "主问题一" });
     fireEvent.click(first);
     expect(first).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("主问题一")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "主问题一" })).not.toBeInTheDocument();
 
     fireEvent.click(first);
     expect(first).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("主问题一")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "主问题一" })).getByText("主问题一"),
+    ).toBeInTheDocument();
   });
 
   it("expands and collapses every question group at once", async () => {
     renderReport(fakeClient(GROUPED));
 
-    expect(await screen.findByRole("button", { name: "第 2 题 · 主问题二" })).toHaveAttribute(
+    expect(await screen.findByRole("button", { name: "主问题二" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "全部展开" }));
-    expect(screen.getByRole("button", { name: "第 2 题 · 主问题二" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "主问题二" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    expect(screen.getByText("主问题二")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "主问题二" })).getByText("主问题二"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "全部收起" }));
-    expect(screen.getByRole("button", { name: "第 2 题 · 主问题二" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "主问题二" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
-    expect(screen.queryByText("主问题二")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "主问题二" })).not.toBeInTheDocument();
   });
 
   it("shows a thin-sample badge instead of a score for a category without one", async () => {

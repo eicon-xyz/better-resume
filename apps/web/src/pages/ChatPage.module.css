@@ -26,6 +26,14 @@
   padding: var(--br-space-3) var(--br-space-4) 0;
 }
 
+.sessionTitle {
+  margin: 0 auto 0 0;
+  overflow: hidden;
+  font-size: var(--br-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .modelPicker {
   display: flex;
   align-items: center;

@@ -28,10 +28,16 @@ export function AppShell({ children }: AppShellProps) {
   const queryClient = useQueryClient();
   const session = useSession(api);
   const { pathname } = useLocation();
+  // 对话页内容通栏贴边：内容容器去掉最大宽度与水平内边距，会话侧栏贴窗口左缘。
+  const fullBleed = isActive(pathname, "/chat");
+  // 登录门变体：/chat 与 /interview 未登录时渲染登录门，渐变底衬改由页壳承载，
+  // 顶栏透明叠在渐变上、内容通栏，顶栏结构与导航语义不变。
+  const gateRoute = isActive(pathname, "/chat") || isActive(pathname, "/interview");
+  const gate = gateRoute && !session.isLoading && !session.isAuthenticated;
 
   return (
-    <div className={styles.shell}>
-      <header className={styles.topbar}>
+    <div className={[styles.shell, gate ? styles.shellGate : ""].join(" ")}>
+      <header className={[styles.topbar, gate ? styles.topbarGate : ""].join(" ")}>
         <Link className={styles.brandLink} to="/chat">
           <h1 className={styles.brand}>better-resume</h1>
         </Link>
@@ -69,7 +75,13 @@ export function AppShell({ children }: AppShellProps) {
           ) : null}
         </div>
       </header>
-      <div className={styles.content}>{children}</div>
+      <div
+        className={[styles.content, fullBleed ? styles.contentFull : "", gate ? styles.contentGate : ""].join(
+          " ",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }

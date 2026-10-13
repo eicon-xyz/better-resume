@@ -8,12 +8,6 @@
   background: var(--br-color-surface);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .title {
   margin: 0;
   font-size: var(--br-text-md);
@@ -53,6 +47,12 @@
   overflow-x: auto;
 }
 
+.emptyResult {
+  margin: var(--br-space-2) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
 .item {
   display: flex;
   align-items: center;
@@ -60,11 +60,11 @@
 }
 
 .session {
+  position: relative;
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--br-space-2);
+  flex-direction: column;
+  gap: var(--br-space-1);
   padding: var(--br-space-2) var(--br-space-3);
   /* allow: 会话项发丝边框线宽（1px 几何，选中态复用） */
   border: 1px solid transparent;
@@ -95,7 +95,32 @@
   background: var(--br-color-accent-muted);
 }
 
+/* 选中态渐变左边条：宽度取 --br-space-1（4px），不新增尺寸 token。 */
+.active::before {
+  content: "";
+  position: absolute;
+  inset-block: var(--br-space-1);
+  inset-inline-start: 0;
+  width: var(--br-space-1);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-gradient-hero);
+}
+
 .sessionTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+}
+
+.time {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -121,8 +146,8 @@
 
 @media (min-width: 1024px) {
   .sidebar {
-    /* allow: 会话侧栏固定宽度（260px 版式几何） */
-    width: 260px;
+    /* allow: 会话侧栏固定宽度（300px 版式几何） */
+    width: 300px;
     padding: var(--br-space-4);
     /* allow: 侧栏右分隔线线宽（1px 几何） */
     border-right: 1px solid var(--br-color-border);

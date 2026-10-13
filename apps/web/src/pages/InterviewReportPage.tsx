@@ -84,6 +84,8 @@ export function InterviewReportPage() {
   }
 
   const view = buildReportViewModel(reportQuery.data);
+  // 后端边写边返回：summary_pending 为真时改进建议区显示等待态，不显示降级文案。
+  const summaryPending = reportQuery.data.summary_pending;
   const categories = reportQuery.data.categories ?? [];
   const groups = groupTurns(view.turns);
   const firstGroup = groups[0];
@@ -146,7 +148,12 @@ export function InterviewReportPage() {
       </Card>
 
       <Card title="改进建议">
-        {view.summary ? (
+        {summaryPending ? (
+          <p className={styles.summaryPending}>
+            <Spinner label="正在生成总结" />
+            <span>总结生成中…</span>
+          </p>
+        ) : view.summary ? (
           <p className={styles.summary}>{view.summary}</p>
         ) : (
           <p className={styles.note}>未生成总结（模型不可用或未配置），分数与逐题记录不受影响。</p>
@@ -211,27 +218,28 @@ export function InterviewReportPage() {
         </div>
         <div className={styles.turnGroups}>
           {groups.map((group) => (
-            <Collapsible
-              key={group.key}
-              label={"第 " + group.head.question_no + " 题 · " + group.head.question}
-              open={open.has(group.key)}
-              onToggle={(next) => {
-                const chosen = new Set(open);
-                if (next) chosen.add(group.key);
-                else chosen.delete(group.key);
-                setOpenKeys([...chosen]);
-              }}
-            >
-              <div className={styles.turnList}>
-                {group.turns.map((turn) => (
-                  <TurnCard
-                    key={turn.question_no}
-                    turn={turn}
-                    nested={turn.kind === "follow_up"}
-                  />
-                ))}
-              </div>
-            </Collapsible>
+            <div key={group.key} className={styles.turnGroup}>
+              <Collapsible
+                label={group.head.question}
+                open={open.has(group.key)}
+                onToggle={(next) => {
+                  const chosen = new Set(open);
+                  if (next) chosen.add(group.key);
+                  else chosen.delete(group.key);
+                  setOpenKeys([...chosen]);
+                }}
+              >
+                <div className={styles.turnList}>
+                  {group.turns.map((turn) => (
+                    <TurnCard
+                      key={turn.question_no}
+                      turn={turn}
+                      nested={turn.kind === "follow_up"}
+                    />
+                  ))}
+                </div>
+              </Collapsible>
+            </div>
           ))}
         </div>
       </section>

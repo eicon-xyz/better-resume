@@ -22,7 +22,7 @@
   --br-color-warning: #b45309;
   --br-color-warning-bg: #fdf3e3;
 
-  /* 点缀渐变，只用于 hero / 综合分 / 类别徽章三处，不铺大面。 */
+  /* 点缀渐变，只用于 hero / 综合分 / 类别徽章 / 会话选中态边条四处，不铺大面。 */
   --br-gradient-hero: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   --br-gradient-score: linear-gradient(120deg, #4f46e5 0%, #6366f1 100%);
   --br-gradient-badge: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
@@ -59,6 +59,9 @@
 
   /* 页壳居中内容容器的最大宽度。 */
   --br-width-content: 1200px;
+
+  /* 聊天主区消息列与 composer 的可读宽度上限。 */
+  --br-width-measure: 860px;
 
   --br-duration-fast: 120ms;
   --br-duration-normal: 200ms;

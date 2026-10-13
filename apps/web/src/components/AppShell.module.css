@@ -76,9 +76,39 @@
   margin: 0 auto;
 }
 
+/* 通栏贴边变体：对话页内容不再居中收窄，可读宽度由页内自己控制。 */
+.contentFull {
+  max-width: none;
+  margin: 0;
+}
+
+/* 登录门变体：渐变底衬由页壳承载，覆盖含顶栏的整个视口；顶栏透明叠在渐变上，
+   门面内容通栏并由门面自己居中。 */
+.shellGate {
+  background: linear-gradient(180deg, var(--br-color-accent-muted) 0%, var(--br-color-bg) 62%);
+}
+
+.topbarGate {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+
+.contentGate {
+  max-width: none;
+  margin: 0;
+}
+
 @media (min-width: 1024px) {
   .content {
     padding: 0 var(--br-space-5);
+  }
+
+  .contentFull {
+    padding: 0;
+  }
+
+  .contentGate {
+    padding: 0;
   }
 }
 

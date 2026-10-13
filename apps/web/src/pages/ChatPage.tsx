@@ -70,6 +70,7 @@ export function ChatPage() {
     () => mergeHistory(flattenHistory(historyQuery.data), storeMessages),
     [historyQuery.data, storeMessages],
   );
+  const activeSession = (sessionsQuery.data ?? []).find((item) => item.id === sessionId);
 
   if (session.isLoading) {
     return <p className={styles.loading}>正在检查登录状态…</p>;
@@ -111,6 +112,9 @@ export function ChatPage() {
 
       <main className={styles.main}>
         <div className={styles.contextBar}>
+          {activeSession ? (
+            <h2 className={styles.sessionTitle}>{activeSession.title || "未命名会话"}</h2>
+          ) : null}
           <label className={styles.modelPicker}>
             模型
             <Select
@@ -161,6 +165,15 @@ export function ChatPage() {
             loadingOlder={historyQuery.isFetchingNextPage}
             onLoadOlder={() => {
               void historyQuery.fetchNextPage();
+            }}
+            onSuggestion={(text) => {
+              // chip 填入的是手写内容而非转写 span：清空 span，后续语音按首次贡献追加。
+              transcriptSpanRef.current = "";
+              draftRef.current = text;
+              setDraft(text);
+            }}
+            onStartInterview={() => {
+              void navigate("/interview");
             }}
           />
         </div>

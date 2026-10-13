@@ -13,7 +13,9 @@
 /* composer 卡片：聊天主区底部由 flex 列布局自然吸底，不再叠 position: sticky。 */
 .composer {
   composes: card;
-  margin: var(--br-space-3) var(--br-space-4) var(--br-space-4);
+  width: calc(100% - var(--br-space-4) - var(--br-space-4));
+  max-width: var(--br-width-measure);
+  margin: var(--br-space-3) auto var(--br-space-4);
   box-shadow: var(--br-shadow-sticky);
   transition:
     border-color var(--br-duration-fast),

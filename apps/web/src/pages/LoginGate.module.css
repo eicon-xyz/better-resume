@@ -1,13 +1,65 @@
+/* 登录门门面：居中 hero ＋ 玻璃质感登录卡；低饱和靛蓝渐变底衬由 AppShell 的登录门变体铺满整个视口。
+   玻璃 = 半透明表面（透明度作用于独立表面层，不牵连文字）＋ 发丝边框 ＋ 柔阴影，全部走既有 token。 */
 .gate {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  gap: var(--br-space-6);
+  min-height: 100%;
+  padding: var(--br-space-7) var(--br-space-6);
+}
+
+.hero {
+  text-align: center;
+}
+
+.title {
+  display: inline-block;
+  margin: 0;
+  background: var(--br-gradient-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: var(--br-text-hero);
+  font-weight: 700;
+  line-height: var(--br-leading-tight);
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: var(--br-space-3) 0 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-md);
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
   padding: var(--br-space-6);
+  /* 发丝边框取 border-width 关键字 thin（渲染为 1px），token 集内没有边框宽度档，不新增 allow 白名单 */
+  border: thin solid var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  box-shadow: var(--br-shadow-md);
+}
+
+/* 半透明表面层：只让表面与背后的渐变叠加，正文文字保持完全不透明。 */
+.cardSurface {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--br-color-surface-raised);
+  opacity: 0.82;
+}
+
+.cardBody {
+  position: relative;
 }
 
 .hint {
   margin-top: 0;
+  margin-bottom: var(--br-space-4);
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
 }

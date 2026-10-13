@@ -1,9 +1,77 @@
 .empty {
   display: flex;
   flex: 1;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
+  width: 100%;
+  max-width: var(--br-width-measure);
+  margin-inline: auto;
   padding: var(--br-space-5);
+}
+
+/* 空态 hero：问候语 + 一行说明 + 建议 chips + 行动卡。 */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--br-space-4);
+  width: 100%;
+  margin-top: var(--br-space-3);
+}
+
+.greeting {
+  margin: 0;
+  font-size: var(--br-text-xl);
+  line-height: var(--br-leading-tight);
+}
+
+.note {
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--br-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  padding: var(--br-space-2) var(--br-space-3);
+  border: thin solid var(--br-color-border);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+  font: inherit;
+  font-size: var(--br-text-sm);
+  cursor: pointer;
+  transition:
+    background var(--br-duration-fast),
+    border-color var(--br-duration-fast),
+    color var(--br-duration-fast);
+}
+
+.chip:hover {
+  border-color: var(--br-color-accent);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-accent);
+}
+
+.actionCard {
+  width: 100%;
+  max-width: var(--br-width-measure);
+}
+
+.actionNote {
+  margin: 0 0 var(--br-space-3);
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
 }
 
 .list {
@@ -11,5 +79,14 @@
   flex-direction: column;
   align-items: stretch;
   gap: var(--br-space-4);
+  width: 100%;
+  max-width: var(--br-width-measure);
+  margin-inline: auto;
   padding: var(--br-space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    transition: none;
+  }
 }

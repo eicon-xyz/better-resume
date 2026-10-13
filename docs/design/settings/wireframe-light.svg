@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="856" viewBox="0 0 1280 856">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d5d5e4"/><stop offset="1" stop-color="#f3f3f9"/>
+    </linearGradient>
+    <linearGradient id="gradstrong" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b6b6cc"/><stop offset="1" stop-color="#e4e4ef"/>
+    </linearGradient>
+    <linearGradient id="gategrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e7e7f1"/><stop offset="1" stop-color="#fbfbfd"/>
+    </linearGradient>
+  </defs>
+  <g font-family="WenQuanYi Zen Hei">
+    <rect x="0" y="0" width="1280" height="800" fill="#ffffff"/>
+    <rect x="0" y="0" width="1280" height="56" fill="#fcfcfd"/>
+    <line x1="0" y1="56" x2="1280" y2="56" stroke="#d8d8dc" stroke-width="1"/>
+    <text x="40" y="35" font-size="17" fill="#3f3f45" font-weight="bold">better-resume</text>
+    <text x="230" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">对话</text>
+    <text x="300" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">面试</text>
+    <text x="370" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">AI 设置</text>
+    <circle cx="1132" cy="28" r="12" fill="#ececf0" stroke="#d8d8dc"/>
+    <text x="1152" y="33" font-size="13" fill="#8a8a90">用户区</text>
+    <text x="1240" y="33" font-size="13" fill="#8a8a90" text-anchor="end">退出</text>
+    <text x="64" y="118" font-size="24" fill="#4a4a4a" font-weight="bold">AI 设置</text>
+    <text x="64" y="142" font-size="11.5" fill="#a8a8ae">场景绑定表格：token 全面重修（表头弱化、行 hover、状态徽章、保存反馈）</text>
+    <rect x="1056" y="92" width="160" height="38" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="6 4"/>
+    <text x="1136" y="116" font-size="12.5" fill="#8a8a90" text-anchor="middle">重新加载</text>
+    <text x="64" y="186" font-size="12.5" fill="#6f6f75" font-weight="bold">场景绑定</text>
+    <rect x="40" y="194" width="1176" height="1" fill="#ededf2"/>
+    <rect x="64" y="206" width="1152" height="40" rx="8" fill="#fbfbfc"/>
+    <text x="84" y="231" font-size="11.5" fill="#8a8a90" font-weight="bold">场景</text>
+    <text x="424" y="231" font-size="11.5" fill="#8a8a90" font-weight="bold">模型</text>
+    <text x="764" y="231" font-size="11.5" fill="#8a8a90" font-weight="bold">状态</text>
+    <text x="1050" y="231" font-size="11.5" fill="#8a8a90" font-weight="bold">操作</text>
+    <line x1="64" y1="246" x2="1216" y2="246" stroke="#e2e2e6" stroke-width="1"/>
+    <rect x="64" y="246" width="1152" height="70" rx="8" fill="#ffffff" stroke="#e2e2e6"/>
+    <text x="84" y="288" font-size="12.5" fill="#5a5a62">面试出题</text>
+    <rect x="424" y="265" width="300" height="34" rx="8" fill="#fafafb" stroke="#dcdce4"/>
+    <text x="440" y="287" font-size="11.5" fill="#8a8a90">模型名（已配置）</text>
+    <rect x="764" y="269" width="76" height="26" rx="13" fill="url(#gradstrong)"/>
+    <text x="802" y="286" font-size="10.5" fill="#ffffff" text-anchor="middle">已配置</text>
+    <rect x="1050" y="265" width="150" height="34" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="1125" y="287" font-size="11" fill="#8a8a90" text-anchor="middle">选择模型 ▾</text>
+    <rect x="64" y="322" width="1152" height="70" rx="8" fill="#ffffff" stroke="#e2e2e6"/>
+    <text x="84" y="364" font-size="12.5" fill="#5a5a62">追问裁决</text>
+    <rect x="424" y="341" width="300" height="34" rx="8" fill="#fafafb" stroke="#dcdce4"/>
+    <text x="440" y="363" font-size="11.5" fill="#8a8a90">模型名（已配置）</text>
+    <rect x="764" y="345" width="76" height="26" rx="13" fill="url(#gradstrong)"/>
+    <text x="802" y="362" font-size="10.5" fill="#ffffff" text-anchor="middle">已配置</text>
+    <rect x="1050" y="341" width="150" height="34" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="1125" y="363" font-size="11" fill="#8a8a90" text-anchor="middle">选择模型 ▾</text>
+    <rect x="64" y="398" width="1152" height="70" rx="8" fill="#ffffff" stroke="#e2e2e6"/>
+    <text x="84" y="440" font-size="12.5" fill="#5a5a62">报告评分</text>
+    <rect x="424" y="417" width="300" height="34" rx="8" fill="#fafafb" stroke="#dcdce4"/>
+    <text x="440" y="439" font-size="11.5" fill="#8a8a90">未选择</text>
+    <rect x="764" y="421" width="76" height="26" rx="13" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="802" y="438" font-size="10.5" fill="#8a8a90" text-anchor="middle">未配置</text>
+    <rect x="1050" y="417" width="150" height="34" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="1125" y="439" font-size="11" fill="#8a8a90" text-anchor="middle">选择模型 ▾</text>
+    <rect x="64" y="474" width="1152" height="70" rx="8" fill="#ffffff" stroke="#e2e2e6"/>
+    <text x="84" y="516" font-size="12.5" fill="#5a5a62">对话回复</text>
+    <rect x="424" y="493" width="300" height="34" rx="8" fill="#fafafb" stroke="#dcdce4"/>
+    <text x="440" y="515" font-size="11.5" fill="#8a8a90">模型名（已配置）</text>
+    <rect x="764" y="497" width="76" height="26" rx="13" fill="url(#gradstrong)"/>
+    <text x="802" y="514" font-size="10.5" fill="#ffffff" text-anchor="middle">已配置</text>
+    <rect x="1050" y="493" width="150" height="34" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="1125" y="515" font-size="11" fill="#8a8a90" text-anchor="middle">选择模型 ▾</text>
+    <text x="64" y="606" font-size="10.5" fill="#a8a8ae">行 hover / active 状态由样式层给出；表头弱化、行分隔线细边框</text>
+    <text x="64" y="628" font-size="10.5" fill="#a8a8ae">输入控件统一为样式化 Input / Select（不裸用原生控件）</text>
+    <text x="64" y="650" font-size="10.5" fill="#a8a8ae">凭据脱敏：表格内不显示任何密钥或真实账号</text>
+    <rect x="64" y="672" width="1152" height="104" rx="10" fill="#fbfbfc" stroke="#d5d5d8" stroke-width="1.5"/>
+    <text x="84" y="700" font-size="12" fill="#6f6f75" font-weight="bold">保存按钮状态反馈</text>
+    <rect x="264" y="686" width="120" height="32" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="324" y="707" font-size="11.5" fill="#8a8a90" text-anchor="middle">保存中…</text>
+    <rect x="400" y="686" width="120" height="32" rx="8" fill="url(#gradstrong)"/>
+    <text x="460" y="707" font-size="11.5" fill="#ffffff" text-anchor="middle">已保存</text>
+    <rect x="1080" y="700" width="116" height="44" rx="8" fill="url(#gradstrong)"/>
+    <text x="1138" y="728" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">保存</text>
+    <text x="84" y="756" font-size="10.5" fill="#a8a8ae">保存中 / 已保存两态徽章，成功后短暂提示；失败回滚并报错</text>
+    <rect x="0" y="800" width="1280" height="56" fill="#fbfbfc"/>
+    <line x1="0" y1="800" x2="1280" y2="800" stroke="#e2e2e6" stroke-width="1"/>
+    <text x="40" y="826" font-size="12" fill="#7a7a82" font-weight="bold">线框 · SH-18 · 设置页（AI 场景绑定）（灰阶线框，等比例重构）</text>
+    <text x="40" y="844" font-size="10.5" fill="#a8a8ae">依据 docs/tickets/p14-web-redesign/README.md §1.4 提案 · 视口 1280x800 · 图内均为占位标签，无真实个人信息</text>
+    <text x="1240" y="826" font-size="10.5" fill="#a8a8ae" text-anchor="end">源文件 docs/design/settings/wireframe-light.svg</text>
+    <text x="1240" y="844" font-size="10.5" fill="#a8a8ae" text-anchor="end">渲染件 wireframe-light.png</text>
+    <rect x="0.5" y="0.5" width="1279" height="855" fill="none" stroke="#d8d8dc"/>
+  </g>
+</svg>
