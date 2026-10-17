@@ -6,23 +6,17 @@
 
 ## 1. 当前状态
 
-**`origin/main` = `353b4b5`（CI 绿），没有挂起的 PR。本地 `main` = `cb439e7`，落后 4 个 commit（坑见 §4）。**
+**快照 2026-10-17。当前分支 `p14-web-redesign`（已推 `origin`；领先 `origin/main`（`353b4b5`）25 个 commit）。没有挂起的 PR——建 PR、合并、往 main 推进均由用户做。**
 
-- **两个在飞阶段，都还没有 PR**：
-  - `p11-resume-driven-questions`（同名分支）= 全量文档清理 + 简历驱动的分类出题 + 验收包状态订正；
-    **待用户验收**（对账与未验证项见 `docs/tickets/p11-resume-driven-questions/ACCEPTANCE.md`）。
-  - `p12-intent-alignment`（同名分支，**叠在 P11 之上**）= 意图对齐与验收减负（评审必答问题、高风险面清单、
-    票据与验收包必填段、跨模型交接格式）+ 规则成本检验与三轮机制消融记录；**用户已验收**（2026-10-11），
-    见 `docs/tickets/p12-intent-alignment/ACCEPTANCE.md`。
-  - 两个分支都已推送到 `origin` 并设了 upstream。**PR 顺序必须是 P11 → P12**（见下条）。
-- **P12 依赖 P11，不能先合**：`D23` 由 `84f622b` 引入，`origin/main` 上没有（`git show origin/main:docs/DECISIONS.md | grep -c D23` → 0），
-  而 P12 的文档引用 D23 共 7 处。
-- 分支 `docs/cleanup-current-state`（`84f622b`）的内容已被 `p11-resume-driven-questions` 包含。
-
-- 已合并：M0–M6、V、P1–P10。代码即事实：验证入口 `bash scripts/verify.sh --list`。
+- **p15（让代码库对智能体友好）已收口归档**：票据 / 验收包（`ACCEPTANCE.md`，偏差表已由用户追认）/ 双轴评审 / PROBLEMS 台账 → `docs/history_docs/tickets/p15-agent-friendly-architecture/`。
+- **p14（web redesign）改动在分支顶部**：`58ea96e`（web 页面与视觉）+ `0391036`（工具、后端缝与文档）；待人工测试（`docs/MANUAL-TESTING.md` §1）与合并裁定。
+- 在飞票据目录 `docs/tickets/`（p11–p14）；阶段收口后按 `docs/agents/issue-tracker.md` 归档到 `docs/history_docs/tickets/`。
+- 已合并：M0–M6、V、P1–P10（合并进度以 GitHub 为准）。代码即事实：验证入口 `bash scripts/verify.sh --list`。
 - 验证网：CI 双 job 与本地走同一份分层命令（`scripts/verify.sh`）；`nightly`（每日 02:30 UTC，deploy + quick fault）
   与 `weekly-full`（周日 03:00 UTC，全量故障 + 60min 浸泡）是定时兜底。`schedule` 只认默认分支。
-- 收口口径：`bash scripts/verify.sh --layer all` 全绿 + 后端全量 pytest（带 `BR_*` env、`--junitxml` 读数）。
+  `--layer scripts` 含八道自带 `--selftest` 的门禁（凭据 / 历史叙事 / 引证 / hermetic / 写入路径 / 票据结构 / PR 状态 / 部署默认值声明）。
+- 收口口径：`bash scripts/verify.sh --layer all` 全绿 + 后端全量 pytest（`BR_*` env、`--junitxml` 读数；全量用**自建隔离库**——共享库会被并行跑污染）
+  + `python3 scripts/verify_audit_evidence.py --strict` 全绿。
 
 ## 2. 仓库与流程约定
 
@@ -102,6 +96,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
 | `GLOSSARY.md` | 域词汇表（**先读它**）；术语以外的实现细节不进这个文件 |
 | `apps/api/src/better_resume/interview_engine/corpus/questions.json` | 随包发布的八股参考题语料（120 条 / 10 个 topic / 43 个来源页）。**更新方式**：改 JSON 后跑 `cd apps/api && uv run python scripts/check_corpus.py`（条数 100–150、每 topic ≥ 8、来源去重 ≥ 12、id 与题干不重复、URL 必须 https）；缺文件或坏 JSON 是发布缺陷——加载器抛 `CorpusError`，由 `tests/interview_engine/test_corpus.py` 钉住 |
 | `docs/agents/subagents.md` | 用子智能体干活的操作约定 |
+| `scripts/verify_secrets.sh` / `verify_docs_hygiene.sh` / `verify_citations.sh` / `verify_write_scope.sh` / `verify_hermetic.py` / `ticket_frontier.sh` / `pr_state.sh` / `deploy_defaults.sh` | 自带 `--selftest` 的门禁（坏输入必红、豁免逐条注明）；判据只在脚本内，已接进 `scripts/verify.sh --layer scripts` |
 
 ## 4. 本机环境事实与坑
 

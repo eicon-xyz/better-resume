@@ -112,9 +112,9 @@ build_scripts() {
   # 也顺带守住这个 helper 的语法（它不在 check_scripts.py 的扫描范围里）。
   add all "python3 skills/verify-delivery/check_copy.py --selftest"
   add all "bash scripts/ticket_frontier.sh --selftest"
-  # --check 只认在飞阶段目录：更早阶段的票头部没有 Status 行（历史格式），全量循环会把票面
-  # 格式欠账算成本层的红。那些阶段收口按 docs/agents/issue-tracker.md 补齐头部后再纳入。
-  add all "bash scripts/ticket_frontier.sh --check docs/tickets/p15-agent-friendly-architecture"
+  # --check 作用于「有 Status 头的在飞阶段」：票头未分类的历史阶段响亮跳过（不吞红——检查失败仍退非 0），
+  # 新阶段按 docs/agents/issue-tracker.md 带 Status 头即自动纳入全量结构校验。
+  add all "for d in docs/tickets/*/; do if grep -ql \"^Status:\" \"\$d\"T*.md 2>/dev/null; then bash scripts/ticket_frontier.sh --check \"\$d\" || exit 1; else echo \"ticket_frontier: 跳过未分类阶段 \$d（票头无 Status 行）\"; fi; done"
   # 写入路径越界门禁（p15 建议 12 的工具半边）：只接自检；逐票真判定用 --check <票> --paths-from <本轮清单>。
   add all "bash scripts/verify_write_scope.sh --selftest"
   add api "cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py tests/test_web_style_guards.py"
