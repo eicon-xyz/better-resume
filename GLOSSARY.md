@@ -83,6 +83,9 @@ _Avoid_: 模型列表、model list
 **阶段**：一次收口的推进单位（M0–M6、V、P1–P7…），一个阶段一个票据目录、一条分支、一份验收包。
 _Avoid_: 迭代、sprint
 
+**线框提案**：施工前用文字给出的逐页「现状 vs 提案」版式对照，经逐页确认后才动工的设计决策机制。
+_Avoid_: wireframe（指图形线框时才用）、设计稿
+
 **决议**：写进 `docs/DECISIONS.md` 的编号条目（D01…），是本仓库的 ADR；与其它文档冲突时以它为准。
 _Avoid_: ADR 文件、decision record
 

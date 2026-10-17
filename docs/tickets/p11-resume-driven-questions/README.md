@@ -20,12 +20,12 @@
 | 出题**已经读简历**：`render_context` 注入 name/email/phone + 每段 title+≤12 bullets + ≤30 skills + ≤6 projects | `prompts.py:43-60` |
 | 但**不传 section 的 key**，模型只看到标题文字 | `prompts.py:50-54` |
 | `experience` 一个 key 同时吞掉「工作经历」与「实习经历」（首命中即止）→ 两者被**抹平** | `sections.py:15-22,46-51` |
-| 题目**没有类别字段**，唯一类型字段是 `kind` ∈ {main, follow_up} | `orm.py:72-95`；`question_service.py:197` |
+| 题目**没有类别字段**，唯一类型字段是 `kind` ∈ {main, follow_up} | `apps/api/src/better_resume/interview_engine/orm.py:100-125`；`question_service.py:197` |
 | 模型**本来就返回 `topic`**，但持久化时被丢弃 | `prompts.py:18-21` → `question_service.py:189-202` |
-| 报告四维只按 主问题 / 追问题 两个桶聚合 | `report_service.py:251-257`；`dimensions` 是 JSONB（`orm.py:166-168`） |
+| 报告四维只按 主问题 / 追问题 两个桶聚合 | `report_service.py:251-257`；`dimensions` 是 JSONB（`apps/api/src/better_resume/interview_engine/orm.py:196-198`） |
 | `interview_sessions.interview_type` 是**现成但闲置**的自由文本 | `interview.py:104-108`（存下+展示，未参与出题） |
 | 题量恒为 5（前端不传 count；接口 default=5，clamp 1–10） | `interview.py:129`；`prompts.py:81-82` |
-| 解析产物 `ResumeContext` **不落库**（只存 `resume_path`/`sha256`） | `orm.py:47-65`；`storage.py:17-33` |
+| 解析产物 `ResumeContext` **不落库**（只存 `resume_path`/`sha256`） | `apps/api/src/better_resume/interview_engine/orm.py:70-71`；`storage.py:17-33` |
 
 ### 1.3 本阶段要做的六件事
 

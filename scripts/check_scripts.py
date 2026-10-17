@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Syntax sweep for every script that is not covered by the app test suite.
+"""对未被应用测试覆盖的每个脚本做语法扫描。
 
-Why this exists (retro 2026-10-06): `scripts/*.sh` and the repo-level `scripts/*.py` had no
-guardrail at all - `verify.sh` ran the drill scripts' pytest but never looked at the shell
-scripts beside them, so a proof script that always exited 0 shipped through a green CI.
-It also promotes SyntaxWarning to an error: an invalid escape sequence in a docstring is a
-latent bug, and `apps/api/tests/test_source_hygiene.py` only guards the app package.
+存在理由（retro 2026-10-06）：`scripts/*.sh` 与仓库级 `scripts/*.py` 此前没有任何护栏——
+`verify.sh` 会跑演练脚本的 pytest，却从不看同目录下的 shell 脚本，于是一个永远退出 0 的
+证明脚本能穿过绿色 CI。这里还把 SyntaxWarning 提升为错误：docstring 里的非法转义序列是
+潜在缺陷，而 `apps/api/tests/test_source_hygiene.py` 只守应用包。
 
-Usage: uv run --project apps/api python scripts/check_scripts.py
+用法：uv run --project apps/api python scripts/check_scripts.py
 """
 from __future__ import annotations
 

@@ -41,6 +41,7 @@ from .resilient import ResilientAiResilience
 from .singleflight import Flight, FlightState, SingleFlight
 from .stream import StreamBroadcast
 from .timeout import with_timeout, wrap_stream_timeout
+from .wait import wait_until
 
 __all__ = [
     "AiInvalid",
@@ -84,6 +85,7 @@ __all__ = [
     "SystemWallClock",
     "TokenBucket",
     "WallClock",
+    "wait_until",
     "with_timeout",
     "wrap_stream_timeout",
     "UnimplementedAiResilience",

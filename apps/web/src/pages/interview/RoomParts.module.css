@@ -1,19 +1,33 @@
+/* 面试间零件：问题卡（题面 / 要点标签 / 类别徽章）、反馈卡与 composer 卡片。 */
+
 .questionHeader {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--br-space-3);
 }
 
 .questionNo {
+  /* allow: 题号列最小宽度（32px 列表几何） */
   min-width: 32px;
   color: var(--br-color-accent);
   font-family: var(--br-font-mono);
   font-size: var(--br-text-lg);
 }
 
+/* 类别徽章：§1.5 允许的渐变点缀之一。 */
+.categoryBadge {
+  padding: var(--br-space-1) var(--br-space-2);
+  border-radius: var(--br-radius-xs);
+  background: var(--br-gradient-badge);
+  color: var(--br-color-accent);
+  font-size: var(--br-text-xs);
+  font-weight: 600;
+}
+
 .badge {
-  padding: 2px var(--br-space-2);
-  border-radius: var(--br-radius-pill);
+  padding: var(--br-space-1) var(--br-space-2);
+  border-radius: var(--br-radius-xs);
   background: var(--br-color-surface);
   color: var(--br-color-text-muted);
   font-size: var(--br-text-xs);
@@ -21,14 +35,30 @@
 
 .questionText {
   margin: var(--br-space-3) 0 0;
-  font-size: var(--br-text-lg);
+  font-size: var(--br-text-xl);
   line-height: var(--br-leading-tight);
 }
 
 .points {
-  margin: var(--br-space-2) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--br-space-2);
+  margin-top: var(--br-space-3);
+}
+
+.pointsLabel {
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
+}
+
+.pointList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--br-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .feedbackHeader {
@@ -58,37 +88,126 @@
   font-size: var(--br-text-sm);
 }
 
+/* composer 卡片化：吸底浮起的作答卡片，focus 时描边转 accent。 */
 .composer {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--br-z-overlay);
   display: flex;
   flex-direction: column;
   gap: var(--br-space-2);
-  padding: var(--br-space-3) var(--br-space-4) var(--br-space-4);
-  border-top: 1px solid var(--br-color-border);
-  background: var(--br-color-bg);
+  margin: var(--br-space-3) var(--br-space-4) var(--br-space-4);
+  padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 作答卡片边框线宽（1px 几何） */
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-surface-raised);
+  box-shadow: var(--br-shadow-sticky);
+  transition:
+    border-color var(--br-duration-fast),
+    box-shadow var(--br-duration-normal);
 }
 
-.actions {
-  display: flex;
-  justify-content: flex-end;
+.composer:focus-within {
+  border-color: var(--br-color-accent);
+  box-shadow: var(--br-shadow-md);
 }
 
-.progress {
-  position: relative;
+.composerFooter {
   display: flex;
   align-items: center;
   gap: var(--br-space-3);
 }
 
-.progressBar {
-  height: 6px;
-  min-width: 40px;
+.shortcutHint {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+  white-space: nowrap;
+}
+
+.counter {
+  margin-left: auto;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+}
+
+/* 录音指示点：只在 recording 时随按钮一起渲染。 */
+.recDot {
+  width: var(--br-space-2);
+  height: var(--br-space-2);
   border-radius: var(--br-radius-pill);
-  background: var(--br-color-accent);
-  transition: width var(--br-duration-normal);
+  background: var(--br-color-danger);
+  animation: recPulse calc(var(--br-duration-normal) * 4) ease-in-out infinite alternate;
+}
+
+@keyframes recPulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* 进度步骤条：一题一格，状态由 answered / total 推导。 */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-3);
+  flex: 1;
+  min-width: 0;
 }
 
 .progressLabel {
-  color: var(--br-color-text-muted);
+  color: var(--br-color-text);
   font-size: var(--br-text-sm);
+  font-weight: 600;
   white-space: nowrap;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.step {
+  flex: 1;
+  /* allow: 步骤条高度（6px 几何） */
+  height: 6px;
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-surface);
+  transition: background var(--br-duration-normal);
+}
+
+.step[data-state="done"] {
+  background: var(--br-color-accent-muted);
+}
+
+.step[data-state="current"] {
+  background: var(--br-color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer {
+    transition: none;
+  }
+
+  .recDot {
+    animation: none;
+  }
+
+  .step {
+    transition: none;
+  }
 }

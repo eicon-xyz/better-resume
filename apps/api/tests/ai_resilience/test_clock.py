@@ -8,6 +8,8 @@ import pytest
 
 from better_resume.ai_resilience import ManualClock, SystemClock
 
+from ..support import settle
+
 
 def test_system_clock_is_monotonic_and_sleeps() -> None:
     clock = SystemClock()
@@ -29,15 +31,15 @@ async def test_manual_clock_does_not_wait_in_real_time() -> None:
         await clock.sleep(30.0)
 
     task = asyncio.create_task(wait())
-    await asyncio.sleep(0)
+    await settle()
     assert task.done() is False
 
     clock.advance(29.9)
-    await asyncio.sleep(0)
+    await settle()
     assert task.done() is False
 
     clock.advance(0.2)
-    await asyncio.sleep(0)
+    await settle()
     assert task.done() is True
     assert clock.now() == pytest.approx(30.1)
 
@@ -52,13 +54,13 @@ async def test_manual_clock_wakes_only_due_waiters_and_sleep_zero_is_immediate()
         fired.append(name)
 
     tasks = [asyncio.create_task(wait("short", 1.0)), asyncio.create_task(wait("long", 10.0))]
-    await asyncio.sleep(0)
+    await settle()
     clock.advance(1.0)
-    await asyncio.sleep(0)
+    await settle()
     assert fired == ["short"]
 
     clock.advance(9.0)
-    await asyncio.sleep(0)
+    await settle()
     assert fired == ["short", "long"]
 
     await clock.sleep(0)

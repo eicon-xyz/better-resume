@@ -14,7 +14,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 
 ---
 
-## 1. 决议表（D01-D23）
+## 1. 决议表（D01-D26）
 
 | # | 决议 | 内容 |
 | --- | --- | --- |
@@ -22,9 +22,9 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 | D02 | 后端框架 | Python 3.12 + FastAPI + **SQLAlchemy 2.0 async** + Alembic 迁移；async_sessionmaker 挂 lifespan，全项目统一 get_session 依赖 |
 | D03 | 存储 | **Postgres（关系表 + JSONB）+ Redis 双件套**；砍掉 Mongo（消息/快照/记录入 JSONB，GIN 索引），消除原项目跨三库非原子的坏味道 |
 | D04 | LLM 编排 | **自研轻量编排**：表驱动状态机 + 追问裁决纯函数 + openai 兼容 SDK 直连 + Pydantic response_schema 强校验；**不引 LangChain**；保留 XingyunWorkflowAdapter 作第二 adapter（真接缝，非死代码） |
-| D05 | 前端 | React 19 + **Vite SPA** + TanStack Query + **zustand**（砍 Redux）+ shadcn/ui；移植原项目 lib 四件套（request/streamLimiter/audioTranscription/errors）与 controller-hook 模式 |
+| D05 | 前端 | React 19 + **Vite SPA** + TanStack Query + **zustand**（砍 Redux）；移植原项目 lib 四件套（request/streamLimiter/audioTranscription/errors）与 controller-hook 模式 |
 | D06 | 语音供应商 | ASR **保留讯飞 AST**（pgs/rg/seg_id 句池归并算法移植为 Python，独家亮点）；TTS 用 **edge-tts** 起步 + TtsSynthesizer adapter 留位 |
-| D07 | 部署 | 单机 docker compose（api + worker + postgres + redis + nginx）；**分布式单飞只留接口不写 Lua 实现**（诚实原则，吸取原项目「默认关闭的死代码韧性」教训） |
+| D07 | 部署 | 单机 docker compose（api + worker + postgres + redis + nginx） |
 | D08 | 仓库形态 | Monorepo：apps/api（Python/uv）+ apps/web（TS/pnpm）+ docs/ + skills/ |
 | D09 | 范围裁剪 | **砍**：神态分析（摄像头/表情）、独立 Agent 会话模块。**留**：面试全链路（出题→答题→评分→追问→报告/雷达图）、AI 对话（reasoning_content 分流）、ASR 语音答题、TTS 题目播报。会话收敛为 chat + interview 两种，统一 conversation 模块 |
 | D10 | 简历解析 | **自建混合解析器**：pdfplumber 提文本 → 章节启发式（关键词/字号/加粗特征打分 + CJK 回退）→ Pydantic ResumeContext → LLM 只在其上出题。分工哲学：解析不靠 LLM（可测可控），出题才靠 LLM（反幻觉） |
@@ -41,6 +41,9 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 | D21 | 文档落点：术语表与 ADR | 域词汇表用仓库根 **`GLOSSARY.md`**，**取代** D18 里写的 `CONTEXT.md`——与技能默认文件名对齐，少一个自定义名；ADR 仍用仓库既有的 **`docs/DECISIONS.md` 续编 D 号**（不建 `docs/adr/`），因为决议表已是本仓库单一权威，且被票据/验收包互相引用。词汇表只收本仓库特有的**产品域**与**工程过程**词（分两节），**不含实现细节**（Lua / TokenBucket 这类属实现，不进词汇表）；`docs/agents/domain.md`、`AGENTS.md` 的指针同步改。首次落地（2026-10-06）收 **31 词 / 7 节**：面试（7）、会话与消息（3）、语音（3）、模型与场景（3）＋ 阶段与文档（4）、验证（9）、配额与降级（2） |
 | D22 | 验证证据的判定权 | 「验证过」必须由**会变红的检查**背书，分三级：(1) **CI 的 scripts 层只跑结构级核对**——审计 JSON 字段齐全 + 引证指向存在的行区间（`verify_audit_evidence.py --structural`），这一级**不因代码漂移变红**；(2) **`--strict` 逐字级核对降为审计/修复收口的手动门槛**（引证窗口里必须真有原文摘录）；(3) 判断项规则落 `CODING_STANDARDS.md`——声称「我验证了 X」的脚本必须真检查退出码或断言，只打印结论的验证脚本视为缺陷。配套工具：`scripts/verify_mutation.sh`（断言基线绿 → 变异红 → 恢复绿，并校验恢复后 sha256 与改前一致）、`scripts/check_scripts.py`（两个脚本目录语法扫描，SyntaxWarning 当错误）、`.githooks/pre-commit`（可选，提交前挡刀）。**否决**：把 strict 放进 CI（无关重构变红＝教人绕过它） |
 | D23 | 题目分类与八股语料 | 每道题必须带三个一级类之一——`fundamentals`(八股) / `project` / `internship`；类别由模型在 `QuestionBatch` 里给出、引擎用枚举校验，**非法或缺失回退到规则推断**（题目引用了项目 → `project`；引用了实习段 → `internship`；否则 `fundamentals`），追问**继承主问题**的类别。八股语料是**构建期**搜集、随包发布（`interview_engine/corpus/`）、逐条带 `source_url` 的参考题集合，运行时按简历技能过滤 top-N 注入 prompt；**语料不是题库**（不机械抽题、不承诺覆盖度）。出题配比默认由简历内容算出（题量 5：实习 1 / 项目 2 / 其余八股），用户可在上传页用受控枚举 `interview_type` 覆盖（非法值回退 `auto`）。报告在四维雷达之外**另开一节**按类给分（分数 + 题数 + 评语；某类 < 2 题不出分数，写「样本不足」）。**降级分两类**：语料文件缺失/损坏 = 大声失败（发布缺陷）；过滤后没匹配 = 降级 + 明示。**否决**：运行期联网搜题（把网络抖动塞进用户等待出题的路径）、向量检索（违 D03）、OCR、把工作经历单列一类 |
+| D24 | 前端样式体系不切换 | 前端继续 **CSS Modules + 自研 `--br-*` 设计 token + 手写组件**，不引入 Tailwind / shadcn / 组件库 / 动效库（动效库如需另立提案）；文档的技术栈描述必须与实现对齐。视觉改版靠扩充 token、补齐组件、页壳与断点实现，不靠换框架。**否决**：改版=换栈（重写视觉层换不来精致度，只是换一套欠账） |
+| D25 | 前端改版方法论 | 以**线框提案**先行：施工前逐页给出「现状 vs 提案」文字版式对照，逐页确认后才动工；交付分两批——**基建批**（token 清漂移 / 页壳 / 断点 / 守卫）先验收，**页面批**再验收。质量双口径：**前后截图对照**（入库 docs，兼作品集素材）+ **会变红的守卫**（只收可机器判定的条款进 CI；判不了真伪的进手测与评审口径，不硬塞闸门） |
+| D26 | 分布式单飞的 Redis 实现 | 跨进程单飞跑在 Redis 上，**租约的释放与续期是一次 `eval` 的原子读改写**（`ai_resilience/distributed.py` 的 `_RELEASE_LUA` / `_RENEW_LUA`：先比对 owner token，再 `DEL` / `PEXPIRE`）——不能拆成「读 token → 判定 → 写」两趟：两副本同时操作同一 owner key 时，两趟写法会删掉或续上别人的租约，token 围栏失效。键位与接管语义以 `distributed.py` 的模块说明为准（owner key / result key / token 围栏 / 有界等待）。**验证**：`tests/test_distributed_flight.py` 与 `tests/test_distributed_lock.py` 在真实 Redis 上跑行为（两实例只调一次供应商、跨实例重放、等待者接管、旧 owner 不得覆盖接管结果、等待有界），Redis 不可达时才 skip。**与 D20 的边界不同**：D20 的限流桶 Lua 在本环境不执行、靠 Python 镜像做按位等价；这条 Lua 由测试真跑（Redis 在线时 0 skip），不需要镜像。 |
 
 ---
 
@@ -58,7 +61,7 @@ Python/FastAPI + React，完整度高于旧项目，且旧简历（Resume Sectio
 
 ## 3. 明确不做清单（防范围蔓延）
 
-神态分析 / 独立 Agent 会话模块 / 草稿板 sketchpad / 分布式 Lua 单飞实现 / LangChain 全家桶 /
+神态分析 / 独立 Agent 会话模块 / 草稿板 sketchpad / LangChain 全家桶 /
 JWT / OpenTelemetry / Next.js / MongoDB / 第三家默认模型 / Claude adapter（默认清单外）。
 
 ---

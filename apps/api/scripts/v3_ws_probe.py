@@ -1,7 +1,7 @@
-"""V3: drive the browser path (WS ticket -> binary PCM -> stop) against the real ASR.
+"""V3：对真实 ASR 驱动浏览器路径（WS 票据 -> 二进制 PCM -> stop）。
 
---realtime paces the PCM at 1x (like a microphone) and PASSes only when incremental
-"replace" partials arrived before the final — the proof that the realtime channel streams.
+--realtime 以 1 倍速喂 PCM（像麦克风一样），只有当增量 "replace" 分片在 final 之前到达才
+PASS——这正是实时通道会流式输出的证明。
 """
 
 import asyncio
@@ -51,8 +51,8 @@ async def main() -> int:
         reader_done = asyncio.Event()
 
         async def reader() -> None:
-            """Read while we send: server frames must be stamped as they ARRIVE, not
-            after the send loop finishes (the client buffers frames meanwhile)."""
+            """边发边读：服务端帧必须在到达时就打时间戳，而不是等发送循环结束后
+            （客户端在那期间会缓冲帧）。"""
             try:
                 while True:
                     raw = await asyncio.wait_for(socket.recv(), timeout=25)
@@ -70,12 +70,12 @@ async def main() -> int:
             finally:
                 reader_done.set()
 
-        _reader_task = asyncio.create_task(reader())  # held so the task cannot be GC'd
+        _reader_task = asyncio.create_task(reader())  # 持有引用，避免任务被 GC
         try:
             for index, offset in enumerate(range(0, len(pcm), 3200)):
                 await socket.send(pcm[offset : offset + 3200])
                 if REALTIME:
-                    await asyncio.sleep(0.1)  # 1x pacing: partials arrive while "speaking"
+                    await asyncio.sleep(0.1)  # 1 倍速：分片在「说话」过程中到达
                 if index % 10 == 0:
                     print(f"  sent slice {index}", flush=True)
             print(f"sent {len(pcm)} bytes of 16k pcm ({len(pcm) / 32000:.1f}s) in 100ms slices")

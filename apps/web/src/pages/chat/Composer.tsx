@@ -51,6 +51,9 @@ export function Composer({
     if (mergedValue.text !== valueRef.current) update(mergedValue.text);
   }, [transcript, update]);
 
+  // 字数只由输入框自己的 value 推导；提交 / 禁用语义仍由既有 streaming / disabled / 空文本驱动。
+  const characters = value.trim().length;
+
   function submit() {
     const trimmed = value.trim();
     if (!trimmed || streaming || disabled) return;
@@ -70,7 +73,7 @@ export function Composer({
     <div className={styles.composer}>
       <Textarea
         aria-label="输入消息"
-        placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"
+        placeholder="问点什么…"
         value={value}
         disabled={disabled}
         onChange={(event) => update(event.target.value)}
@@ -80,27 +83,39 @@ export function Composer({
         <p role="alert">{recordingError}</p>
       ) : null}
       {notice ? <p>已保留你写的内容，新的转写追加在后面。</p> : null}
-      <div className={styles.actions}>
-        {onToggleRecording ? (
-          <Button
-            type="button"
-            variant={recording ? "secondary" : "ghost"}
-            size="sm"
-            onClick={onToggleRecording}
-            aria-pressed={recording}
-          >
-            {recording ? "停止录音" : "语音输入"}
-          </Button>
-        ) : null}
-        {streaming ? (
-          <Button variant="secondary" onClick={onCancel}>
-            停止生成
-          </Button>
-        ) : (
-          <Button onClick={submit} disabled={disabled || value.trim().length === 0}>
-            发送
-          </Button>
-        )}
+      <div className={styles.composerFooter}>
+        <span className={styles.shortcutHint}>Enter 发送，Shift+Enter 换行</span>
+        <span className={styles.counter}>{characters} 字</span>
+        <div className={styles.actions}>
+          {onToggleRecording ? (
+            <Button
+              type="button"
+              variant={recording ? "secondary" : "ghost"}
+              size="sm"
+              onClick={onToggleRecording}
+              aria-pressed={recording}
+              data-recording={recording ? "true" : undefined}
+            >
+              {recording ? (
+                <>
+                  <span className={styles.recDot} aria-hidden="true" />
+                  停止录音
+                </>
+              ) : (
+                "语音输入"
+              )}
+            </Button>
+          ) : null}
+          {streaming ? (
+            <Button variant="secondary" onClick={onCancel}>
+              停止生成
+            </Button>
+          ) : (
+            <Button onClick={submit} disabled={disabled || value.trim().length === 0}>
+              发送
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

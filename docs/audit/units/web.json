@@ -163,7 +163,7 @@
    "where": [
     "apps/web/src/interview/useInterviewRoom.ts:9",
     "apps/web/src/interview/useInterviewRoom.ts:67-71",
-    "apps/web/src/interview/useInterviewRoom.ts:76-80"
+    "apps/web/src/interview/useInterviewRoom.ts:78-82"
    ],
    "evidence": "useInterviewRoom.ts:9 const DOUBLE_SUBMIT_WINDOW_MS = 250;\n\n67 // Two guards: an in-flight request and a 250ms window (double click / double Enter).\n68 const now = Date.now();\n69 if (inFlight.current || now - lastSubmitAt.current < DOUBLE_SUBMIT_WINDOW_MS) return false;\n...\n79 request_id: newRequestId(),",
    "why": "后端把幂等做在 (session_id, request_id) 上，也就是「同一个 request_id 重复提交会被识别」——这是定义层面的规避，本来可以覆盖「网络超时但其实服务端成功了」这类最危险的重放。但前端每次点击都 newRequestId()，于是服务端幂等永远用不上，前端只好再补一个 250ms 时间窗和一个 inFlight 标志：超时 30 秒后用户重试，答案会被评两次、记两遍分（前端的两个 guard 都早已放过）。前端的补丁是「加 if」，后端的定义本来是「消除 if」。",

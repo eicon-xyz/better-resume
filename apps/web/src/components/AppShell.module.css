@@ -1,0 +1,326 @@
+/* 页壳：左栏（280px，浅灰蓝底）+ 内容列；账号行贴左栏底部，对话入口固定右下角。
+   折叠态只留品牌标记与折叠按钮，导航文案与账号行隐藏，内容列自动占满余宽。 */
+.shell {
+  position: relative;
+  display: flex;
+  height: 100%;
+  background: var(--br-color-bg);
+}
+
+.sidebar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--br-space-4);
+  width: var(--br-size-sidebar);
+  padding: var(--br-space-4);
+  background: var(--br-color-surface);
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+}
+
+.brandLink {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--br-space-3);
+  min-width: 0;
+  color: var(--br-color-text);
+  text-decoration: none;
+}
+
+.brandLogo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-size-avatar);
+  height: var(--br-size-avatar);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-accent);
+  color: var(--br-color-accent-contrast);
+}
+
+.brandLogoMark {
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+}
+
+.brand {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--br-text-md);
+  font-weight: 700;
+  line-height: var(--br-leading-tight);
+  white-space: nowrap;
+}
+
+.collapseToggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--br-space-2);
+  border: 0;
+  border-radius: var(--br-radius-md);
+  background: transparent;
+  color: var(--br-color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--br-duration-fast),
+    color var(--br-duration-fast);
+}
+
+.collapseToggle:hover {
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+}
+
+.sidebarBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--br-space-5);
+  min-height: 0;
+}
+
+.nav,
+.navSecondary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-1);
+}
+
+/* 分隔线画在次级组上边；发丝线宽取 border-width 关键字 thin（token 集无边框宽度档）。 */
+.navSecondary {
+  border-top: thin solid var(--br-color-border);
+  padding-top: var(--br-space-4);
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-3);
+  padding: var(--br-space-2) var(--br-space-3);
+  border-radius: var(--br-radius-md);
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+  text-decoration: none;
+  transition:
+    background var(--br-duration-fast),
+    color var(--br-duration-fast);
+}
+
+.navLink:hover {
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+}
+
+.navLink:active {
+  background: var(--br-color-accent-muted);
+}
+
+.navActive {
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-text);
+  font-weight: 600;
+}
+
+.navIcon {
+  flex: none;
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+}
+
+.navLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navTrailing {
+  flex: none;
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+  color: var(--br-color-text-muted);
+}
+
+/* 折叠态：只留品牌标记与折叠按钮，导航文案与账号行整体不渲染目标宽度。 */
+.sidebarCollapsed .brand,
+.sidebarCollapsed .nav,
+.sidebarCollapsed .navSecondary,
+.sidebarCollapsed .accountName,
+.sidebarCollapsed .account .iconButton,
+.sidebarCollapsed .account button {
+  display: none;
+}
+
+.sidebarCollapsed .account {
+  justify-content: center;
+}
+
+/* 折叠后左栏收成一条：宽度取 --br-space-7，避免留出与内容无关的空白列。 */
+.sidebarCollapsed {
+  width: var(--br-space-7);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-2);
+  margin-top: auto;
+  padding-top: var(--br-space-3);
+  border-top: thin solid var(--br-color-border);
+}
+
+.avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-size-avatar);
+  height: var(--br-size-avatar);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-accent-contrast);
+}
+
+.avatarIcon {
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+}
+
+.accountName {
+  flex: 1;
+  overflow: hidden;
+  color: var(--br-color-text);
+  font-size: var(--br-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iconButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--br-space-1);
+  border: 0;
+  border-radius: var(--br-radius-md);
+  background: transparent;
+  color: var(--br-color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--br-duration-fast),
+    color var(--br-duration-fast);
+}
+
+.iconButton:hover {
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+}
+
+.iconButtonGlyph {
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 右下角对话气泡：固定定位，/chat 路由不渲染。 */
+.chatFab {
+  position: fixed;
+  right: var(--br-space-5);
+  bottom: var(--br-space-5);
+  z-index: var(--br-z-fab);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-size-fab);
+  height: var(--br-size-fab);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent);
+  box-shadow: var(--br-shadow-fab);
+  color: var(--br-color-accent-contrast);
+  transition:
+    background var(--br-duration-fast),
+    transform var(--br-duration-fast);
+}
+
+.chatFab:hover {
+  background: var(--br-color-accent-hover);
+}
+
+.chatFab:active {
+  background: var(--br-color-accent-active);
+}
+
+.chatFab:focus-visible {
+  outline-color: var(--br-color-accent-hover);
+}
+
+.chatFabIcon {
+  width: var(--br-size-fab);
+  height: var(--br-size-fab);
+  padding: var(--br-space-3);
+}
+
+/* 登录门变体：渐变底衬铺满整个视口，侧栏只留品牌区与折叠按钮。 */
+.shellGate {
+  background: linear-gradient(180deg, var(--br-color-accent-muted) 0%, var(--br-color-bg) 62%);
+}
+
+/* 登录门变体：左栏让位给整屏门面（导航与账号行本来就不渲染），只留左上角品牌与折叠按钮。 */
+.sidebarGate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: transparent;
+}
+
+/* 折叠态只在桌面宽度下成立：窄屏本来就是单列，侧栏保持完整为触控目标。 */
+@media (max-width: 1023px) {
+  .shell {
+    flex-direction: column;
+    height: auto;
+    min-height: 100%;
+  }
+
+  .sidebar {
+    width: auto;
+  }
+
+  .sidebarCollapsed {
+    width: auto;
+  }
+
+  .sidebarCollapsed .brand,
+  .sidebarCollapsed .nav,
+  .sidebarCollapsed .navSecondary,
+  .sidebarCollapsed .accountName,
+  .sidebarCollapsed .account .iconButton,
+  .sidebarCollapsed .account button {
+    display: revert;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navLink,
+  .collapseToggle,
+  .iconButton,
+  .chatFab {
+    transition: none;
+  }
+}

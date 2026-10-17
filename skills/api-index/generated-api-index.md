@@ -44,14 +44,16 @@
 
 | 路由 | 页面组件 | 定义处 |
 | --- | --- | --- |
-| / | Navigate -> /chat | `apps/web/src/App.tsx` |
+| / | Navigate -> /interview | `apps/web/src/App.tsx` |
 | /chat | ChatPage（pages/ChatPage.tsx） | `apps/web/src/App.tsx` |
 | /chat/:sessionId | ChatPage（pages/ChatPage.tsx） | `apps/web/src/App.tsx` |
 | /settings/ai | AiSettingsPage（pages/AiSettingsPage.tsx） | `apps/web/src/App.tsx` |
 | /interview | InterviewIntroPage（pages/InterviewIntroPage.tsx） | `apps/web/src/App.tsx` |
 | /interview/room/:sessionId | InterviewRoomPage（pages/InterviewRoomPage.tsx） | `apps/web/src/App.tsx` |
 | /interview/report/:sessionId | InterviewReportPage（pages/InterviewReportPage.tsx） | `apps/web/src/App.tsx` |
-| * | Navigate -> /chat | `apps/web/src/App.tsx` |
+| /resumes | ResumePage（pages/ResumePage.tsx） | `apps/web/src/App.tsx` |
+| /coming-soon/:slug | PlaceholderPage（pages/PlaceholderPage.tsx） | `apps/web/src/App.tsx` |
+| * | Navigate -> /interview | `apps/web/src/App.tsx` |
 
 ## 读法
 

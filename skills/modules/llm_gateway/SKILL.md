@@ -7,8 +7,8 @@
 ## 对外接口
 
 `LlmGateway.complete/stream`、`ChatRequest/ChatResult/StreamEvent`、`ModelRegistry`、
-`SceneResolver`、`SceneBindingStore`、`to_xingyun_payload`、`to_dashscope_app_payload`、
-`XingyunGatewayFactory`、`DashScopeAppFactory`。
+`SceneResolver`、`SceneBindingStore`、`ConfigStatus`、`GatewayFactory`、
+`to_xingyun_payload`、`to_dashscope_app_payload`、`XingyunGatewayFactory`、`DashScopeAppFactory`。
 
 ## 不变量
 
@@ -20,7 +20,7 @@
 ## 已知陷阱
 
 - 星云只提供 SSE 路径，因此它的 `complete()` 是"收集完再校验"；两层重试会放大调用（M5 的嵌套重试坑）。
-- 场景绑定的 `is_configured` 是 **async**（M5 follow-up）：调用处忘了 `await` 会永远判真。
+- 场景工厂的配置判断只有 `async config_status(binding) -> ConfigStatus` 一个签名，一次取回「能不能跑 + 缺哪个变量」的快照；判定读 `status.configured`（值对象带 `__bool__`，`if not status` 读的是同一个值），缺的变量在 `status.missing` 里。缺这个方法的工厂在 `resolve` 时以 `AttributeError: ... config_status` 响亮失败，没有兼容回退。registry 的 `ModelRegistry.is_configured` 是另一个钩子（同步查 env 里有没有 key），不是场景工厂那一个。
 - 星云 payload 的字段形状需要真机验证（本机无凭据未做），本地只有假服务端契约测试。
 - **百炼应用调用（`dashscope_app`）**：云侧 prompt 由控制台的应用决定，我们只发 `input.prompt`（+ 可选
   `input.session_id`）——**不发 schema 提示**，所以结构化场景能不能过 `validate_structured`

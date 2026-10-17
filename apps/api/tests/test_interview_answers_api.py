@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator, Callable
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from better_resume.interview_engine import FlowStateStore, FlowStatus
 from better_resume.interview_engine.evaluation import ScoreResult
+from better_resume.interview_engine.orm import InterviewFlowStateRow
 from better_resume.interview_engine.prompts import QuestionBatch
 from better_resume.llm_gateway import ChatRequest, ChatResult, LlmTimeoutError, StreamEvent
 
@@ -253,3 +259,71 @@ def test_other_users_session_is_not_found(
     response = answer(client, session_id, "1", "ans-intruder")
 
     assert response.status_code == 404
+
+
+def wipe_flow_state(database_url: str, session_id: str) -> None:
+    """Drop the flow row: the state T19's restore read path no longer rebuilds for us."""
+
+    # Own engine + NullPool: the app's pooled connections belong to the TestClient loop.
+    async def run() -> None:
+        engine = create_async_engine(database_url, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    delete(InterviewFlowStateRow).where(
+                        InterviewFlowStateRow.session_id == session_id
+                    )
+                )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def reinsert_flow_state(database_url: str, session_id: str, *, total_questions: int = 3) -> None:
+    """Put the row back the way question generation leaves it, so answering can resume."""
+
+    async def run() -> None:
+        engine = create_async_engine(database_url, poolclass=NullPool)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with factory() as db:
+                await FlowStateStore(db).initialize(
+                    session_id,
+                    total_questions=total_questions,
+                    status=FlowStatus.ASKING,
+                    current_question_no="1",
+                )
+                await db.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_missing_flow_state_is_a_named_server_fault_and_recovers(
+    client: TestClient, gateway, migrated_database: str
+) -> None:
+    """A vanished flow row is our own data fault: not 401 ("you never logged in") and not
+    503 ("the dependency is down"). It must say which state is missing, never score silently,
+    and answering works again once an operator puts the row back."""
+    login(client)
+    fake = gateway(FakeGateway(score=84.0))
+    session_id = prepare(client, fake)
+
+    wipe_flow_state(migrated_database, session_id)
+    failed = answer(client, session_id, "1", "ans-no-flow")
+
+    assert failed.status_code == 500, failed.text
+    payload = failed.json()
+    assert payload["kind"] == "flow_state_missing"
+    assert session_id in payload["detail"]
+    assert "flow state missing" in payload["detail"]
+    assert fake.calls == 1  # the question batch only: the answer never reached scoring
+
+    reinsert_flow_state(migrated_database, session_id)
+    recovered = answer(client, session_id, "1", "ans-no-flow")
+
+    assert recovered.status_code == 201, recovered.text
+    assert recovered.json()["answer"]["score"] == 84.0
+    assert recovered.json()["next_question_no"] == "2"

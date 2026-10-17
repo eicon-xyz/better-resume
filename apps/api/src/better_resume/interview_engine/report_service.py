@@ -19,6 +19,7 @@ from ..ai_resilience import AiResilience, Stage
 from ..llm_gateway import ChatRequest, LlmGateway, Message
 from .categories import CATEGORY_LABELS, DISPLAY_ORDER
 from .errors import SessionNotFound
+from .hot_state import HotStateStore, invalidate_hot_state
 from .models import InterviewSession, ReportRecord
 from .orm import InterviewAnswerRow, InterviewQuestionRow, InterviewReportRow
 from .session_fsm import SessionStatus
@@ -88,9 +89,11 @@ class ReportService:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         resilience: AiResilience,
+        hot_state: HotStateStore | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._resilience = resilience
+        self._hot_state = hot_state
 
     async def finish(self, *, session_id: str, user_id: str, gateway: LlmGateway) -> ReportResult:
         """Freeze the report once; every later call returns the same snapshot."""
@@ -130,6 +133,7 @@ class ReportService:
             record = _to_record(row)
             session = await repo.get(session_id)
 
+        await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
         logger.info("interview_finished", session_id=session_id, overall=record.overall_score)
         return ReportResult(session=session, report=record, llm_summary_used=used)
 
@@ -176,6 +180,7 @@ class ReportService:
             await db.commit()
             record = _to_record(row)
             session = await repo.get(session_id)
+        await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
         logger.info("interview_frozen", session_id=session_id, overall=record.overall_score)
         return ReportResult(session=session, report=record, llm_summary_used=False)
 

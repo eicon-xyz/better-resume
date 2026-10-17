@@ -1,9 +1,8 @@
-"""Host-side deploy probe: everything here goes through nginx, never straight to a container.
+"""宿主侧部署探针：这里一切都经过 nginx，绝不直连容器。
 
-`scripts/compose_smoke.sh` runs the subcommands against the running stack and stores the
-output as the evidence for the deploy smoke. Rest: session + model registry. SSE: the proxy must
-forward frames while the response is still open (heartbeat first, then the fake vendor's
-chunks). WS: the transcription socket must upgrade through the proxy.
+`scripts/compose_smoke.sh` 对运行中的栈跑这些子命令，并把输出存为部署冒烟的证据。
+REST：会话 + 模型注册表。SSE：响应仍打开时代理必须转发帧（先心跳，再假供应商的分片）。
+WS：转写 socket 必须经代理升级。
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ DEFAULT_BASE = "http://127.0.0.1:8080"
 
 @contextlib.contextmanager
 def _session(base: str) -> Iterator[httpx.Client]:
-    """A logged-in client. httpx opens on the first request, so this is a context manager."""
+    """一个已登录客户端。httpx 在首个请求时才打开连接，所以这里是上下文管理器。"""
     client = httpx.Client(base_url=base, timeout=30.0, trust_env=False)
     try:
         user_id = f"deploy-{uuid.uuid4().hex[:8]}"
@@ -90,7 +89,7 @@ def probe_sse(base: str, *, model: str, timeout: float) -> int:
         and content_type.startswith("text/event-stream")
         and "done" in kinds
         and contents >= 1
-        and span > 0.1  # frames really arrived one by one, not in one buffered blob
+        and span > 0.1  # 帧确实是逐个到达，而不是一整块缓冲
     )
     print(f"SSE {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
@@ -114,7 +113,7 @@ async def _ws(base: str, ticket: str, cookie: str) -> int:
                 print("WS first frame: (none within 3s, handshake only)")
             else:
                 print(f"WS first frame: {str(frame)[:200]}")
-    except Exception as exc:  # noqa: BLE001 - the probe reports what happened
+    except Exception as exc:  # noqa: BLE001 - 探针据实报告
         print(f"WS_FAIL {type(exc).__name__}: {exc}")
         return 1
     print("WS PASS")

@@ -57,6 +57,7 @@ def test_list_exposes_every_layer() -> None:
         "contract",
         "coverage",
         "deploy",
+        "e2e",
         "fault",
         "soak",
         "real",
@@ -129,7 +130,7 @@ def _synthetic_env_file(tmp_path: Path) -> str:
 
 
 @pytest.mark.parametrize(
-    "layer", ["unit", "contract", "coverage", "deploy", "fault", "soak", "real", "scripts"]
+    "layer", ["unit", "contract", "coverage", "deploy", "e2e", "fault", "soak", "real", "scripts"]
 )
 def test_the_list_map_names_the_commands_each_layer_really_runs(layer: str, tmp_path: Path) -> None:
     """P44: the map in --list is a second, hand-written copy of the layer plan, and copies

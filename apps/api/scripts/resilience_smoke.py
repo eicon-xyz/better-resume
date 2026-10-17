@@ -1,13 +1,13 @@
-"""M3 evidence: resilience behaviours, one runnable script (real gears, tiny vendor spend).
+"""M3 证据：韧性行为，一个可运行脚本（真齿轮，供应商花费极小）。
 
-Sections
-  1. concurrency: N identical chat streams through the real guard chain -> one vendor call
-  2. real vendor:  one real DeepSeek call (skipped, with a clear note, when the key is bad)
-  3. fault injection: breaker opens, sheds load, half-open recovers (manual clock, no waiting)
-  4. rate limiting: token buckets on a manual clock (429 decisions + Retry-After)
-  5. stats: the /api/v1/resilience/stats payload
+小节
+  1. 并发：N 条相同聊天流穿过真实守卫链 -> 一次供应商调用
+  2. 真实供应商：一次真实 DeepSeek 调用（key 不可用时跳过并给出明确说明）
+  3. 故障注入：熔断打开、甩负载、半开恢复（手动时钟，无需等待）
+  4. 限流：手动时钟上的令牌桶（429 判定 + Retry-After）
+  5. stats：/api/v1/resilience/stats 的载荷
 
-Run:  cd apps/api && uv run python scripts/resilience_smoke.py
+运行：cd apps/api && uv run python scripts/resilience_smoke.py
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ structlog.configure(processors=[structlog.processors.JSONRenderer(ensure_ascii=F
 
 
 class CountingGateway:
-    """Wraps a real gateway and counts how often the vendor is actually entered."""
+    """包裹真实网关，统计供应商真正被进入的次数。"""
 
     def __init__(self, inner: object) -> None:
         self._inner = inner
@@ -51,7 +51,7 @@ class CountingGateway:
 
 
 class FlakyGateway:
-    """Fault injection: fails N times, then behaves."""
+    """故障注入：失败 N 次，然后正常。"""
 
     def __init__(self, failures: int) -> None:
         self.failures = failures
@@ -151,7 +151,7 @@ async def section_real_vendor() -> bool:
         print(f"answer                : {texts[0][:60]!r}")
         assert gateway.stream_calls == 1
         return True
-    except Exception as exc:  # noqa: BLE001 - the smoke must report, not crash
+    except Exception as exc:  # noqa: BLE001 - 冒烟必须报告，而不是崩溃
         print(f"real vendor call failed: {type(exc).__name__}: {exc}")
         print("(the rest of the evidence below does not need the vendor)")
         return False
@@ -160,7 +160,7 @@ async def section_real_vendor() -> bool:
 
 
 def _load_env() -> None:
-    """Unlike interview_smoke.py this runs in-process, so the repo .env must be loaded."""
+    """与 interview_smoke.py 不同，这里在进程内运行，所以必须加载仓库 .env。"""
     import os
     from pathlib import Path
 

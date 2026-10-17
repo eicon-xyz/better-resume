@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
 from redis import exceptions as redis_exceptions
 
+from better_resume.ai_resilience import wait_until
 from better_resume.interview_engine import (
     InMemoryHotState,
     RedisHotState,
@@ -75,7 +75,11 @@ async def test_memory_backend_expires() -> None:
     memory = InMemoryHotState()
     session_id = uuid.uuid4().hex
     await memory.put(view(session_id), user_id="u-1", ttl_seconds=0)
-    await asyncio.sleep(0.01)
+
+    async def expired() -> bool:
+        return await memory.get(user_id="u-1", session_id=session_id) is None
+
+    await wait_until(expired, timeout=1.0, description="the hot entry to expire")
 
     assert await memory.get(user_id="u-1", session_id=session_id) is None
 

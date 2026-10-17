@@ -131,14 +131,25 @@
  "severity": "中",
  "title": "GatewayFactory 协议只声明两个方法，resolver 却按私约动态取用 credential_hint / build_for_model；协议声明同步、实现是 async",
  "where": [
- "apps/api/src/better_resume/llm_gateway/resolver.py:69-75",
- "apps/api/src/better_resume/llm_gateway/resolver.py:91-96",
- "apps/api/src/better_resume/llm_gateway/resolver.py:48-56",
- "apps/api/src/better_resume/llm_gateway/resolver.py:176-182"
+ "apps/api/src/better_resume/llm_gateway/resolver.py:64-80",
+ "apps/api/src/better_resume/llm_gateway/resolver.py:106-113",
+ "apps/api/src/better_resume/llm_gateway/resolver.py:187-196"
  ],
- "evidence": "resolver.py\n69: @runtime_checkable\n70: class GatewayFactory(Protocol):\n71: \"\"\"One per adapter kind: knows if it *can* run a binding and how to build the gateway.\"\"\"\n73: def is_configured(self, binding: SceneBinding) -> bool: ...\n75: async def build(self, binding: SceneBinding) -> LlmGateway: ...\n91: async def is_configured(self, binding: SceneBinding) -> bool:\n179: builder = getattr(factory, \"build_for_model\", None)\n48: async def _call(factory: GatewayFactory, name: str, binding: SceneBinding) -> object | None:\n49: \"\"\"Factories may answer sync (vendor adapter) or async (registry lookup): accept both.\"\"\"\n50: method = getattr(factory, name, None)",
- "why": "写新工厂的人只读 Protocol 会实现 is_configured/build，然后发现 503 提示退化成「credentials are missing」（credential_hint 没实现）、模型选择器直接报「this build has no openai-compatible provider」（build_for_model 没实现）——这两条契约只存在于 resolver 的 getattr 调用里。更糟的是协议第 73 行声明 is_configured 同步，唯一的真实实现（OpenAiCompatFactory，91 行）是 async：读者与类型检查器拿到的是错的调用约定，全靠 _call 的 inspect.isawaitable 和 resolve_model 的 getattr 兜着。",
- "fix": "把 credential_hint 与 build_for_model 提升为协议成员（is_configured 统一 async），并在 docstring 写明每个钩子的前置条件与缺省语义。"
+ "evidence": "resolver.py（协议：模型选择钩子与 config_status / build 并列声明，docstring 写明三者前置条件与缺省语义）\n64: @runtime_checkable\n65: class GatewayFactory(Protocol):\n80: async def build_for_model(self, model_ref: str | None) -> LlmGateway: ...\nresolver.py（resolver 直接调用协议成员，getattr 兜底已删）\n187: async def resolve_model(self, model_ref: str | None) -> LlmGateway:\n196: return await factory.build_for_model(model_ref)\nresolver.py（唯一实现：build 转调 build_for_model，走模型注册表）\n107: return await self.build_for_model(binding.target_ref)\n109: async def build_for_model(self, model_ref: str | None) -> LlmGateway:",
+ "why": "模型选择是工厂协议之外的一条私约：读 Protocol 的人只看到 config_status 与 build，而聊天模型选择面（resolve_model）另需 build_for_model——它只活在 resolver 的动态取用里，缺这个方法的工厂不会以「协议没实现」失败，而是被翻译成 this build has no openai-compatible provider，把「这个工厂没有模型选择」说成「本构建不提供 openai 兼容供应商」，调用方与日志都被指向错误原因；钩子的前置条件与缺省语义也只有读过 resolver 实现的人知道。",
+ "fix": "把 credential_hint 与 build_for_model 提升为协议成员（is_configured 统一 async），并在 docstring 写明每个钩子的前置条件与缺省语义。",
+ "fix_record": {
+ "status": "fixed",
+ "title": "build_for_model 是工厂协议的成员：resolver 直接调用，缺实现以 AttributeError 响亮失败",
+ "approach": "GatewayFactory 协议在 config_status / build 之外补上 build_for_model；SceneResolver.resolve_model 删掉 getattr(factory, \"build_for_model\", None) 的兜底，直接调用协议成员。只有 OPENAI_COMPAT 工厂实现该钩子（OpenAiCompatFactory.build 转调 build_for_model），缺它的工厂以 AttributeError 点名缺失钩子失败，不再被翻译成 this build has no openai-compatible provider；本构建根本没注册该 adapter kind 时仍抛 LlmConfigError 走 503（语义未变）。",
+ "files": [
+ "apps/api/src/better_resume/llm_gateway/resolver.py",
+ "apps/api/tests/llm_gateway/test_scene_resolver.py"
+ ],
+ "evidence": "新增用例 tests/llm_gateway/test_scene_resolver.py::test_a_factory_without_model_selection_fails_loudly：注册只实现 config_status/build 的工厂后 resolve_model(\"deepseek-flash\") 必须抛 AttributeError 且消息含 build_for_model（改动前该用例判红：抛 LlmConfigError: this build has no openai-compatible provider）；test_model_selection_goes_through_the_factory_protocol 钉住显式 model_ref 交给工厂的 build_for_model。grep -rn getattr apps/api/src/better_resume/llm_gateway 只剩 scene_mapping.py:113 的 getattr(message, \"role\", None)——对 list[Any] 消息的防御读，不是工厂私约。",
+ "verification": "cd apps/api && uv run pytest -q tests/llm_gateway -k 'without_model_selection or goes_through_the_factory_protocol' --junitxml=/tmp/t20-green-slice.xml",
+ "unverified": "XingyunGatewayFactory / DashScopeAppFactory 不实现 build_for_model，也从不被 resolve_model 取用（它只查 AdapterKind.OPENAI_COMPAT）；这份「只有 openai_compat 有模型选择」的约束没有用例钉住。"
+ }
  },
  {
  "id": "LG-07",
@@ -150,10 +161,10 @@
  "title": "「凭证是否齐备 / 缺哪个环境变量」在三个工厂里各写一遍，表达方式还各不相同",
  "where": [
  "apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41",
- "apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:25-29",
+ "apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:26-30",
  "apps/api/src/better_resume/llm_gateway/resolver.py:91-106"
  ],
- "evidence": "xingyun_factory.py\n30: def is_configured(self, binding: SceneBinding) -> bool:\n31: api_key, api_secret = self.credentials\n32: return bool(api_key and api_secret and binding.target_ref)\n34: def credential_hint(self, binding: SceneBinding) -> str | None:\n35: api_key, api_secret = self.credentials\n36: missing = [\n37: name\n38: for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))\n39: if not value\n40: ]\n41: return \" and \".join(missing) if missing else None\ndashscope_app_factory.py\n25: def is_configured(self, binding: SceneBinding) -> bool:\n26: return bool(self._api_key and binding.target_ref)\n28: def credential_hint(self, binding: SceneBinding) -> str | None:\n29: return None if self._api_key else API_KEY_ENV",
+ "evidence": "xingyun_factory.py\n31: async def config_status(self, binding: SceneBinding) -> ConfigStatus:\n32: api_key, api_secret = self.credentials\n33: missing = [\n34: name\n35: for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))\n36: if not value\n37: ]\n38: return ConfigStatus(\n39: configured=bool(api_key and api_secret and binding.target_ref),\n40: missing=\" and \".join(missing) or None,\n41: )\ndashscope_app_factory.py\n26: async def config_status(self, binding: SceneBinding) -> ConfigStatus:\n27: return ConfigStatus(\n28: configured=bool(self._api_key and binding.target_ref),\n29: missing=None if self._api_key else API_KEY_ENV,\n30: )",
  "why": "同一个问题（这个绑定的凭证在不在、缺哪个变量）有三个实现：bool、空格/and 拼接的变量名、以及 resolver 里 OpenAiCompatFactory 的「resolve 模型行再查 environ」。三处对 target_ref 的判定也不完全同构（resolver 版本靠 resolve 抛错兜）。新增第四个 adapter kind 就是抄第四遍；更现实的风险是 is_configured 与 credential_hint 会漂移——一处说配置好了、另一处说缺变量，调用方（resolver.resolve 只信前者、把后者当提示）无法发现矛盾。",
  "fix": "把「校验 + 缺什么」合并成一个方法（返回 Ok | Missing(names)），协议只暴露这一处判定；工厂只声明自己需要哪些环境变量名。"
  },
@@ -184,11 +195,11 @@
  "where": [
  "apps/api/src/better_resume/llm_gateway/binding_store.py:20-25",
  "apps/api/src/better_resume/llm_gateway/binding_orm.py:17-19",
- "apps/api/src/better_resume/llm_gateway/resolver.py:236-241",
+ "apps/api/src/better_resume/llm_gateway/resolver.py:257-262",
  "apps/api/src/better_resume/llm_gateway/xingyun_factory.py:53-55",
  "apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40-42"
  ],
- "evidence": "20 @dataclass(frozen=True, slots=True)\n21 class SceneBinding:\n22 scene: LlmScene\n23 adapter: AdapterKind\n24 target_ref: str\n25 \n\napps/api/src/better_resume/llm_gateway/binding_orm.py:17 class SceneBindingRow(Base):\napps/api/src/better_resume/llm_gateway/binding_orm.py:18 \"\"\"One row per scene; target_ref is a model name (openai_compat), a flow id (xingyun)\napps/api/src/better_resume/llm_gateway/binding_orm.py:19 or a Model Studio application id (dashscope_app).\"\"\"\n\napps/api/src/better_resume/llm_gateway/resolver.py:236 target_ref=binding.target_ref,\napps/api/src/better_resume/llm_gateway/resolver.py:237 configured=bool(factory) and await is_configured(factory, binding),\napps/api/src/better_resume/llm_gateway/resolver.py:238 is_default=(\napps/api/src/better_resume/llm_gateway/resolver.py:239 binding.adapter is DEFAULT_ADAPTER\napps/api/src/better_resume/llm_gateway/resolver.py:240 and binding.target_ref == DEFAULT_TARGET_REF\napps/api/src/better_resume/llm_gateway/resolver.py:241 ),\n\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:40 ]\n...\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:49 if not binding.target_ref:\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:50 raise LlmConfigError(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:51 f\"scene {binding.scene.value!r} has no xingyun flow_id (target_ref)\"\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:52 )\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:53 return XingyunWorkflowAdapter(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:54 scene=binding.scene,\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:55 flow_id=binding.target_ref,\n\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40 return DashScopeAppAdapter(\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:41 scene=binding.scene,\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:42 app_id=binding.target_ref,\n\napps/api/src/better_resume/http/scenes.py:17 class SceneViewResponse(BaseModel):\napps/api/src/better_resume/http/scenes.py:18 scene: str\napps/api/src/better_resume/http/scenes.py:19 label: str\napps/api/src/better_resume/http/scenes.py:20 adapter: str\napps/api/src/better_resume/http/scenes.py:21 target_ref: str\napps/api/src/better_resume/http/scenes.py:22 configured: bool\napps/api/src/better_resume/http/scenes.py:23 is_default: bool\napps/api/src/better_resume/http/scenes.py:24 \napps/api/src/better_resume/http/scenes.py:25 \napps/api/src/better_resume/http/scenes.py:26 class SceneUpdateRequest(BaseModel):\napps/api/src/better_resume/http/scenes.py:27 adapter: Literal[\"openai_compat\", \"xingyun\", \"dashscope_app\"]\napps/api/src/better_resume/http/scenes.py:28 target_ref: str = Field(min_length=1, max_length=128)",
+ "evidence": "20 @dataclass(frozen=True, slots=True)\n21 class SceneBinding:\n22 scene: LlmScene\n23 adapter: AdapterKind\n24 target_ref: str\n25 \n\napps/api/src/better_resume/llm_gateway/binding_orm.py:17 class SceneBindingRow(Base):\napps/api/src/better_resume/llm_gateway/binding_orm.py:18 \"\"\"One row per scene; target_ref is a model name (openai_compat), a flow id (xingyun)\napps/api/src/better_resume/llm_gateway/binding_orm.py:19 or a Model Studio application id (dashscope_app).\"\"\"\n\napps/api/src/better_resume/llm_gateway/resolver.py:257 target_ref=binding.target_ref,\napps/api/src/better_resume/llm_gateway/resolver.py:258 configured=status.configured,\napps/api/src/better_resume/llm_gateway/resolver.py:259 is_default=(\napps/api/src/better_resume/llm_gateway/resolver.py:260 binding.adapter is DEFAULT_ADAPTER\napps/api/src/better_resume/llm_gateway/resolver.py:261 and binding.target_ref == DEFAULT_TARGET_REF\napps/api/src/better_resume/llm_gateway/resolver.py:262 ),\n\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:37 ]\n...\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:49 if not binding.target_ref:\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:50 raise LlmConfigError(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:51 f\"scene {binding.scene.value!r} has no xingyun flow_id (target_ref)\"\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:52 )\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:53 return XingyunWorkflowAdapter(\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:54 scene=binding.scene,\napps/api/src/better_resume/llm_gateway/xingyun_factory.py:55 flow_id=binding.target_ref,\n\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40 return DashScopeAppAdapter(\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:41 scene=binding.scene,\napps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:42 app_id=binding.target_ref,\n\napps/api/src/better_resume/http/scenes.py:17 class SceneViewResponse(BaseModel):\napps/api/src/better_resume/http/scenes.py:18 scene: str\napps/api/src/better_resume/http/scenes.py:19 label: str\napps/api/src/better_resume/http/scenes.py:20 adapter: str\napps/api/src/better_resume/http/scenes.py:21 target_ref: str\napps/api/src/better_resume/http/scenes.py:22 configured: bool\napps/api/src/better_resume/http/scenes.py:23 is_default: bool\napps/api/src/better_resume/http/scenes.py:24 \napps/api/src/better_resume/http/scenes.py:25 \napps/api/src/better_resume/http/scenes.py:26 class SceneUpdateRequest(BaseModel):\napps/api/src/better_resume/http/scenes.py:27 adapter: Literal[\"openai_compat\", \"xingyun\", \"dashscope_app\"]\napps/api/src/better_resume/http/scenes.py:28 target_ref: str = Field(min_length=1, max_length=128)",
  "why": "一个字段三种含义，唯一的说明在 ORM 类的 docstring 里：读 SceneBinding.target_ref 的人必须先知道 adapter 才能解释它；写绑定的人（PUT /scenes 只做 min_length=1 校验）可以填任何字符串，错误要等真正调用供应商才暴露（星云的 flow_id 与百炼的 app_id 长得都像普通字符串）。SceneView.target_ref 还是对外契约字段，前端只能原样展示。",
  "fix": "让绑定携带强类型目标（ModelRef / FlowId / AppId 子类型，或 adapter+target 组成 tagged union），至少把校验下移到工厂的 validate(binding)。"
  },
@@ -201,8 +212,8 @@
  "severity": "中",
  "title": "SceneResolver.loads 是仅供测试断言的公开属性（生产对象上挂着缓存计数器）",
  "where": [
- "apps/api/src/better_resume/llm_gateway/resolver.py:141-146",
- "apps/api/tests/llm_gateway/test_scene_resolver.py:100-109",
+ "apps/api/src/better_resume/llm_gateway/resolver.py:139-144",
+ "apps/api/tests/llm_gateway/test_scene_resolver.py:175-184",
  "apps/api/tests/llm_gateway/test_scene_binding_propagation.py:92"
  ],
  "evidence": "resolver.py\n141: self._loads = 0\n143: @property\n144: def loads(self) -> int:\n145: \"\"\"How many times bindings were read from the database (cache assertions).\"\"\"\n146: return self._loads\ntest_scene_resolver.py\n103: await resolver.binding_for(LlmScene.CHAT)\n104: await resolver.binding_for(LlmScene.CHAT)\n105: assert resolver.loads == 1\n107: resolver.invalidate(LlmScene.CHAT)\n108: await resolver.binding_for(LlmScene.CHAT)\n109: assert resolver.loads == 2",
@@ -236,7 +247,7 @@
  "title": "「出厂默认绑定是 openai_compat/deepseek-flash」在 resolver 常量与迁移种子里各写一份，is_default 靠字符串相等判断",
  "where": [
  "apps/api/src/better_resume/llm_gateway/resolver.py:28-30",
- "apps/api/src/better_resume/llm_gateway/resolver.py:236-241",
+ "apps/api/src/better_resume/llm_gateway/resolver.py:259-262",
  "apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29"
  ],
  "evidence": "28 #: What every scene runs on out of the box (mirrors the M5-T1 migration seed).\n29 DEFAULT_ADAPTER = AdapterKind.OPENAI_COMPAT\n30 DEFAULT_TARGET_REF = \"deepseek-flash\"\n...\n238 is_default=(\n239 binding.adapter is DEFAULT_ADAPTER\n240 and binding.target_ref == DEFAULT_TARGET_REF\n241 ),\n\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21 #: Default bindings keep M4 behaviour exactly: every scene runs on the local OpenAI-compatible\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:22 #: adapter until someone flips a row (that is the whole point of M5).\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23 DEFAULT_BINDINGS = [\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:24 (\"chat\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:25 (\"question_extraction\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:26 (\"answer_evaluation\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:27 (\"follow_up\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:28 (\"report_summary\", \"openai_compat\", \"deepseek-flash\"),\napps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:29 ]",

@@ -22,6 +22,26 @@ const SESSION: ChatSessionView = {
   updated_at: "2026-09-13T00:00:00Z",
 };
 
+const SECOND_SESSION: ChatSessionView = {
+  id: "s-2",
+  kind: "chat",
+  title: "第二个会话",
+  model_ref: null,
+  message_count: 1,
+  created_at: "2026-09-12T00:00:00Z",
+  updated_at: "2026-09-12T00:00:00Z",
+};
+
+const ENGLISH_SESSION: ChatSessionView = {
+  id: "s-3",
+  kind: "chat",
+  title: "DeepSeek 复盘",
+  model_ref: null,
+  message_count: 4,
+  created_at: "2026-09-11T00:00:00Z",
+  updated_at: "2026-09-11T00:00:00Z",
+};
+
 function messageView(seq: number, role: string, content: string, reasoning?: string): ChatMessageView {
   return {
     id: `m-${seq}`,
@@ -42,7 +62,9 @@ interface FakeClient {
   authed: { value: boolean };
 }
 
-function fakeClient(options: { authenticated?: boolean; history?: ChatMessageView[] } = {}): FakeClient {
+function fakeClient(
+  options: { authenticated?: boolean; history?: ChatMessageView[]; sessions?: ChatSessionView[] } = {},
+): FakeClient {
   const authed = { value: options.authenticated ?? true };
   const streams: FakeClient["streams"] = [];
 
@@ -59,7 +81,7 @@ function fakeClient(options: { authenticated?: boolean; history?: ChatMessageVie
       authed.value = false;
       return Promise.resolve();
     },
-    listChatSessions: () => Promise.resolve([SESSION]),
+    listChatSessions: () => Promise.resolve(options.sessions ?? [SESSION]),
     listChatMessages: () => Promise.resolve(options.history ?? []),
     listModels: () =>
       Promise.resolve([
@@ -104,6 +126,7 @@ function renderPage(client: ApiClient, initialPath = "/chat/s-1") {
           <Routes>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sessionId" element={<ChatPage />} />
+            <Route path="/interview" element={<p>面试页</p>} />
           </Routes>
         </MemoryRouter>
       </ApiProvider>
@@ -239,5 +262,75 @@ describe("ChatPage", () => {
     renderPage(client);
 
     expect(await screen.findByText("还没有消息")).toBeInTheDocument();
+  });
+
+  it("marks the open session in the sidebar as the current one", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat/s-1");
+
+    const item = await screen.findByRole("button", { name: /^第一个会话/ });
+    expect(item).toHaveAttribute("aria-current", "true");
+  });
+
+  it("leaves no session marked as current when the route has no session", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat");
+
+    const item = await screen.findByRole("button", { name: /^第一个会话/ });
+    expect(item).not.toHaveAttribute("aria-current");
+  });
+
+  it("fills the composer with the suggestion when a chip is clicked", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat");
+
+    fireEvent.click(await screen.findByRole("button", { name: "出一套项目深挖题" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("输入消息")).toHaveValue("出一套项目深挖题");
+    });
+  });
+
+  it("routes to the interview page from the empty-state action card", async () => {
+    const { client } = fakeClient({ history: [] });
+    renderPage(client, "/chat");
+
+    fireEvent.click(await screen.findByRole("button", { name: "去上传" }));
+
+    expect(await screen.findByText("面试页")).toBeInTheDocument();
+  });
+
+  it("filters the loaded sessions by a case-insensitive substring and restores on clear", async () => {
+    const { client } = fakeClient({
+      history: [],
+      sessions: [SESSION, SECOND_SESSION, ENGLISH_SESSION],
+    });
+    renderPage(client, "/chat/s-1");
+
+    await screen.findByRole("button", { name: /^第一个会话/ });
+
+    fireEvent.change(screen.getByLabelText("搜索会话"), { target: { value: "deepseek" } });
+    expect(screen.queryByRole("button", { name: /^第一个会话/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^DeepSeek 复盘/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索会话"), { target: { value: "第二" } });
+    expect(screen.queryByRole("button", { name: /^DeepSeek 复盘/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^第二个会话/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索会话"), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: /^第一个会话/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^第二个会话/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^DeepSeek 复盘/ })).toBeInTheDocument();
+  });
+
+  it("shows the empty-result copy when the search matches nothing", async () => {
+    const { client } = fakeClient({ history: [], sessions: [SESSION, SECOND_SESSION] });
+    renderPage(client, "/chat/s-1");
+
+    await screen.findByRole("button", { name: /^第一个会话/ });
+    fireEvent.change(screen.getByLabelText("搜索会话"), { target: { value: "zzz" } });
+
+    expect(screen.getByText("没有匹配的会话")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^第一个会话/ })).not.toBeInTheDocument();
   });
 });

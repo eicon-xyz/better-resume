@@ -12,13 +12,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# P45: buildx >= 0.37.2 enforces bake's entitlement consent gate even under --progress=rawjson
-# (GHSA-gwr2-q96m-6682). Compose builds through `buildx bake` and only ever grants
-# fs.read / security.insecure -- never `network.host`, which compose.yaml requests for the
-# local WSL2 proxy -- so the build is refused before it starts ("additional privileges
-# requested: pass \"--allow=network.host\""). Nightly died here twice (2026-10-09/10).
-# COMPOSE_BAKE=false uses the classic path, which hands the declared entitlements straight
-# to the builder. Pinned by tests/test_drill_prereqs.py.
+# P45/P15-8: buildx >= 0.37.2 enforces bake's entitlement consent gate even under
+# --progress=rawjson (GHSA-gwr2-q96m-6682). compose.yaml asks for `network: host` (local WSL2
+# proxy), and compose never grants it, so every build is refused before it starts
+# ("additional privileges requested: pass \"--allow=network.host\""). compose v5.6.0 also
+# dropped COMPOSE_BAKE, so the classic-path opt-out below is inert here; it stays pinned by
+# tests/test_drill_prereqs.py for older compose releases. Builds therefore go straight to
+# `buildx bake` with the grant stated explicitly (see the build step).
 export COMPOSE_BAKE=false
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -88,12 +88,15 @@ shared_quota_probe() { # shared_quota_probe <base-url> <label> [capacity]
 POSTGRES_USER="${POSTGRES_USER:-better_resume}"
 POSTGRES_DB="${POSTGRES_DB:-better_resume}"
 
+echo "== build the images (bake grants network.host; compose never does)"
+docker compose --profile smoke build --print | docker buildx bake --allow=network.host -f -
+
 echo "== stack up: postgres + redis, then the smoke-fake model row"
 docker compose up -d --wait postgres redis
 # P35: on a cold volume (CI) ai_models does not exist yet — seeding before the one-shot
 # migrate job dies with `relation "ai_models" does not exist`. The job is idempotent, and
 # the later `up` runs it again harmlessly.
-docker compose run --rm --build migrate
+docker compose run --rm migrate
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 INSERT INTO ai_models (name, provider, base_url, model_id, api_key_env, max_tokens,
                        temperature, is_enabled, priority, extra)
@@ -105,7 +108,7 @@ ON CONFLICT (name) DO UPDATE
 SQL
 
 echo "== nginx + 2x api + worker + fake vendor (schema is migrated by the migrate job)"
-docker compose --profile smoke up -d --build --wait --scale api=2
+docker compose --profile smoke up -d --wait --scale api=2
 docker compose ps
 
 echo "== interview across two instances, kill the serving one, finish on the survivor"

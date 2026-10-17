@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -58,6 +58,49 @@ const REPORT: InterviewReportView = {
   summary_pending: false,
 };
 
+/** Two main questions plus a follow-up: enough structure to pin the grouping. */
+const GROUPED: InterviewReportView = {
+  ...REPORT,
+  turns: [
+    {
+      question_no: "1",
+      topic_no: 1,
+      follow_up_index: 0,
+      kind: "main",
+      question: "主问题一",
+      answer: "回答一",
+      score: 70,
+      feedback: "还行",
+      missing_points: [],
+      follow_up_reason: null,
+    },
+    {
+      question_no: "1-F1",
+      topic_no: 1,
+      follow_up_index: 1,
+      kind: "follow_up",
+      question: "追问一",
+      answer: "回答一追",
+      score: 65,
+      feedback: "继续",
+      missing_points: [],
+      follow_up_reason: null,
+    },
+    {
+      question_no: "2",
+      topic_no: 2,
+      follow_up_index: 0,
+      kind: "main",
+      question: "主问题二",
+      answer: "回答二",
+      score: 80,
+      feedback: "不错",
+      missing_points: [],
+      follow_up_reason: null,
+    },
+  ],
+};
+
 function fakeClient(report: InterviewReportView | Error = REPORT) {
   return {
     getInterviewReport: vi.fn(() =>
@@ -99,7 +142,8 @@ describe("InterviewReportPage", () => {
   it("replays every turn including the follow-up", async () => {
     renderReport(fakeClient());
 
-    expect(await screen.findByText("讲讲你的项目")).toBeInTheDocument();
+    const group = await screen.findByRole("region", { name: "讲讲你的项目" });
+    expect(within(group).getByText("讲讲你的项目")).toBeInTheDocument();
     expect(screen.getByText("我的回答：我重构了写入链路")).toBeInTheDocument();
     expect(screen.getByText("当时为什么这么选？")).toBeInTheDocument();
     expect(screen.getByText("追问")).toBeInTheDocument();
@@ -114,6 +158,24 @@ describe("InterviewReportPage", () => {
       await screen.findByText(/未生成总结（模型不可用或未配置）/),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("综合得分")).toHaveTextContent("72.5");
+  });
+
+  it("waits for the summary while it is still generating", async () => {
+    renderReport(fakeClient({ ...REPORT, summary: null, summary_pending: true }));
+
+    expect(await screen.findByText("总结生成中…")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/未生成总结（模型不可用或未配置）/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the degraded summary copy when nothing is pending", async () => {
+    renderReport(fakeClient({ ...REPORT, summary: null, summary_pending: false }));
+
+    expect(
+      await screen.findByText(/未生成总结（模型不可用或未配置）/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("总结生成中…")).not.toBeInTheDocument();
   });
 
   it("notes when dimensions had to be synthesised", async () => {
@@ -155,6 +217,77 @@ describe("InterviewReportPage", () => {
     expect(await screen.findByText("还没有报告")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "回到面试入口" }));
     expect(await screen.findByText("面试入口")).toBeInTheDocument();
+  });
+
+  it("opens only the first question group by default", async () => {
+    renderReport(fakeClient(GROUPED));
+
+    const first = await screen.findByRole("button", { name: "主问题一" });
+    const second = screen.getByRole("button", { name: "主问题二" });
+
+    expect(first).toHaveAttribute("aria-expanded", "true");
+    expect(second).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(screen.getByRole("region", { name: "主问题一" })).getByText("主问题一"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "主问题二" })).not.toBeInTheDocument();
+  });
+
+  it("toggles one question group from its header", async () => {
+    renderReport(fakeClient(GROUPED));
+
+    const first = await screen.findByRole("button", { name: "主问题一" });
+    fireEvent.click(first);
+    expect(first).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "主问题一" })).not.toBeInTheDocument();
+
+    fireEvent.click(first);
+    expect(first).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(screen.getByRole("region", { name: "主问题一" })).getByText("主问题一"),
+    ).toBeInTheDocument();
+  });
+
+  it("expands and collapses every question group at once", async () => {
+    renderReport(fakeClient(GROUPED));
+
+    expect(await screen.findByRole("button", { name: "主问题二" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全部展开" }));
+    expect(screen.getByRole("button", { name: "主问题二" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "主问题二" })).getByText("主问题二"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部收起" }));
+    expect(screen.getByRole("button", { name: "主问题二" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("region", { name: "主问题二" })).not.toBeInTheDocument();
+  });
+
+  it("shows a thin-sample badge instead of a score for a category without one", async () => {
+    renderReport(
+      fakeClient({
+        ...REPORT,
+        categories: [
+          { key: "fundamentals", label: "八股", count: 0, score: null, comment: "样本不足" },
+          { key: "project", label: "项目", count: 3, score: 78.3, comment: "基本掌握" },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText("按类给分")).toBeInTheDocument();
+    expect(screen.getByLabelText("项目得分")).toHaveTextContent("78.3");
+    expect(screen.queryByLabelText("八股得分")).not.toBeInTheDocument();
+    expect(screen.getByText("样本不足")).toBeInTheDocument();
   });
 
   it("offers a fresh interview from the header", async () => {

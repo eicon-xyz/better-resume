@@ -14,6 +14,7 @@ from sqlalchemy.pool import NullPool
 
 from better_resume.llm_gateway import (
     AdapterKind,
+    ConfigStatus,
     LlmConfigError,
     LlmScene,
     SceneBinding,
@@ -47,41 +48,115 @@ class FakeFactory:
         self.configured = configured
         self.built: list[SceneBinding] = []
 
-    def is_configured(self, binding: SceneBinding) -> bool:
-        return self.configured
+    async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+        return ConfigStatus(configured=self.configured)
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
         self.built.append(binding)
         return object()  # type: ignore[return-value]
 
 
-class AsyncFakeFactory:
-    """Like the real OpenAiCompatFactory, whose check consults the model registry (async)."""
+class LegacyAsyncBoolFactory:
+    """The historical shape (P8): an async boolean check — a coroutine is always truthy."""
 
-    def __init__(self, *, configured: bool = True) -> None:
+    def __init__(self, *, configured: bool = False) -> None:
         self.configured = configured
+        self.checks = 0
 
     async def is_configured(self, binding: SceneBinding) -> bool:
+        self.checks += 1
         return self.configured
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
-        raise AssertionError("build must not run for an unconfigured scene")
+        return object()  # type: ignore[return-value]
 
 
-async def test_async_factory_checks_are_awaited(factory) -> None:
-    """A coroutine is always truthy: forgetting the await silently disables the guard."""
-    resolver = SceneResolver(
-        factory, factories={AdapterKind.XINGYUN: AsyncFakeFactory(configured=False)}
-    )
+async def test_legacy_async_boolean_is_not_the_seam(factory) -> None:
+    """P01/P11: `if not factory.is_configured(binding)` was always false because a
+    coroutine is truthy, so the guard never fired. The seam now hands out a config
+    snapshot; a factory that only offers the old async boolean fails loudly here
+    instead of getting a silent path through the guard."""
+    legacy = LegacyAsyncBoolFactory(configured=False)
+    resolver = SceneResolver(factory, factories={AdapterKind.XINGYUN: legacy})
     async with factory() as session:
-        await SceneBindingStore(session).upsert(LlmScene.CHAT, AdapterKind.XINGYUN, "flow-async")
+        await SceneBindingStore(session).upsert(LlmScene.CHAT, AdapterKind.XINGYUN, "flow-legacy")
         await session.commit()
 
-    with pytest.raises(LlmConfigError, match="not configured"):
+    with pytest.raises(AttributeError, match="config_status"):
+        await resolver.resolve(LlmScene.CHAT)
+    assert legacy.checks == 0
+
+
+class NoModelPickerFactory:
+    """A factory that declares the two binding hooks but not the model-selection one."""
+
+    async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+        return ConfigStatus(configured=True)
+
+    async def build(self, binding: SceneBinding) -> LlmGateway:
+        return object()  # type: ignore[return-value]
+
+
+async def test_a_factory_without_model_selection_fails_loudly(factory) -> None:
+    """LG-06: the picker path is a protocol member, not a getattr private contract.
+
+    A factory that never declares `build_for_model` must fail at the call site, naming
+    the missing hook. The getattr fallback instead answered "this build has no
+    openai-compatible provider" — a cause that points away from the real one.
+    """
+    resolver = SceneResolver(factory, factories={AdapterKind.OPENAI_COMPAT: NoModelPickerFactory()})
+
+    with pytest.raises(AttributeError, match="build_for_model"):
+        await resolver.resolve_model("deepseek-flash")
+
+
+async def test_model_selection_goes_through_the_factory_protocol(factory) -> None:
+    """The picker hands the explicit model_ref to the openai-compatible factory."""
+
+    class PickingFactory:
+        def __init__(self) -> None:
+            self.picked: list[str | None] = []
+
+        async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+            return ConfigStatus(configured=True)
+
+        async def build(self, binding: SceneBinding) -> LlmGateway:
+            raise AssertionError("resolve_model must not go through the scene binding")
+
+        async def build_for_model(self, model_ref: str | None) -> LlmGateway:
+            self.picked.append(model_ref)
+            return object()  # type: ignore[return-value]
+
+    picking = PickingFactory()
+    resolver = SceneResolver(factory, factories={AdapterKind.OPENAI_COMPAT: picking})
+
+    assert await resolver.resolve_model("deepseek-v4-pro") is not None
+    assert picking.picked == ["deepseek-v4-pro"]
+
+
+async def test_config_status_snapshot_carries_the_missing_credential(factory) -> None:
+    """One probe returns the value snapshot that both the guard and the views read."""
+
+    class SnapshotFakeFactory:
+        async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+            return ConfigStatus(configured=False, missing="XINGCHEN_API_KEY")
+
+        async def build(self, binding: SceneBinding) -> LlmGateway:
+            raise AssertionError("build must not run for an unconfigured scene")
+
+    resolver = SceneResolver(factory, factories={AdapterKind.XINGYUN: SnapshotFakeFactory()})
+    async with factory() as session:
+        await SceneBindingStore(session).upsert(LlmScene.CHAT, AdapterKind.XINGYUN, "flow-snap")
+        await session.commit()
+
+    with pytest.raises(LlmConfigError, match="set XINGCHEN_API_KEY"):
         await resolver.resolve(LlmScene.CHAT)
 
     views = {view.scene: view for view in await resolver.views()}
     assert views[LlmScene.CHAT].configured is False
+    # The snapshot is the whole judgment: bool(status) must never pass for an unconfigured one.
+    assert not ConfigStatus(configured=False, missing="XINGCHEN_API_KEY")
+    assert ConfigStatus(configured=True)
 
 
 async def test_resolve_returns_the_bound_adapter(factory) -> None:
@@ -107,6 +182,26 @@ async def test_bindings_are_cached_until_invalidated(factory) -> None:
     resolver.invalidate(LlmScene.CHAT)
     await resolver.binding_for(LlmScene.CHAT)
     assert resolver.loads == 2
+
+
+async def test_a_binding_write_through_the_resolver_is_read_back_immediately(factory) -> None:
+    """P10: the resolver owns the binding write path, so a write drops its own cache entry.
+
+    A caller that remembers to call `invalidate()` is exactly the seam P10 says to remove:
+    with a long TTL, forgetting it means this process keeps routing the scene to the old
+    binding. Writing through the resolver must be visible to the very next read.
+    """
+    resolver = SceneResolver(factory, cache_ttl_seconds=60.0)
+    await resolver.bind(LlmScene.CHAT, AdapterKind.OPENAI_COMPAT, "deepseek-flash")
+    try:
+        assert (await resolver.binding_for(LlmScene.CHAT)).target_ref == "deepseek-flash"
+        await resolver.bind(LlmScene.CHAT, AdapterKind.OPENAI_COMPAT, "deepseek-v4-pro")
+
+        assert (await resolver.binding_for(LlmScene.CHAT)).target_ref == "deepseek-v4-pro"
+        assert resolver.loads == 2, "写后必须重新读库，而不是等 TTL"
+    finally:
+        # the binding table is shared by the whole run: put chat back on the default
+        await resolver.bind(LlmScene.CHAT, AdapterKind.OPENAI_COMPAT, "deepseek-flash")
 
 
 async def test_missing_binding_is_a_config_error(factory) -> None:

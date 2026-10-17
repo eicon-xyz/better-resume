@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="856" viewBox="0 0 1280 856">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d5d5e4"/><stop offset="1" stop-color="#f3f3f9"/>
+    </linearGradient>
+    <linearGradient id="gradstrong" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b6b6cc"/><stop offset="1" stop-color="#e4e4ef"/>
+    </linearGradient>
+    <linearGradient id="gategrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e7e7f1"/><stop offset="1" stop-color="#fbfbfd"/>
+    </linearGradient>
+  </defs>
+  <g font-family="WenQuanYi Zen Hei">
+    <rect x="0" y="0" width="1280" height="800" fill="url(#gategrad)"/>
+    <rect x="300" y="246" width="680" height="118" rx="8" fill="none" stroke="#c8c8cc" stroke-dasharray="6 4"/>
+    <text x="316" y="270" font-size="11.5" fill="#8a8a90">居中 hero</text>
+    <text x="640" y="314" font-size="46" fill="#4a4a4a" text-anchor="middle" font-weight="bold">产品名（大字阶）</text>
+    <text x="640" y="350" font-size="17" fill="#6f6f75" text-anchor="middle">一句话价值主张</text>
+    <rect x="440" y="390" width="400" height="206" rx="16" fill="#ffffff" stroke="#dcdce4" stroke-width="1.5" opacity="0.78"/>
+    <text x="468" y="422" font-size="12" fill="#8a8a90">说明文字占位（两行）</text>
+    <rect x="468" y="432" width="344" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="468" y="448" width="250" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="468" y="476" width="344" height="42" rx="8" fill="none" stroke="#c4c4cc"/>
+    <text x="486" y="502" font-size="13" fill="#9a9aa0">用户名输入</text>
+    <rect x="712" y="532" width="100" height="36" rx="8" fill="url(#gradstrong)"/>
+    <text x="762" y="555" font-size="13" fill="#ffffff" text-anchor="middle">进入</text>
+    <text x="866" y="404" font-size="11.5" fill="#8a8a90">玻璃质感登录卡</text>
+    <text x="866" y="422" font-size="10.5" fill="#a8a8ae">（半透明底 + 细边框）</text>
+    <rect x="866" y="440" width="8" height="8" rx="2" fill="url(#gradstrong)"/>
+    <text x="882" y="449" font-size="11" fill="#8a8a90">输入 + 进入</text>
+    <text x="866" y="476" font-size="11" fill="#8a8a90">纯键盘可达保留</text>
+    <rect x="40" y="112" width="150" height="28" rx="6" fill="url(#gategrad)" stroke="#d8d8dc"/>
+    <text x="202" y="131" font-size="11.5" fill="#8a8a90">低饱和靛蓝渐变底（灰阶占位）</text>
+    <text x="640" y="660" font-size="11.5" fill="#a8a8ae" text-anchor="middle">全屏门面：不出现页壳顶栏与内容容器，未登录时独占首屏</text>
+    <rect x="0" y="800" width="1280" height="56" fill="#fbfbfc"/>
+    <line x1="0" y1="800" x2="1280" y2="800" stroke="#e2e2e6" stroke-width="1"/>
+    <text x="40" y="826" font-size="12" fill="#7a7a82" font-weight="bold">线框 · SH-03 · 登录门（首屏）（灰阶线框，等比例重构）</text>
+    <text x="40" y="844" font-size="10.5" fill="#a8a8ae">依据 docs/tickets/p14-web-redesign/README.md §1.4 提案 · 视口 1280x800 · 图内均为占位标签，无真实个人信息</text>
+    <text x="1240" y="826" font-size="10.5" fill="#a8a8ae" text-anchor="end">源文件 docs/design/login-gate/wireframe-light.svg</text>
+    <text x="1240" y="844" font-size="10.5" fill="#a8a8ae" text-anchor="end">渲染件 wireframe-light.png</text>
+    <rect x="0.5" y="0.5" width="1279" height="855" fill="none" stroke="#d8d8dc"/>
+  </g>
+</svg>

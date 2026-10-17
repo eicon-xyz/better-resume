@@ -1,13 +1,82 @@
-.composer {
+/* 聊天页共享卡片配方：消息气泡与 composer 都从这里取，同 token 配方只写一份。 */
+.card {
   display: flex;
   flex-direction: column;
   gap: var(--br-space-2);
-  padding: var(--br-space-3) var(--br-space-4) var(--br-space-4);
-  border-top: 1px solid var(--br-color-border);
-  background: var(--br-color-bg);
+  padding: var(--br-space-3) var(--br-space-4);
+  /* allow: 卡片发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-lg);
+  background: var(--br-color-surface-raised);
+}
+
+/* composer 卡片：聊天主区底部由 flex 列布局自然吸底，不再叠 position: sticky。 */
+.composer {
+  composes: card;
+  width: calc(100% - var(--br-space-4) - var(--br-space-4));
+  max-width: var(--br-width-measure);
+  margin: var(--br-space-3) auto var(--br-space-4);
+  box-shadow: var(--br-shadow-sticky);
+  transition:
+    border-color var(--br-duration-fast),
+    box-shadow var(--br-duration-normal);
+}
+
+.composer:focus-within {
+  border-color: var(--br-color-accent);
+  box-shadow: var(--br-shadow-md);
+}
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--br-space-3);
+}
+
+.shortcutHint {
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+  white-space: nowrap;
+}
+
+.counter {
+  margin-left: auto;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: var(--br-space-2);
+}
+
+/* 录音指示点：只在 recording 时随按钮一起渲染。 */
+.recDot {
+  width: var(--br-space-2);
+  height: var(--br-space-2);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-danger);
+  animation: recPulse calc(var(--br-duration-normal) * 4) ease-in-out infinite alternate;
+}
+
+@keyframes recPulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer {
+    transition: none;
+  }
+
+  .recDot {
+    animation: none;
+  }
 }

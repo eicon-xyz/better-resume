@@ -1,7 +1,7 @@
 """Restore: rebuild the interview view from durable rows, deriving flow state when missing.
 
-M2 keeps both state layers in Postgres, so restore is mostly a read; the derivation path
-mirrors the old RehydrateService idea (exact vs derived confidence).
+M2 keeps both state layers in Postgres, so restore is a pure read: a missing flow row is
+derived in memory and never written back — question generation is the row's only writer.
 """
 
 from __future__ import annotations
@@ -64,8 +64,7 @@ class RestoreService:
             flow = await FlowStateStore(db).load(session_id)
             derived = flow is None
             if flow is None:
-                flow = await self._derive(db, session_id, questions, answered_numbers)
-                await db.commit()
+                flow = self._derive(session_id, questions, answered_numbers)
 
             current = next(
                 (item for item in questions if item.question_no == flow.current_question_no), None
@@ -116,14 +115,18 @@ class RestoreService:
             for row in rows
         ]
 
-    async def _derive(
+    def _derive(
         self,
-        db: AsyncSession,
         session_id: str,
         questions: list[QuestionRecord],
         answered_numbers: set[str],
     ) -> FlowState:
-        """Rebuild the cursor from answers + questions, then write it back."""
+        """Rebuild the cursor from answers + questions in memory.
+
+        The row itself is not written here: `QuestionService` is the only writer that creates
+        flow state, and a row created on this read path makes its `initialize` collide on the
+        primary key (P15-2).
+        """
         current_no = next(
             (item.question_no for item in questions if item.question_no not in answered_numbers),
             None,
@@ -150,11 +153,11 @@ class RestoreService:
             )
 
         logger.warning("flow_state_derived", session_id=session_id, current=current_no)
-        return await FlowStateStore(db).initialize(
-            session_id,
-            total_questions=len([item for item in questions if item.kind == "main"]),
-            max_follow_up=2,
+        return FlowState(
+            session_id=session_id,
             status=status,
             current_question_no=current_no,
+            total_questions=len([item for item in questions if item.kind == "main"]),
             follow_up_count=follow_up_count,
+            max_follow_up=2,
         )

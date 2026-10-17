@@ -19,14 +19,14 @@
 # 容器重建会换 IP 而哨兵记着旧地址，所以彻底干净的重跑是 down -v（用法里也写了）。
 set -euo pipefail
 
-# P45: buildx >= 0.37.2 enforces bake's entitlement consent gate even under --progress=rawjson
-# (GHSA-gwr2-q96m-6682). Compose builds through `buildx bake` and only ever grants
-# fs.read / security.insecure -- never `network.host`, which compose.yaml requests for the
-# local WSL2 proxy -- so the build is refused before it starts ("additional privileges
-# requested: pass \"--allow=network.host\""). Nightly died here twice (2026-10-09/10).
-# COMPOSE_BAKE=false uses the classic path, which hands the declared entitlements straight
-# to the builder. Pinned by tests/test_drill_prereqs.py. An `export` is a bash builtin, so
-# --help still works without docker.
+# P45/P15-8: buildx >= 0.37.2 enforces bake's entitlement consent gate even under
+# --progress=rawjson (GHSA-gwr2-q96m-6682). compose.yaml asks for `network: host` (local WSL2
+# proxy), and compose never grants it, so every build is refused before it starts
+# ("additional privileges requested: pass \"--allow=network.host\""). compose v5.6.0 also
+# dropped COMPOSE_BAKE, so the classic-path opt-out below is inert here; it stays pinned by
+# tests/test_drill_prereqs.py for older compose releases. Builds therefore go straight to
+# `buildx bake` with the grant stated explicitly (see the build steps). An `export` is a
+# bash builtin, so --help still works without docker.
 export COMPOSE_BAKE=false
 
 # 只用 bash 内建 echo：--help 必须在 docker/uv 检查之前就能工作，连 cat 都不能依赖。
@@ -131,9 +131,11 @@ run_sentinel_mode() {
 
   step "sentinel 模式：drill profile 起栈（主 + 副本 + 3 哨兵），应用显式走哨兵"
   printf 'BR_REDIS_SENTINELS=%s\nBR_REDIS_MASTER_NAME=%s\n' "$BR_REDIS_SENTINELS" "$BR_REDIS_MASTER_NAME"
+  echo "  （构建走 bake，显式授予 network.host）"
+  docker compose --profile drill build --print | docker buildx bake --allow=network.host -f -
   local up_rc=0
-  docker compose --profile drill up -d --build --wait --scale api=2 || up_rc=$?
-  check "$up_rc" "docker compose --profile drill up -d --build --wait --scale api=2"
+  docker compose --profile drill up -d --wait --scale api=2 || up_rc=$?
+  check "$up_rc" "docker compose --profile drill up -d --wait --scale api=2"
   if [ "$up_rc" -ne 0 ]; then
     printf '\n栈没起来，后面的实验没有意义（收尾动作仍会执行）。\n'
     return 1
@@ -159,7 +161,9 @@ docker compose up -d --wait postgres redis
 # P35: on a cold volume (CI) ai_models does not exist yet — seeding before the one-shot
 # migrate job dies with `relation "ai_models" does not exist`. The job is idempotent, and
 # the later `up` runs it again harmlessly.
-docker compose run --rm --build migrate
+echo "== build the images (bake grants network.host; compose never does)"
+docker compose --profile smoke build --print | docker buildx bake --allow=network.host -f -
+docker compose run --rm migrate
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 INSERT INTO ai_models (name, provider, base_url, model_id, api_key_env, max_tokens,
                        temperature, is_enabled, priority, extra)
@@ -169,7 +173,7 @@ ON CONFLICT (name) DO UPDATE
    SET base_url = EXCLUDED.base_url, api_key_env = EXCLUDED.api_key_env,
        is_enabled = true, updated_at = now();
 SQL
-docker compose --profile smoke up -d --build --wait --scale api=2
+docker compose --profile smoke up -d --wait --scale api=2
 check $? "docker compose up --wait --scale api=2"
 
 step "fault 1/5: redis-pause (20s)"

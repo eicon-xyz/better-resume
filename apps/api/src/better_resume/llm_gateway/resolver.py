@@ -7,7 +7,6 @@ how to materialise a gateway for that binding, and how to describe both honestly
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -42,37 +41,43 @@ class SceneView:
     is_default: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ConfigStatus:
+    """One probe's snapshot: whether a binding can run, and the credential that is missing.
+
+    The guard reads `status.configured`, a plain boolean. A forgotten await leaves a
+    coroutine with no `configured` attribute, so it fails loudly instead of passing
+    the truthiness check that the old async boolean let through (P8).
+    """
+
+    configured: bool
+    missing: str | None = None
+
+    def __bool__(self) -> bool:
+        """Truthiness *is* the judgment, so `if not status:` stays correct too."""
+        return self.configured
+
+
 GatewayBuilder = Callable[[Any, str], LlmGateway]
-
-
-async def _call(factory: GatewayFactory, name: str, binding: SceneBinding) -> object | None:
-    """Factories may answer sync (vendor adapter) or async (registry lookup): accept both."""
-    method = getattr(factory, name, None)
-    if method is None:
-        return None
-    result = method(binding)
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
-async def is_configured(factory: GatewayFactory, binding: SceneBinding) -> bool:
-    return bool(await _call(factory, "is_configured", binding))
-
-
-async def credential_hint(factory: GatewayFactory, binding: SceneBinding) -> str | None:
-    """Optional factory hook: the missing credential name, so the 503 is actionable."""
-    hint = await _call(factory, "credential_hint", binding)
-    return str(hint) if hint else None
 
 
 @runtime_checkable
 class GatewayFactory(Protocol):
-    """One per adapter kind: knows if it *can* run a binding and how to build the gateway."""
+    """One per adapter kind: the contract a factory must read to be called by the resolver.
 
-    def is_configured(self, binding: SceneBinding) -> bool: ...
+    `config_status` judges whether a binding can run and names the missing credential when
+    it cannot; `build` materialises the gateway for a binding and raises LlmConfigError when
+    the binding cannot be honoured. `build_for_model` is the explicit model-ref path (the
+    chat picker), provided by factories whose adapter kind selects by model name; the
+    resolver calls it directly, so a factory that leaves it out fails with AttributeError
+    naming the hook instead of a fallback answer that blames another cause.
+    """
+
+    async def config_status(self, binding: SceneBinding) -> ConfigStatus: ...
 
     async def build(self, binding: SceneBinding) -> LlmGateway: ...
+
+    async def build_for_model(self, model_ref: str | None) -> LlmGateway: ...
 
 
 class OpenAiCompatFactory:
@@ -88,22 +93,15 @@ class OpenAiCompatFactory:
         # Resolved lazily so tests can swap app.state.llm_gateway_factory after startup.
         self._gateway_builder = gateway_builder or (lambda: build_llm_gateway)
 
-    async def is_configured(self, binding: SceneBinding) -> bool:
+    async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+        """Resolve the registry row, then snapshot the env-backed key check in one value."""
         try:
             spec = await self._registry.resolve(binding.target_ref)
         except Exception:  # noqa: BLE001 - unknown/disabled model is simply "not configured"
-            return False
-        return self._registry.is_configured(spec)
-
-    async def credential_hint(self, binding: SceneBinding) -> str | None:
-        """Which environment variable the operator has to set (None when nothing is missing)."""
-        try:
-            spec = await self._registry.resolve(binding.target_ref)
-        except Exception:  # noqa: BLE001 - an unknown model has no variable to name
-            return None
+            return ConfigStatus(configured=False)
         if self._registry.is_configured(spec):
-            return None
-        return spec.api_key_env
+            return ConfigStatus(configured=True)
+        return ConfigStatus(configured=False, missing=spec.api_key_env)
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
         return await self.build_for_model(binding.target_ref)
@@ -154,6 +152,19 @@ class SceneResolver:
         else:
             self._bindings.pop(scene, None)
 
+    async def bind(self, scene: LlmScene, adapter: AdapterKind, target_ref: str) -> SceneBinding:
+        """The binding write path: persist, then drop this process's cached copy.
+
+        Writes go through the cache object so "write, then read" cannot see the old binding —
+        a caller that forgets `invalidate()` is the drift P10 records (P18 in M5). Other
+        replicas converge on the TTL; this process never waits for it.
+        """
+        async with self._session_factory() as session:
+            binding = await SceneBindingStore(session).upsert(scene, adapter, target_ref)
+            await session.commit()
+        self.invalidate(scene)
+        return binding
+
     async def binding_for(self, scene: LlmScene) -> SceneBinding:
         async with self._lock:
             cached = self._bindings.get(scene)
@@ -174,12 +185,15 @@ class SceneResolver:
             return binding
 
     async def resolve_model(self, model_ref: str | None) -> LlmGateway:
-        """Explicit model_ref override (chat picker); bypasses scene bindings on purpose."""
+        """Explicit model_ref override (chat picker); bypasses scene bindings on purpose.
+
+        The hook is a protocol member, so a factory that does not declare it fails here
+        with AttributeError naming it — never with an answer that blames another cause.
+        """
         factory = self._factories.get(AdapterKind.OPENAI_COMPAT)
-        builder = getattr(factory, "build_for_model", None)
-        if builder is None:
+        if factory is None:
             raise LlmConfigError("this build has no openai-compatible provider")
-        return await builder(model_ref)
+        return await factory.build_for_model(model_ref)
 
     async def resolve(self, scene: LlmScene) -> LlmGateway:
         binding = await self.binding_for(scene)
@@ -189,14 +203,16 @@ class SceneResolver:
                 f"scene {scene.value!r} is bound to adapter {binding.adapter.value!r}, "
                 "which this build does not provide"
             )
-        if not await is_configured(factory, binding):
+        status = await factory.config_status(binding)
+        if not status.configured:
             detail = (
                 f"scene {scene.value!r} ({binding.adapter.value}:{binding.target_ref}) "
                 "is not configured"
             )
-            missing = await credential_hint(factory, binding)
             raise LlmConfigError(
-                f"{detail}: set {missing}" if missing else f"{detail}; credentials are missing"
+                f"{detail}: set {status.missing}"
+                if status.missing
+                else f"{detail}; credentials are missing"
             )
         gateway = await factory.build(binding)
         logger.debug(
@@ -228,13 +244,18 @@ class SceneResolver:
                 )
                 continue
             factory = self._factories.get(binding.adapter)
+            status = (
+                await factory.config_status(binding)
+                if factory is not None
+                else ConfigStatus(configured=False)
+            )
             views.append(
                 SceneView(
                     scene=scene,
                     label=scene_label(scene),
                     adapter=binding.adapter,
                     target_ref=binding.target_ref,
-                    configured=bool(factory) and await is_configured(factory, binding),
+                    configured=status.configured,
                     is_default=(
                         binding.adapter is DEFAULT_ADAPTER
                         and binding.target_ref == DEFAULT_TARGET_REF

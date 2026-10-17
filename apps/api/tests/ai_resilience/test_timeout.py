@@ -9,6 +9,8 @@ import pytest
 from better_resume.ai_resilience import AiTimeout, ManualClock, Stage
 from better_resume.ai_resilience.timeout import run_with_deadline, with_timeout, wrap_stream_timeout
 
+from ..support import settle
+
 
 async def test_value_timeout_fires_when_the_clock_advances() -> None:
     clock = ManualClock()
@@ -24,8 +26,7 @@ async def test_value_timeout_fires_when_the_clock_advances() -> None:
             cancelled = True
 
     task = asyncio.create_task(with_timeout(Stage.EVALUATION, 20.0, slow(), clock=clock))
-    for _ in range(5):  # let the wrapper schedule the inner task
-        await asyncio.sleep(0)
+    await settle(5)  # let the wrapper schedule the inner task
     assert started.is_set()
     assert task.done() is False
 
@@ -68,7 +69,7 @@ async def test_external_cancellation_reaches_the_inner_task() -> None:
             cancelled.set()
 
     task = asyncio.create_task(run_with_deadline(slow(), seconds=100.0, clock=clock))
-    await asyncio.sleep(0)
+    await settle()
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
@@ -127,8 +128,7 @@ async def test_stream_timeout_before_the_first_frame() -> None:
     task = asyncio.create_task(anext(stream))
     # ManualClock only wakes sleepers that already registered their deadline, so let the
     # wrapper (and its timer task) start before moving time forward.
-    for _ in range(5):
-        await asyncio.sleep(0)
+    await settle(5)
 
     clock.advance(1.0)
     with pytest.raises(AiTimeout):

@@ -35,6 +35,7 @@ from .registry import ModelRegistry
 from .resolver import (
     DEFAULT_ADAPTER,
     DEFAULT_TARGET_REF,
+    ConfigStatus,
     GatewayFactory,
     OpenAiCompatFactory,
     SceneResolver,
@@ -49,6 +50,7 @@ __all__ = [
     "DEFAULT_TARGET_REF",
     "DashScopeAppFactory",
     "to_dashscope_app_payload",
+    "ConfigStatus",
     "GatewayFactory",
     "OpenAiCompatFactory",
     "SceneResolver",

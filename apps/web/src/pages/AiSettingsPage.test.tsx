@@ -170,4 +170,32 @@ describe("AiSettingsPage", () => {
     fireEvent.change(screen.getByLabelText("对话 目标"), { target: { value: "deepseek-v4-pro" } });
     expect(screen.getAllByRole("button", { name: "保存" })[0]).not.toBeDisabled();
   });
+
+  it("reports the save lifecycle: busy while in flight, confirmed once stored", async () => {
+    let finish: (value: SceneView) => void = () => {};
+    const client = fakeClient({
+      updateScene: vi.fn(
+        () =>
+          new Promise<SceneView>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    });
+    renderPage(client);
+    await screen.findByText("答案评分");
+
+    fireEvent.change(screen.getByLabelText("答案评分 目标"), { target: { value: "flow-eval" } });
+    const saveButton = screen.getAllByRole("button", { name: "保存" })[2]!;
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(saveButton).toHaveTextContent("保存中"));
+    expect(saveButton).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    finish({ ...scene({ scene: "answer_evaluation", is_default: false }), target_ref: "flow-eval" });
+
+    const saved = await screen.findByRole("status");
+    expect(saved).toHaveTextContent("已保存");
+    expect(saveButton).not.toHaveAttribute("aria-busy");
+  });
 });

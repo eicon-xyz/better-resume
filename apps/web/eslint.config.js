@@ -24,6 +24,10 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // A dropped promise is a swallowed failure: refuse the `void` escape hatch, so a
+      // caller must await, catch or return it instead of silencing the rejection.
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
+      "no-void": "error",
     },
   },
   {

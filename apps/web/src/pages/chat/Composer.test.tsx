@@ -47,3 +47,41 @@ describe("chat composer realtime transcript", () => {
     expect(box().value).toBe("第二句开始");
   });
 });
+
+describe("chat composer 卡片", () => {
+  it("counts the characters from the box's own value", () => {
+    render(<Composer onSend={vi.fn()} onCancel={vi.fn()} streaming={false} />);
+    expect(screen.getByText("0 字")).toBeInTheDocument();
+
+    fireEvent.change(box(), { target: { value: "我重构了写入链路" } });
+    expect(screen.getByText("8 字")).toBeInTheDocument();
+
+    fireEvent.change(box(), { target: { value: "   " } });
+    expect(screen.getByText("0 字")).toBeInTheDocument();
+  });
+
+  it("keeps the send button disabled until there is text to send", () => {
+    render(<Composer onSend={vi.fn()} onCancel={vi.fn()} streaming={false} />);
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+
+    fireEvent.change(box(), { target: { value: "你好" } });
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+  });
+
+  it("shows the keyboard shortcut and the recording state on the voice button", () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onCancel={vi.fn()}
+        streaming={false}
+        recording
+        onToggleRecording={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Enter 发送，Shift+Enter 换行")).toBeInTheDocument();
+    const mic = screen.getByRole("button", { name: "停止录音" });
+    expect(mic).toHaveAttribute("aria-pressed", "true");
+    expect(mic).toHaveAttribute("data-recording", "true");
+  });
+});

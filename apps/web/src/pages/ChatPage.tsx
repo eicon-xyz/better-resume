@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { describeApiError, isRetryableError } from "../api/errors";
+import { describeApiError, isRetryableError, toApiError } from "../api/errors";
 import type { ModelView } from "../api/types";
 import { useApi } from "../api/useApi";
 import { replaceTranscript } from "../audio/transcriptStore";
 import { useTranscription } from "../audio/useTranscription";
-import { Button } from "../components";
+import { Button, Select } from "../components";
 import { DEFAULT_AUTH_EPOCH, flattenHistory, useChatHistory, useChatSessions, useModels } from "../chat/queries";
 import { mergeHistory } from "../chat/selectors";
 import { useChatStore } from "../chat/store";
@@ -35,6 +35,7 @@ export function ChatPage() {
   const [modelRef, setModelRef] = useState<string | null>(null);
 
   const [draft, setDraft] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
   const draftRef = useRef("");
   // The transcript text we contributed into the box; realtime events replace this span.
   const transcriptSpanRef = useRef("");
@@ -50,12 +51,29 @@ export function ChatPage() {
 
   const transcription = useTranscription({ client: api, onTranscript });
 
+  /** navigate() returns `void | Promise<void>`; normalise it, report a rejection, never float it. */
+  function go(to: string): void {
+    Promise.resolve(navigate(to)).catch((caught: unknown) => {
+      setActionError(describeApiError(toApiError(caught)));
+    });
+  }
+
+  /** Same reporting for an action that owns its own error state (only an escaping throw lands here). */
+  function reportFailure(action: Promise<unknown>): void {
+    action.catch((caught: unknown) => {
+      setActionError(describeApiError(toApiError(caught)));
+    });
+  }
+
   const controller = useChatStream({
     client: api,
     sessionId,
     onSessionCreated: (created) => {
-      void navigate(`/chat/${created}`);
-      void queryClient.invalidateQueries({ queryKey: chatKeys.sessions(DEFAULT_AUTH_EPOCH) });
+      // Session creation succeeded; refreshing the list only rejects on programmer error.
+      queryClient
+        .invalidateQueries({ queryKey: chatKeys.sessions(DEFAULT_AUTH_EPOCH) })
+        .catch(() => undefined);
+      go(`/chat/${created}`);
     },
   });
 
@@ -70,6 +88,7 @@ export function ChatPage() {
     () => mergeHistory(flattenHistory(historyQuery.data), storeMessages),
     [historyQuery.data, storeMessages],
   );
+  const activeSession = (sessionsQuery.data ?? []).find((item) => item.id === sessionId);
 
   if (session.isLoading) {
     return <p className={styles.loading}>正在检查登录状态…</p>;
@@ -82,11 +101,12 @@ export function ChatPage() {
   const models: ModelView[] = modelsQuery.data ?? [];
 
   async function deleteSession(target: string) {
+    setActionError(null);
     await api.deleteChatSession(target);
-    void queryClient.invalidateQueries({ queryKey: chatKeys.sessions(DEFAULT_AUTH_EPOCH) });
+    await queryClient.invalidateQueries({ queryKey: chatKeys.sessions(DEFAULT_AUTH_EPOCH) });
     if (target === sessionId) {
       useChatStore.getState().openSession(null);
-      void navigate("/chat");
+      go("/chat");
     }
   }
 
@@ -97,62 +117,50 @@ export function ChatPage() {
         activeId={sessionId}
         onSelect={(target) => {
           controller.cancel();
-          void navigate(`/chat/${target}`);
+          go(`/chat/${target}`);
         }}
         onCreate={() => {
           controller.cancel();
           useChatStore.getState().openSession(null);
-          void navigate("/chat");
+          go("/chat");
         }}
         onDelete={(target) => {
-          void deleteSession(target);
+          reportFailure(deleteSession(target));
         }}
       />
 
       <main className={styles.main}>
-        <header className={styles.header}>
-          <h1 className={styles.brand}>better-resume</h1>
-          <div className={styles.headerControls}>
-            <label className={styles.modelPicker}>
-              模型
-              <select
-                aria-label="选择模型"
-                value={modelRef ?? ""}
-                onChange={(event) => {
-                  setModelRef(event.target.value || null);
-                }}
-              >
-                <option value="">默认</option>
-                {models.map((model) => (
-                  <option key={model.name} value={model.name} disabled={!model.configured}>
-                    {model.name}
-                    {model.configured ? "" : "（未配置密钥）"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void navigate("/settings/ai")}
-            >
-              AI 设置
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                void api.logout().then(() => {
-                  void queryClient.invalidateQueries();
-                });
+        <div className={styles.contextBar}>
+          {activeSession ? (
+            <h2 className={styles.sessionTitle}>{activeSession.title || "未命名会话"}</h2>
+          ) : null}
+          <label className={styles.modelPicker}>
+            模型
+            <Select
+              aria-label="选择模型"
+              value={modelRef ?? ""}
+              onChange={(event) => {
+                setModelRef(event.target.value || null);
               }}
             >
-              退出
-            </Button>
-          </div>
-        </header>
+              <option value="">默认</option>
+              {models.map((model) => (
+                <option key={model.name} value={model.name} disabled={!model.configured}>
+                  {model.name}
+                  {model.configured ? "" : "（未配置密钥）"}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
 
         <div className={styles.messages}>
+          {actionError ? (
+            <p className={styles.error} role="alert">
+              {actionError}
+            </p>
+          ) : null}
+
           {controller.failure ? (
             <p className={styles.error} role="alert">
               {describeApiError(controller.failure)}
@@ -161,7 +169,9 @@ export function ChatPage() {
                   variant="secondary"
                   size="sm"
                   loading={controller.streaming}
-                  onClick={() => void controller.retry()}
+                  onClick={() => {
+                    reportFailure(controller.retry());
+                  }}
                 >
                   重试
                 </Button>
@@ -181,7 +191,20 @@ export function ChatPage() {
             hasOlder={Boolean(historyQuery.hasNextPage)}
             loadingOlder={historyQuery.isFetchingNextPage}
             onLoadOlder={() => {
-              void historyQuery.fetchNextPage();
+              // The query owns the failure: it lands in historyQuery.isError, not in the banner.
+              historyQuery.fetchNextPage().then(
+                () => undefined,
+                () => undefined,
+              );
+            }}
+            onSuggestion={(text) => {
+              // chip 填入的是手写内容而非转写 span：清空 span，后续语音按首次贡献追加。
+              transcriptSpanRef.current = "";
+              draftRef.current = text;
+              setDraft(text);
+            }}
+            onStartInterview={() => {
+              go("/interview");
             }}
           />
         </div>
@@ -195,13 +218,15 @@ export function ChatPage() {
             if (transcription.recording) transcription.stop();
             else {
               transcriptSpanRef.current = "";
-              void transcription.start();
+              // start() funnels every failure into transcription.error; only a throw reaches here.
+              reportFailure(transcription.start());
             }
           }}
           onSend={(content) => {
             draftRef.current = "";
             setDraft("");
-            void controller.send(content, { modelRef });
+            // send() owns its failure (controller.failure renders the banner); only a throw reaches here.
+            reportFailure(controller.send(content, { modelRef }));
           }}
           onCancel={() => {
             controller.cancel();

@@ -3,12 +3,16 @@
   align-items: center;
   justify-content: center;
   gap: var(--br-space-2);
+  /* allow: 按钮发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
   border: 1px solid transparent;
   border-radius: var(--br-radius-md);
   font-family: inherit;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--br-duration-fast), border-color var(--br-duration-fast);
+  transition:
+    background var(--br-duration-fast),
+    border-color var(--br-duration-fast),
+    color var(--br-duration-fast);
 }
 
 .button:disabled {
@@ -31,10 +35,27 @@
   color: var(--br-color-accent-contrast);
 }
 
+.primary:hover:not(:disabled) {
+  background: var(--br-color-accent-hover);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--br-color-accent-active);
+}
+
 .secondary {
   background: var(--br-color-surface-raised);
   border-color: var(--br-color-border);
   color: var(--br-color-text);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--br-color-surface);
+}
+
+.secondary:active:not(:disabled) {
+  border-color: var(--br-color-text-muted);
+  background: var(--br-color-surface);
 }
 
 .ghost {
@@ -43,5 +64,17 @@
 }
 
 .ghost:hover:not(:disabled) {
+  background: var(--br-color-surface);
   color: var(--br-color-text);
+}
+
+.ghost:active:not(:disabled) {
+  background: var(--br-color-border);
+  color: var(--br-color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
 }

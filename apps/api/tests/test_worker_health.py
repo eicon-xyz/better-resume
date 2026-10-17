@@ -11,6 +11,7 @@ import asyncio
 import pytest
 import redis.asyncio as aioredis
 
+from better_resume.ai_resilience import wait_until
 from better_resume.settings import Settings
 from better_resume.worker import beat, check_health, heartbeat_key, serve
 
@@ -71,10 +72,12 @@ async def test_serve_survives_a_redis_timeout_in_the_heartbeat(
     stop = asyncio.Event()
     task = asyncio.create_task(serve(worker_settings, stop=stop))
     try:
-        for _ in range(40):
-            if calls["beat"] >= 2:
-                break
-            await asyncio.sleep(0.1)
+        await wait_until(
+            lambda: calls["beat"] >= 2,
+            timeout=4.0,
+            interval=0.1,
+            description="the worker to keep beating after the first failure",
+        )
         assert calls["beat"] >= 2, "the worker stopped beating after the first failure"
     finally:
         stop.set()
@@ -106,12 +109,15 @@ async def test_serve_refreshes_the_heartbeat_while_it_runs(worker_settings: Sett
     stop = asyncio.Event()
     task = asyncio.create_task(serve(worker_settings, stop=stop))
     seen = ""
+
+    async def heartbeat_seen() -> bool:
+        nonlocal seen
+        seen = await _heartbeat_value(worker_settings) or ""
+        return bool(seen)
+
     try:
-        for _ in range(20):  # the loop beats before it blocks on the stream
-            seen = await _heartbeat_value(worker_settings) or ""
-            if seen:
-                break
-            await asyncio.sleep(0.1)
+        # the loop beats before it blocks on the stream
+        await wait_until(heartbeat_seen, timeout=2.0, interval=0.1, description="the heartbeat key")
     finally:
         stop.set()
         await asyncio.wait_for(task, timeout=5)

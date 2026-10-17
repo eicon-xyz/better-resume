@@ -1,14 +1,13 @@
-"""V1: prove the four AI chains against the real vendor (not the fake one).
+"""V1：对真实供应商（而非假上游）证明四条 AI 链路。
 
-Everything goes through nginx (the public entry), and the script prints what the *client* can
-see: the vendor's own model name and token usage from the chat stream, the structured fields
-of each interview stage, and the timing of every step.
+一切都经 nginx（公开入口），脚本打印 *客户端* 能看到的内容：聊天流里供应商自己的模型名与
+token usage、每个面试阶段的结构化字段，以及每一步的计时。
 
     uv run python -m scripts.real_model_smoke --base-url http://127.0.0.1:8080
     uv run python -m scripts.real_model_smoke --failure-probe
 
-The failure probe binds a scene to a model row whose credential variable does not exist and
-expects the documented 503 with the variable named; it restores the binding afterwards.
+失败探针把一个场景绑定到凭据变量不存在的模型行，期望得到文档化的、点名该变量的 503；之后它
+会恢复绑定。
 """
 
 from __future__ import annotations
@@ -43,11 +42,11 @@ ON CONFLICT (name) DO UPDATE SET api_key_env = EXCLUDED.api_key_env, is_enabled 
 
 
 def ensure_broken_model() -> bool:
-    """Seed the credential-less model row the probe binds a scene to (needs docker)."""
+    """种下探针用来绑定场景的无凭据模型行（需要 docker）。"""
     docker = shutil.which("docker")
     if docker is None:
         return False
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    result = subprocess.run(  # noqa: S603 - 固定 argv，不走 shell
         [
             docker,
             "compose",
@@ -74,7 +73,7 @@ def ensure_broken_model() -> bool:
 
 
 def parse_meta(line: str) -> dict[str, Any] | None:
-    """`event: meta` + `data: {...}` is how the api exposes the vendor's model and usage."""
+    """`event: meta` + `data: {...}` 是 api 暴露供应商模型与 usage 的方式。"""
     if not line.startswith("data:"):
         return None
     try:
@@ -112,7 +111,7 @@ async def run(
         login.raise_for_status()
         steps.append({"name": "login", "ok": True, "ms": (time.monotonic() - started) * 1000})
 
-        # --- step 1: chat stream. The meta frame carries the vendor's model + token usage.
+        # --- 第 1 步：聊天流。meta 帧携带供应商的模型 + token usage。
         started = time.monotonic()
         session_id = (await client.post("/api/v1/chat/sessions", json={})).json()["id"]
         content, meta = await _stream_chat(client, session_id, args.prompt)
@@ -129,7 +128,7 @@ async def run(
         print(f"chat: model={(meta or {}).get('model')} usage={(meta or {}).get('usage')}")
         print(f"chat: {content[:120]!r}")
 
-        # --- steps 2-5: the interview chain, including the worker's queued summary.
+        # --- 第 2-5 步：面试链路，包括 worker 排队的摘要。
         interview_id = (await client.post("/api/v1/interview/sessions", json={})).json()["id"]
         started = time.monotonic()
         generated = await client.post(
@@ -270,7 +269,7 @@ async def _stream_chat(
 async def _failure_probe(
     client: httpx.AsyncClient, args: argparse.Namespace, steps: list[dict[str, Any]]
 ) -> None:
-    """A scene bound to a model without credentials must fail as a documented 503."""
+    """绑定到无凭据模型的场景必须以文档化的 503 失败。"""
     if not ensure_broken_model():
         steps.append(
             {
@@ -292,7 +291,7 @@ async def _failure_probe(
         switched.raise_for_status()
         started = time.monotonic()
         session_id = (await client.post("/api/v1/chat/sessions", json={})).json()["id"]
-        # The model registry caches for 30s, so the first attempt may still see the old list.
+        # 模型注册表缓存 30s，所以首次尝试可能仍看到旧列表。
         response = None
         detail = ""
         deadline = time.monotonic() + 45

@@ -1,14 +1,13 @@
-"""Generate the API index skill from the OpenAPI document plus the web routes.
+"""由 OpenAPI 文档加 Web 路由生成 API 索引 skill。
 
     uv run --project apps/api python apps/api/scripts/extract_api_index.py
     uv run --project apps/api python apps/api/scripts/extract_api_index.py --check
 
-The ticket writes this path as scripts/extract_api_index.py; in this repo it lives next to
-export_openapi.py, i.e. apps/api/scripts/extract_api_index.py, and runs with the api project.
+票据把此路径写作 scripts/extract_api_index.py；本仓库里它与 export_openapi.py 相邻，即
+apps/api/scripts/extract_api_index.py，并随 api 工程运行。
 
-openapi.json itself is drift-checked, so the endpoint table cannot fall behind the code; the
-frontend routes and the consumer column are read from apps/web/src at generation time. The
-generated file is never edited by hand: CI runs --check.
+openapi.json 本身受漂移检查，端点表不会落后于代码；前端路由与消费点列在生成时从
+apps/web/src 读取。生成的文件绝不手改：CI 跑 --check。
 """
 
 from __future__ import annotations
@@ -19,22 +18,21 @@ import re
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]  # apps/api/scripts -> repo root
+REPO_ROOT = Path(__file__).resolve().parents[3]  # apps/api/scripts -> 仓库根
 OPENAPI = REPO_ROOT / "apps/api/openapi.json"
 APP_TSX = REPO_ROOT / "apps/web/src/App.tsx"
 WEB_SRC = REPO_ROOT / "apps/web/src"
 TARGET = REPO_ROOT / "skills/api-index/generated-api-index.md"
 
-#: Endpoints that do not require a session cookie. Kept explicit on purpose: the generated
-#: document would otherwise need per-route security metadata that we do not emit yet.
+#: 不需要会话 cookie 的端点。刻意保持显式：否则生成的文档将需要逐路由的安全元数据，而我们
+#: 尚未输出它。
 PUBLIC_PATHS = {"/healthz", "/api/v1/auth/session", "/api/v1/auth/ws-ticket", "/api/v1/models"}
 
-#: WebSockets never appear in OpenAPI, so the index keeps them here.
+#: WebSocket 从不出现在 OpenAPI 里，所以索引把它们留在这里。
 WEBSOCKETS = [("/api/v1/media/transcribe", "实时转写（一次性 ticket 握手）", "ticket")]
 
-#: Idempotency cannot be read off the HTTP method alone. Everything else is derived: the two
-#: keyed POSTs carry their dedupe key in the body, and these two are state-machine writes that
-#: replay (questions) or freeze a snapshot (finish) instead of writing twice.
+#: 幂等性无法仅凭 HTTP 方法判断。其余都是推导出来的：两个带键 POST 在请求体里携带去重键，
+#: 而这两个是状态机写操作，它们回放（出题）或冻结快照（完成），而不是写两次。
 IDEMPOTENCY_HINTS = {
     ("post", "/api/v1/interview/sessions/{session_id}/questions"): "幂等（已出题回放；生成中 409）",
     ("post", "/api/v1/interview/sessions/{session_id}/finish"): "幂等（报告冻结后回放快照）",
@@ -48,7 +46,7 @@ NAVIGATE_TARGET = re.compile(r'to="([^"]+)"')
 
 
 def _normal_form(text: str) -> str:
-    """Collapse a template placeholder and an OpenAPI placeholder into the same token."""
+    """把模板占位符与 OpenAPI 占位符折叠成同一个 token。"""
     return PARAM_IN_SOURCE.sub("{p}", text)
 
 
@@ -57,18 +55,18 @@ def _template_form(path: str) -> str:
 
 
 def _consumes(candidate: str, path: str) -> bool:
-    """True when a source literal points at path (exact, or a literal prefix of it)."""
+    """源码字面量指向 path（精确，或它的字面前缀）时为 True。"""
     template = _template_form(path)
     if candidate == template:
         return True
     head, _, tail = template.rpartition("/")
-    # ".../scenes/" + encodeURIComponent(scene) is the only truncated form we accept; a plain
-    # collection literal (".../media/tts") must not claim the item endpoint next to it.
+    # ".../scenes/" + encodeURIComponent(scene) 是我们唯一接受的截断形式；纯集合字面量
+    # （".../media/tts"）不得认领紧挨着的条目端点。
     return "{" in tail and candidate == head + "/"
 
 
 def frontend_consumers(paths: list[str]) -> dict[str, list[str]]:
-    """Map each API path to the web source files that reference it."""
+    """把每个 API 路径映射到引用它的 web 源文件。"""
     consumers: dict[str, list[str]] = {path: [] for path in paths}
     for file in sorted(WEB_SRC.rglob("*.ts*")):
         if ".test." in file.name or file.name == "schema.d.ts":
@@ -93,7 +91,7 @@ def _component_file(component: str) -> str | None:
 
 
 def frontend_routes() -> list[tuple[str, str]]:
-    """Read the SPA routes from App.tsx: (path, page component or redirect)."""
+    """从 App.tsx 读取 SPA 路由：(路径, 页面组件或重定向)。"""
     routes: list[tuple[str, str]] = []
     for line in APP_TSX.read_text(encoding="utf-8").splitlines():
         match = ROUTE_IN_APP.search(line)

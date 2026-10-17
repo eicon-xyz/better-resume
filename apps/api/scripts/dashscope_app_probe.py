@@ -1,13 +1,12 @@
-"""real-machine probe for the DashScope application-call adapter (Xingyun's Alibaba twin).
+"""DashScope 应用调用适配器的真机探针（Xingyun 的阿里侧孪生）。
 
-    uv run python scripts/dashscope_app_probe.py --dry-run   # plan + budget, spends nothing
-    uv run python scripts/dashscope_app_probe.py             # 1 vendor call: SSE protocol + timing
-    uv run python scripts/dashscope_app_probe.py --schema    # +1 call: structured-output boundary
+    uv run python scripts/dashscope_app_probe.py --dry-run   # 计划 + 预算，不花钱
+    uv run python scripts/dashscope_app_probe.py             # 1 次供应商调用：SSE 协议 + 计时
+    uv run python scripts/dashscope_app_probe.py --schema    # 再 +1 次调用：结构化输出边界
 
-Refuses to pretend: without `BR_DASHSCOPE_APP_ID` / `BR_DASHSCOPE_API_KEY` (gitignored
-`.env`) it exits 2 and spends nothing. Evidence honesty: the usage envelope is printed
-**as the vendor sent it** — "this platform returns no usage" is a valid finding, inventing one
-is not. Exit codes: 0 ok, 2 missing configuration, 3 the structured contract failed.
+拒绝假装：没有 `BR_DASHSCOPE_APP_ID` / `BR_DASHSCOPE_API_KEY`（gitignored 的 `.env`）时它
+退出 2 且不花钱。证据诚实：usage 信封**按供应商发来的样子**打印——「该平台不返回 usage」是
+有效发现，凭空编一个不是。退出码：0 正常，2 缺配置，3 结构化契约失败。
 """
 
 from __future__ import annotations

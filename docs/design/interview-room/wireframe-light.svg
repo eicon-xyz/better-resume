@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="856" viewBox="0 0 1280 856">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d5d5e4"/><stop offset="1" stop-color="#f3f3f9"/>
+    </linearGradient>
+    <linearGradient id="gradstrong" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b6b6cc"/><stop offset="1" stop-color="#e4e4ef"/>
+    </linearGradient>
+    <linearGradient id="gategrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e7e7f1"/><stop offset="1" stop-color="#fbfbfd"/>
+    </linearGradient>
+  </defs>
+  <g font-family="WenQuanYi Zen Hei">
+    <rect x="0" y="0" width="1280" height="800" fill="#ffffff"/>
+    <rect x="0" y="0" width="1280" height="56" fill="#fcfcfd"/>
+    <line x1="0" y1="56" x2="1280" y2="56" stroke="#d8d8dc" stroke-width="1"/>
+    <text x="40" y="35" font-size="17" fill="#3f3f45" font-weight="bold">better-resume</text>
+    <text x="230" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">对话</text>
+    <text x="300" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">面试</text>
+    <text x="370" y="33" font-size="13" fill="#8a8a90" text-anchor="middle">AI 设置</text>
+    <circle cx="1132" cy="28" r="12" fill="#ececf0" stroke="#d8d8dc"/>
+    <text x="1152" y="33" font-size="13" fill="#8a8a90">用户区</text>
+    <text x="1240" y="33" font-size="13" fill="#8a8a90" text-anchor="end">退出</text>
+    <rect x="0" y="56" width="1280" height="52" fill="#fbfbfc"/>
+    <line x1="0" y1="108" x2="1280" y2="108" stroke="#e2e2e6" stroke-width="1"/>
+    <text x="64" y="88" font-size="12.5" fill="#4a4a4a" font-weight="bold">房间二级行</text>
+    <circle cx="196" cy="82" r="11" fill="url(#gradstrong)" stroke="#d8d8dc"/>
+    <text x="196" y="86" font-size="10.5" fill="#ffffff" text-anchor="middle">1</text>
+    <line x1="209" y1="82" x2="219" y2="82" stroke="#d8d8dc" stroke-width="1.5"/>
+    <circle cx="232" cy="82" r="11" fill="url(#gradstrong)" stroke="#d8d8dc"/>
+    <text x="232" y="86" font-size="10.5" fill="#ffffff" text-anchor="middle">2</text>
+    <line x1="245" y1="82" x2="255" y2="82" stroke="#d8d8dc" stroke-width="1.5"/>
+    <circle cx="268" cy="82" r="11" fill="#ececf0" stroke="#d8d8dc"/>
+    <text x="268" y="86" font-size="10.5" fill="#8a8a90" text-anchor="middle">3</text>
+    <line x1="281" y1="82" x2="291" y2="82" stroke="#d8d8dc" stroke-width="1.5"/>
+    <circle cx="304" cy="82" r="11" fill="#ececf0" stroke="#d8d8dc"/>
+    <text x="304" y="86" font-size="10.5" fill="#8a8a90" text-anchor="middle">4</text>
+    <line x1="317" y1="82" x2="327" y2="82" stroke="#d8d8dc" stroke-width="1.5"/>
+    <circle cx="340" cy="82" r="11" fill="#ececf0" stroke="#d8d8dc"/>
+    <text x="340" y="86" font-size="10.5" fill="#8a8a90" text-anchor="middle">5</text>
+    <text x="380" y="87" font-size="12.5" fill="#5a5a62" font-weight="bold">题 2 / 5</text>
+    <rect x="452" y="66" width="104" height="26" rx="13" fill="url(#gradstrong)"/>
+    <text x="504" y="84" font-size="11" fill="#ffffff" text-anchor="middle">类别徽章</text>
+    <rect x="1064" y="66" width="152" height="30" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="6 4"/>
+    <text x="1140" y="86" font-size="12" fill="#8a8a90" text-anchor="middle">结束面试</text>
+    <rect x="64" y="126" width="648" height="396" rx="10" fill="#ffffff" stroke="#d5d5d8" stroke-width="1.5"/>
+    <text x="84" y="156" font-size="12.5" fill="#6f6f75" font-weight="bold">问题卡</text>
+    <text x="84" y="196" font-size="22" fill="#4a4a4a" font-weight="bold">题面（大字号）</text>
+    <text x="84" y="226" font-size="14" fill="#6f6f75">问题正文第一行占位</text>
+    <text x="84" y="250" font-size="14" fill="#6f6f75">问题正文第二行占位</text>
+    <text x="84" y="292" font-size="11" fill="#a8a8ae">focus_points 标签化</text>
+    <rect x="84" y="304" width="104" height="28" rx="14" fill="#eeeef3" stroke="#dcdce4"/>
+    <text x="136.0" y="322" font-size="11" fill="#8a8a90" text-anchor="middle">考点标签</text>
+    <rect x="224" y="304" width="128" height="28" rx="14" fill="#eeeef3" stroke="#dcdce4"/>
+    <text x="288.0" y="322" font-size="11" fill="#8a8a90" text-anchor="middle">考点标签</text>
+    <rect x="364" y="304" width="92" height="28" rx="14" fill="#eeeef3" stroke="#dcdce4"/>
+    <text x="410.0" y="322" font-size="11" fill="#8a8a90" text-anchor="middle">考点标签</text>
+    <text x="84" y="366" font-size="10.5" fill="#a8a8ae">类别徽章带渐变点缀（与二级行徽章同配方）</text>
+    <text x="84" y="392" font-size="10.5" fill="#b4b4ba">题面字号显著大于正文，卡片留白充足</text>
+    <rect x="752" y="126" width="464" height="396" rx="10" fill="#fbfbfc" stroke="#d5d5d8" stroke-width="1.5"/>
+    <text x="772" y="156" font-size="12.5" fill="#6f6f75" font-weight="bold">反馈列表（按时间分组）</text>
+    <text x="1196" y="156" font-size="10.5" fill="#a8a8ae" text-anchor="end">共 2 条</text>
+    <rect x="772" y="172" width="424" height="120" rx="8" fill="#f2f2f7" stroke="#cfcfdc"/>
+    <rect x="772" y="172" width="4" height="120" rx="2" fill="url(#gradstrong)"/>
+    <text x="792" y="198" font-size="12.5" fill="#5a5a62" font-weight="bold">最新一条反馈（高亮）</text>
+    <rect x="792" y="212" width="380" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="792" y="232" width="340" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="792" y="252" width="260" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="772" y="304" width="424" height="88" rx="8" fill="#fdfdfe" stroke="#e2e2e6"/>
+    <text x="792" y="330" font-size="12.5" fill="#8a8a90">更早的反馈</text>
+    <rect x="792" y="344" width="380" height="9" rx="4" fill="#e6e6ea"/>
+    <rect x="792" y="364" width="300" height="9" rx="4" fill="#e6e6ea"/>
+    <text x="772" y="508" font-size="10.5" fill="#a8a8ae">反馈按时间分组，最新一条高亮</text>
+    <rect x="64" y="548" width="1152" height="150" rx="12" fill="#ffffff" stroke="#d5d5d8" stroke-width="1.5"/>
+    <rect x="84" y="566" width="1112" height="62" rx="8" fill="#fafafb" stroke="#e2e2e6"/>
+    <text x="100" y="600" font-size="13" fill="#9a9aa0">输入回答，或按住语音作答…</text>
+    <text x="84" y="650" font-size="11" fill="#8a8a90">字数计数 0 / 1000</text>
+    <rect x="844" y="636" width="88" height="30" rx="8" fill="none" stroke="#c4c4cc" stroke-dasharray="5 4"/>
+    <text x="888" y="656" font-size="11.5" fill="#8a8a90" text-anchor="middle">语音</text>
+    <rect x="1108" y="636" width="88" height="30" rx="8" fill="url(#gradstrong)"/>
+    <text x="1152" y="656" font-size="11.5" fill="#ffffff" text-anchor="middle">提交</text>
+    <text x="824" y="656" font-size="10.5" fill="#b4b4ba" text-anchor="end">快捷键提示：Ctrl + Enter</text>
+    <text x="64" y="724" font-size="10.5" fill="#a8a8ae">composer 卡片化：语音按钮态变化（录音中 / 转写中）与快捷键提示常驻</text>
+    <text x="64" y="748" font-size="10.5" fill="#a8a8ae">窄屏 &lt;1024：上下堆叠、反馈折叠、composer 吸底</text>
+    <rect x="0" y="800" width="1280" height="56" fill="#fbfbfc"/>
+    <line x1="0" y1="800" x2="1280" y2="800" stroke="#e2e2e6" stroke-width="1"/>
+    <text x="40" y="826" font-size="12" fill="#7a7a82" font-weight="bold">线框 · SH-08 · 面试间（灰阶线框，等比例重构）</text>
+    <text x="40" y="844" font-size="10.5" fill="#a8a8ae">依据 docs/tickets/p14-web-redesign/README.md §1.4 提案 · 视口 1280x800 · 图内均为占位标签，无真实个人信息</text>
+    <text x="1240" y="826" font-size="10.5" fill="#a8a8ae" text-anchor="end">源文件 docs/design/interview-room/wireframe-light.svg</text>
+    <text x="1240" y="844" font-size="10.5" fill="#a8a8ae" text-anchor="end">渲染件 wireframe-light.png</text>
+    <rect x="0.5" y="0.5" width="1279" height="855" fill="none" stroke="#d8d8dc"/>
+  </g>
+</svg>

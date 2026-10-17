@@ -109,9 +109,9 @@
    "severity": "中",
    "title": "五个异常处理器用 getattr 链反推 kind，而不是用异常自己的类型化字段",
    "where": [
-    "apps/api/src/better_resume/main.py:204"
+    "apps/api/src/better_resume/main.py:220"
    ],
-   "evidence": "204: async def _gateway_timeout(request: Request, exc: Exception) -> JSONResponse:\n205: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n206: return JSONResponse(status_code=504, content={\"detail\": str(exc), \"kind\": kind})\n209: async def _service_unavailable(request: Request, exc: Exception) -> JSONResponse:\n211: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n219: async def _bad_gateway(request: Request, exc: Exception) -> JSONResponse:\n220: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
+   "evidence": "213: async def _gateway_timeout(request: Request, exc: Exception) -> JSONResponse:\n214: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n215: return JSONResponse(status_code=504, content={\"detail\": str(exc), \"kind\": kind})\n218: async def _service_unavailable(request: Request, exc: Exception) -> JSONResponse:\n220: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n228: async def _bad_gateway(request: Request, exc: Exception) -> JSONResponse:\n229: kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
    "why": "AiResilienceError 子类（errors.py:24-57）已经带了类型化的 kind: FailureKind，但处理器把参数声明成 Exception 再用 getattr 探测，并且每个处理器给了不同的兜底字符串（timeout / unavailable / unknown）。结果是：错误响应里的 kind 可能来自三层猜测而不是定义；重构异常类（改名/去掉 kind）时 ruff 与 mypy 都不会响，只有线上响应体悄悄变了。request 参数在五个函数里都没用到，也说明这里的签名是照 Starlette 的形状抄的而不是按需要写的。",
    "fix": "把 handler 的签名标注成具体异常类型（AiTimeout/AiUnavailable/...），直接用 exc.kind.value；未用的 request 改成 _request。"
   },

@@ -1,0 +1,33 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--br-text-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--br-space-2) var(--br-space-1);
+  text-align: left;
+  vertical-align: middle;
+  /* allow: 表格行底分隔线线宽（1px 几何） */
+  border-bottom: 1px solid var(--br-color-border);
+}
+
+.table thead th {
+  color: var(--br-color-text-muted);
+  font-weight: 600;
+}
+
+.table tbody tr {
+  transition: background var(--br-duration-fast);
+}
+
+.table tbody tr:hover {
+  background: var(--br-color-surface-raised);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table tbody tr {
+    transition: none;
+  }
+}

@@ -102,10 +102,10 @@
    "title": "worker 复制了一份 app 的运行时装配，还为可直接 import 的符号绕道 __import__(\"better_resume.main\")（顺带触发模块级 create_app）",
    "where": [
     "apps/api/src/better_resume/worker.py:43-68",
-    "apps/api/src/better_resume/main.py:52-60",
-    "apps/api/src/better_resume/main.py:217"
+    "apps/api/src/better_resume/main.py:54-62",
+    "apps/api/src/better_resume/main.py:233"
    ],
-   "evidence": "# apps/api/src/better_resume/worker.py:43-54\n43: def build_worker_runtime(settings: Settings) -> dict[str, Any]:\n44: \"\"\"Minimal runtime for background work (the HTTP app builds its own, richer one).\"\"\"\n45: engine = build_engine(settings.database_url)\n46: session_factory = build_session_factory(engine)\n47: resilience = ResilientAiResilience(settings)\n48: resolver = SceneResolver(\n49: session_factory,\n50: gateway_builder=lambda: (\n51: __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\n52: ),\n53: cache_ttl_seconds=settings.scene_binding_cache_seconds,\n54: )\n\n# apps/api/src/better_resume/main.py:59-59\n59: build_llm_gateway,\n\n# apps/api/src/better_resume/main.py:225-225\n225: app = create_app()",
+   "evidence": "# apps/api/src/better_resume/worker.py:43-54\n43: def build_worker_runtime(settings: Settings) -> dict[str, Any]:\n44: \"\"\"Minimal runtime for background work (the HTTP app builds its own, richer one).\"\"\"\n45: engine = build_engine(settings.database_url)\n46: session_factory = build_session_factory(engine)\n47: resilience = ResilientAiResilience(settings)\n48: resolver = SceneResolver(\n49: session_factory,\n50: gateway_builder=lambda: (\n51: __import__(\"better_resume.main\", fromlist=[\"create_app\"]).build_llm_gateway\n52: ),\n53: cache_ttl_seconds=settings.scene_binding_cache_seconds,\n54: )\n\n# apps/api/src/better_resume/main.py:61-61\n61: build_llm_gateway,\n\n# apps/api/src/better_resume/main.py:233-233\n233: app = create_app()",
    "why": "worker.py:50-52 去 better_resume.main 拿 build_llm_gateway，而那只是 llm_gateway 的同一个对象在 main.py:59 被 re-export（worker.py:24-31 本来就从 llm_gateway 导入一堆同级符号）。导入 main 会执行第 224 行的模块级 `app = create_app()`：worker 进程启动时白建一个 FastAPI app，并顺带跑 configure_logging / get_settings，只为拿一个可以直接 `from .llm_gateway import build_llm_gateway` 的函数。同时 engine/session_factory/ModelRegistry/SceneResolver+两个 register_factory/ResilientAiResilience 这份装配清单在 main.py:71-121 与 worker.py:43-68 各写一遍：新增一种 AdapterKind 或给韧性链加 DistributedAiResilience（main.py:108-117 只在 app 侧）时，两条路径会静默漂移，而 worker 正是报告叙述的唯一执行者。",
    "fix": "把运行时装配抽成一个共享的 build_runtime(settings) 给 app 与 worker 用；gateway_builder 直接 from .llm_gateway import build_llm_gateway，删掉 __import__ hack。"
   },
@@ -135,11 +135,11 @@
    "severity": "中",
    "title": "缝收住了端点，却把 socket_timeout/decode_responses 留给 8 个调用点：6 处根本不设超时",
    "where": [
-    "apps/api/src/better_resume/redis_client.py:58-63",
+    "apps/api/src/better_resume/redis_client.py:55-60",
     "apps/api/src/better_resume/jobs/queue.py:52-57",
-    "apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74"
+    "apps/api/src/better_resume/ai_resilience/redis_buckets.py:124-126"
    ],
-   "evidence": "# apps/api/src/better_resume/redis_client.py:58-63\n58: def redis_client(\n59: source: RedisSource,\n60: *,\n61: decode_responses: bool = True,\n62: socket_timeout: float | None = None,\n63: ) -> aioredis.Redis:\n\n# apps/api/src/better_resume/jobs/queue.py:52-57\n52: self._socket_timeout_seconds = socket_timeout_seconds\n53: # redis-py 8 has a 5s default socket timeout, which truncates blocking reads for\n54: # no good reason; keep it explicit and comfortably above our block window.\n55: self._client = redis_client(\n56: redis_source, decode_responses=True, socket_timeout=socket_timeout_seconds\n57: )\n\n# apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74\n72: self._client = redis_client(\n73: redis_source, decode_responses=True, socket_timeout=socket_timeout\n74: )",
+   "evidence": "# apps/api/src/better_resume/redis_client.py:55-60\n55: def redis_client(\n56: source: RedisSource,\n57: *,\n58: decode_responses: bool = True,\n59: socket_timeout: float | None = None,\n60: ) -> aioredis.Redis:\n\n# apps/api/src/better_resume/jobs/queue.py:52-57\n52: self._socket_timeout_seconds = socket_timeout_seconds\n53: # redis-py 8 has a 5s default socket timeout, which truncates blocking reads for\n54: # no good reason; keep it explicit and comfortably above our block window.\n55: self._client = redis_client(\n56: redis_source, decode_responses=True, socket_timeout=socket_timeout_seconds\n57: )\n\n# apps/api/src/better_resume/ai_resilience/redis_buckets.py:124-126\n124: self._client = redis_client(\n125: redis_source, decode_responses=True, socket_timeout=socket_timeout\n126: )",
    "why": "redis_client 的签名把 socket_timeout 做成可选，于是『等多久』变成每个调用点各自的决定：只有 JobQueue（15s，为阻塞读留出余量）和 RedisRateLimiter（settings.rate_limit.redis_socket_timeout_ms=50ms，config.py:113）设了，两者差 300 倍；identity/redis_store.py:26、tickets.py:65、interview_engine/locks.py:94、hot_state.py:86、ai_resilience/distributed.py:99、worker.py:102/149 全都不传 → 无超时。Redis『半死』（TCP 通但不答）时，/auth/me、WS 票据兑换、题级锁、分布式单飞会无限等，而 /D19 的整个故障面就是为这种情况做的。另外 7 个调用点还要各写一遍 decode_responses=True（seam 默认已经是 True），说明这个参数在实际使用中也是常量。",
    "fix": "在 seam 里定一个来自 Settings 的默认 socket_timeout（允许有理由地覆盖），调用点不再各自发明；decode_responses 保留默认不重复书写。"
   },
@@ -166,9 +166,9 @@
    "title": "enqueue 用 tuple[str, bool] 表达 (task_id, created)，而唯一的生产调用点把返回值整个丢掉",
    "where": [
     "apps/api/src/better_resume/jobs/queue.py:67-87",
-    "apps/api/src/better_resume/http/interview.py:435-439"
+    "apps/api/src/better_resume/http/interview.py:451-455"
    ],
-   "evidence": "# apps/api/src/better_resume/jobs/queue.py:67-70\n67: async def enqueue(\n68: self, kind: str, payload: dict[str, Any], *, idempotency_key: str\n69: ) -> tuple[str, bool]:\n70: \"\"\"Returns (task_id, created). A repeated key returns the existing task id.\"\"\"\n\n# apps/api/src/better_resume/http/interview.py:435-439\n435: await state.job_queue.enqueue(\n436: \"report.summary\",\n437: {\"session_id\": session_id, \"user_id\": principal.user_id},\n438: idempotency_key=f\"report:{session_id}\",\n439: )",
+   "evidence": "# apps/api/src/better_resume/jobs/queue.py:67-70\n67: async def enqueue(\n68: self, kind: str, payload: dict[str, Any], *, idempotency_key: str\n69: ) -> tuple[str, bool]:\n70: \"\"\"Returns (task_id, created). A repeated key returns the existing task id.\"\"\"\n\n# apps/api/src/better_resume/http/interview.py:451-455\n451: await state.job_queue.enqueue(\n452: \"report.summary\",\n453: {\"session_id\": session_id, \"user_id\": principal.user_id},\n454: idempotency_key=f\"report:{session_id}\",\n455: )",
    "why": "tuple[str, bool] 把两个不同含义的位置值塞给调用者，读代码的人必须回来看实现才知道第二个是『本次是否新建』；而生产里唯一的调用者（http/interview.py:435）连接收都不接收，created 这个语义只有 tests/test_job_queue.py:41、60-63 在断言。结果『重复投递返回既有 task_id』这条幂等契约在系统里没有任何可见面（只有 dedupe key 的副作用），前端也无从知道报告叙述是本次新排的还是早就排过。",
    "fix": "返回具名字段对象（如 EnqueueResult(task_id, created)），或让 enqueue 只返回 task_id 并把幂等事实写进状态/日志。"
   },
@@ -201,10 +201,10 @@
    "where": [
     "apps/api/src/better_resume/jobs/queue.py:89-91",
     "apps/api/src/better_resume/jobs/queue.py:226-228",
-    "apps/api/scripts/fault_probe.py:881-883"
+    "apps/api/scripts/fault_probe.py:875-877"
    ],
-   "evidence": "# apps/api/src/better_resume/jobs/queue.py:89-91\n89: async def status(self, task_id: str) -> dict[str, Any] | None:\n90: data = await self._client.hgetall(f\"{self.stream}:status:{task_id}\")\n91: return data or None\n\n# apps/api/scripts/fault_probe.py:881-883\n881: pending = docker(\n882: \"compose\", \"exec\", \"-T\", \"redis\", \"redis-cli\", \"XPENDING\", \"br:jobs\", \"br:workers\"\n883: )",
-   "why": "删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:881-883，且它在 837 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。",
+   "evidence": "# apps/api/src/better_resume/jobs/queue.py:89-91\n89: async def status(self, task_id: str) -> dict[str, Any] | None:\n90: data = await self._client.hgetall(f\"{self.stream}:status:{task_id}\")\n91: return data or None\n\n# apps/api/scripts/fault_probe.py:875-877\n875: pending = docker(\n876: \"compose\", \"exec\", \"-T\", \"redis\", \"redis-cli\", \"XPENDING\", \"br:jobs\", \"br:workers\"\n877: )",
+   "why": "删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:875-877，且它在 832 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。",
    "fix": "要么把状态面接给真实消费者（报告页轮询/运维接口）保留 status()，要么删到只剩 xlen/pending 并在演练里调 queue.pending()，让键名只有一处来源。"
   },
   {

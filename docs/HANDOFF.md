@@ -6,17 +6,17 @@
 
 ## 1. 当前状态
 
-**`main` = `353b4b5`（CI 绿），没有挂起的 PR。**
+**快照 2026-10-17。当前分支 `p14-web-redesign`（已推 `origin`；领先 `origin/main`（`353b4b5`）25 个 commit）。没有挂起的 PR——建 PR、合并、往 main 推进均由用户做。**
 
-- **在飞阶段**：`docs/tickets/p11-resume-driven-questions/`（简历驱动的分类出题）——实现已落工作区，
-  **待用户验收**（对账与未验证项见同目录 `ACCEPTANCE.md`）。
-- 本地分支 `docs/cleanup-current-state`（`84f622b`）承载那轮全量文档清理，**未推送**；
-  该分支之后的改动仍在工作区。
-
-- 已合并：M0–M6、V、P1–P10。代码即事实：验证入口 `bash scripts/verify.sh --list`。
+- **p15（让代码库对智能体友好）已收口归档**：票据 / 验收包（`ACCEPTANCE.md`，偏差表已由用户追认）/ 双轴评审 / PROBLEMS 台账 → `docs/history_docs/tickets/p15-agent-friendly-architecture/`。
+- **p14（web redesign）改动在分支顶部**：`58ea96e`（web 页面与视觉）+ `0391036`（工具、后端缝与文档）；待人工测试（`docs/MANUAL-TESTING.md` §1）与合并裁定。
+- 在飞票据目录 `docs/tickets/`（p11–p14）；阶段收口后按 `docs/agents/issue-tracker.md` 归档到 `docs/history_docs/tickets/`。
+- 已合并：M0–M6、V、P1–P10（合并进度以 GitHub 为准）。代码即事实：验证入口 `bash scripts/verify.sh --list`。
 - 验证网：CI 双 job 与本地走同一份分层命令（`scripts/verify.sh`）；`nightly`（每日 02:30 UTC，deploy + quick fault）
   与 `weekly-full`（周日 03:00 UTC，全量故障 + 60min 浸泡）是定时兜底。`schedule` 只认默认分支。
-- 收口口径：`bash scripts/verify.sh --layer all` 全绿 + 后端全量 pytest（带 `BR_*` env、`--junitxml` 读数）。
+  `--layer scripts` 含八道自带 `--selftest` 的门禁（凭据 / 历史叙事 / 引证 / hermetic / 写入路径 / 票据结构 / PR 状态 / 部署默认值声明）。
+- 收口口径：`bash scripts/verify.sh --layer all` 全绿 + 后端全量 pytest（`BR_*` env、`--junitxml` 读数；全量用**自建隔离库**——共享库会被并行跑污染）
+  + `python3 scripts/verify_audit_evidence.py --strict` 全绿。
 
 ## 2. 仓库与流程约定
 
@@ -25,6 +25,13 @@
 - **协作流程（用户明确要求，永久生效）**：每个阶段**先出提案**（范围/不做/交付物/测试/验收口径）→ 用户确认 →
   红-绿 TDD 执行 → 交**验收包**（ACCEPTANCE：可复跑命令 + 原始输出 + 未验证项 + 偏差）→ **由用户验收**。
   **AI 不自行宣布完成、不擅自提交/推送/开 PR/合并**；验收通过且用户明确下令后才动 git。
+- **票据与验收包的必填段**：开工前「意图复述」、收工「实现决定交代」；验收包另有「自行拍定的决定」（跨票聚合、带票标识列）
+  与「改动面与高风险面自查」（`git diff --stat` 原始输出 + 与声明写入路径逐条比对、**越界即红** + 五类高风险面逐类勾）。
+  格式见 `docs/agents/issue-tracker.md`。
+- **人工评审看两处**：`CODING_STANDARDS.md` §5（五类高风险面，每格是检查动作）与 §6（八条必答问题；
+  合法回答有三种——证据 / 不适用 / **无法取证**，后者必须点名读不到的路径）。
+- **跨模型派活与评审分派**：交接包五栏（含「不接受的自由度」）、Spec 轴派**异家族同级**模型、Standards 轴归规划方、
+  派活前给票据建 sha256 基线——见 `docs/agents/subagents.md` §8。
 - **文档纪律**：所有文档与代码注释只描述**当前状态**，不记录修改历史；临时阶段划分与被取代的决策不留痕。
 - 纪律：只 mock 系统边界（LLM/时钟/Redis/讯飞/浏览器音频/IPC）；小步提交说 WHAT；难题即时记票据的 `PROBLEMS.md`；
   真机凭据只进 gitignored `.env`；不允许"默认关闭、没人跑"的死分支。
@@ -89,6 +96,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
 | `GLOSSARY.md` | 域词汇表（**先读它**）；术语以外的实现细节不进这个文件 |
 | `apps/api/src/better_resume/interview_engine/corpus/questions.json` | 随包发布的八股参考题语料（120 条 / 10 个 topic / 43 个来源页）。**更新方式**：改 JSON 后跑 `cd apps/api && uv run python scripts/check_corpus.py`（条数 100–150、每 topic ≥ 8、来源去重 ≥ 12、id 与题干不重复、URL 必须 https）；缺文件或坏 JSON 是发布缺陷——加载器抛 `CorpusError`，由 `tests/interview_engine/test_corpus.py` 钉住 |
 | `docs/agents/subagents.md` | 用子智能体干活的操作约定 |
+| `scripts/verify_secrets.sh` / `verify_docs_hygiene.sh` / `verify_citations.sh` / `verify_write_scope.sh` / `verify_hermetic.py` / `ticket_frontier.sh` / `pr_state.sh` / `deploy_defaults.sh` | 自带 `--selftest` 的门禁（坏输入必红、豁免逐条注明）；判据只在脚本内，已接进 `scripts/verify.sh --layer scripts` |
 
 ## 4. 本机环境事实与坑
 
@@ -149,7 +157,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
 GLOSSARY.md                             ← 域词汇表（术语；**接手先读这个**）
 AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律
 docs/HANDOFF.md                         ← 本文档：当前状态 / 怎么跑 / 环境坑 / 未验证清单
-docs/DECISIONS.md                       技术决议 D01–D22（冲突以它为准）
+docs/DECISIONS.md                       技术决议 D01–D26（冲突以它为准）
 docs/agents/subagents.md                子智能体操作约定
 docs/audit/                             模块设计审计：MODULE-AUDIT.html（产物）/ units/*.json（数据）/ CONTRACT.md（口径）
 docs/history_docs/                      历史归档：tickets/**（各阶段票据+验收包+问题台账）、HANDOFF-archive.md、audit/FIXES.md

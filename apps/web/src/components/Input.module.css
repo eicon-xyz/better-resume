@@ -1,0 +1,29 @@
+.input {
+  width: 100%;
+  padding: var(--br-space-2) var(--br-space-3);
+  /* allow: 控件发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
+  border: 1px solid var(--br-color-border);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-surface-raised);
+  color: var(--br-color-text);
+  font: inherit;
+  font-size: var(--br-text-sm);
+  transition:
+    border-color var(--br-duration-fast),
+    box-shadow var(--br-duration-fast);
+}
+
+.input:hover {
+  border-color: var(--br-color-accent);
+}
+
+.input:focus-visible {
+  border-color: var(--br-color-accent);
+  box-shadow: 0 0 0 var(--br-space-1) var(--br-color-accent-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .input {
+    transition: none;
+  }
+}

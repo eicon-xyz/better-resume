@@ -8,7 +8,7 @@ import { useTtsPlayback } from "../audio/useTtsPlayback";
 import { Button, Empty, Spinner } from "../components";
 import { useInterviewRoom } from "../interview/useInterviewRoom";
 import { useRoomStore } from "../interview/roomStore";
-import { AnswerComposer, FeedbackCard, ProgressBar, QuestionCard } from "./interview/RoomParts";
+import { AnswerComposer, CategoryBadge, FeedbackCard, ProgressBar, QuestionCard } from "./interview/RoomParts";
 import styles from "./InterviewRoomPage.module.css";
 
 export function InterviewRoomPage() {
@@ -20,12 +20,15 @@ export function InterviewRoomPage() {
     client: api,
     sessionId,
     onFinished: (id) => {
-      void navigate(`/interview/report/${id}`);
+      // Called at the end of finish()'s try block: a rejected navigation surfaces as state.error.
+      Promise.resolve(navigate(`/interview/report/${id}`)).catch(() => undefined);
     },
   });
 
   const [answer, setAnswer] = useState("");
   const [notice, setNotice] = useState(false);
+  // 反馈区在窄屏默认折叠；断点块在 ≥1024 让它常显并隐掉开关。
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const answerRef = useRef("");
   // The transcript text we contributed into the box; realtime events replace this span.
   const transcriptSpanRef = useRef("");
@@ -46,9 +49,11 @@ export function InterviewRoomPage() {
   const transcription = useTranscription({ client: api, onTranscript });
 
   const answeredTurns = state.turns.filter((turn) => !turn.pending && turn.score !== null);
+  const latestTurnIndex = answeredTurns.length - 1;
   const current = state.currentQuestion
     ? (state.turns.find((turn) => turn.questionNo === state.currentQuestion?.question_no) ?? null)
     : null;
+  const category = state.currentQuestion?.category ?? null;
 
   if (controller.restoring) {
     return (
@@ -64,7 +69,15 @@ export function InterviewRoomPage() {
         <Empty
           title="无法恢复这场面试"
           description={controller.restoreError}
-          action={<Button onClick={() => void navigate("/interview")}>回到面试入口</Button>}
+          action={
+            <Button
+              onClick={() => {
+                Promise.resolve(navigate("/interview")).catch(() => undefined);
+              }}
+            >
+              回到面试入口
+            </Button>
+          }
         />
       </div>
     );
@@ -74,18 +87,20 @@ export function InterviewRoomPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.brand}>模拟面试</h1>
-          <ProgressBar answered={state.answered} total={state.totalQuestions} />
+      <header className={styles.roomBar}>
+        <ProgressBar answered={state.answered} total={state.totalQuestions} />
+        <CategoryBadge category={category} />
+        <div className={styles.roomActions}>
+          <Button
+            variant="secondary"
+            loading={controller.finishing}
+            onClick={() => {
+              controller.finish().catch(() => undefined);
+            }}
+          >
+            结束并生成报告
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          loading={controller.finishing}
-          onClick={() => void controller.finish()}
-        >
-          结束并生成报告
-        </Button>
       </header>
 
       {state.error ? (
@@ -107,8 +122,11 @@ export function InterviewRoomPage() {
           {current ? (
             <QuestionCard
               turn={current}
+              category={category}
               speaking={speech.state === "playing"}
-              onSpeak={(text) => void speech.speak(text)}
+              onSpeak={(text) => {
+                speech.speak(text).catch(() => undefined);
+              }}
             />
           ) : (
             <Empty
@@ -116,7 +134,13 @@ export function InterviewRoomPage() {
               description={finished ? "可以生成报告了" : "请从面试入口重新开始或继续"}
               action={
                 finished ? (
-                  <Button onClick={() => void controller.finish()}>生成报告</Button>
+                  <Button
+                    onClick={() => {
+                      controller.finish().catch(() => undefined);
+                    }}
+                  >
+                    生成报告
+                  </Button>
                 ) : undefined
               }
             />
@@ -124,11 +148,35 @@ export function InterviewRoomPage() {
         </section>
 
         <aside className={styles.side} aria-label="历史反馈">
-          {answeredTurns.length === 0 ? (
-            <p className={styles.hint}>提交第一题后，这里会显示评分与反馈。</p>
-          ) : (
-            answeredTurns.map((turn) => <FeedbackCard key={turn.questionNo} turn={turn} />)
-          )}
+          <div className={styles.feedbackToggle}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={feedbackOpen}
+              onClick={() => setFeedbackOpen((open) => !open)}
+            >
+              历史反馈（{answeredTurns.length}）
+            </Button>
+          </div>
+          <div className={styles.feedbackBody} data-open={feedbackOpen ? "true" : undefined}>
+            {answeredTurns.length === 0 ? (
+              <p className={styles.hint}>提交第一题后，这里会显示评分与反馈。</p>
+            ) : (
+              <ol className={styles.feedbackList} aria-label="反馈时间线">
+                {answeredTurns.map((turn, index) => (
+                  <li
+                    key={turn.questionNo}
+                    className={styles.feedbackItem}
+                    data-latest={index === latestTurnIndex ? "true" : undefined}
+                  >
+                    {index === latestTurnIndex ? <span className={styles.latestTag}>最新</span> : null}
+                    <FeedbackCard turn={turn} />
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </aside>
       </div>
 
@@ -150,7 +198,8 @@ export function InterviewRoomPage() {
           if (transcription.recording) transcription.stop();
           else {
             transcriptSpanRef.current = "";
-            void transcription.start();
+            // start() funnels failures into transcription.error; catch only a synchronous throw.
+            transcription.start().catch(() => undefined);
           }
         }}
         recordingError={transcription.error}

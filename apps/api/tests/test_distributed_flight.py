@@ -64,7 +64,7 @@ async def test_two_instances_call_the_vendor_once(instances) -> None:
     follower = asyncio.create_task(
         second.execute(Stage.EVALUATION, shared, slow, replay_ttl=60, negative_ttl=10)
     )
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)  # 允许：让第二个实例的真实 Redis 轮询进入等待
     release.set()
 
     results = await asyncio.gather(leader, follower)

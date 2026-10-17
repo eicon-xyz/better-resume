@@ -1,6 +1,13 @@
 .page {
   display: flex;
+  flex-direction: column;
   height: 100%;
+}
+
+@media (min-width: 1024px) {
+  .page {
+    flex-direction: row;
+  }
 }
 
 .main {
@@ -10,24 +17,21 @@
   min-width: 0;
 }
 
-.header {
+/* 主区头：页壳顶栏是唯一品牌与导航位，这里只留模型这个会话上下文操作。 */
+.contextBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--br-space-4);
-  padding: var(--br-space-3) var(--br-space-4);
-  border-bottom: 1px solid var(--br-color-border);
-}
-
-.brand {
-  margin: 0;
-  font-size: var(--br-text-lg);
-}
-
-.headerControls {
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: var(--br-space-3);
+  padding: var(--br-space-3) var(--br-space-4) 0;
+}
+
+.sessionTitle {
+  margin: 0 auto 0 0;
+  overflow: hidden;
+  font-size: var(--br-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modelPicker {
@@ -39,7 +43,9 @@
 }
 
 .messages {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   overflow-y: auto;
 }
 

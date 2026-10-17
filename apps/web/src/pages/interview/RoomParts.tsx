@@ -1,13 +1,28 @@
-import { Button, Card, Textarea } from "../../components";
+import { Badge, Button, Card, Textarea } from "../../components";
 import type { InterviewTurn } from "../../interview/roomStore";
 import styles from "./RoomParts.module.css";
 
+/** 后端题目类别（interview_engine/categories.py）到房间徽章文案的映射。 */
+const CATEGORY_LABELS: Record<string, string> = {
+  fundamentals: "八股",
+  project: "项目",
+  internship: "实习",
+};
+
+/** 类别徽章：后端没给 category 时不渲染，不替它猜一个类别。 */
+export function CategoryBadge({ category }: { category?: string | null }) {
+  if (!category) return null;
+  return <span className={styles.categoryBadge}>{CATEGORY_LABELS[category] ?? category}</span>;
+}
+
 export function QuestionCard({
   turn,
+  category,
   onSpeak,
   speaking = false,
 }: {
   turn: InterviewTurn;
+  category?: string | null;
   onSpeak?: (text: string) => void;
   speaking?: boolean;
 }) {
@@ -17,6 +32,7 @@ export function QuestionCard({
         <span className={styles.questionNo} aria-label="当前题号">
           {turn.questionNo}
         </span>
+        <CategoryBadge category={category} />
         {turn.kind === "follow_up" ? (
           <span className={styles.badge} data-kind="followup">
             追问 · {turn.followUpReason ? REASON_LABELS[turn.followUpReason] ?? turn.followUpReason : "细节澄清"}
@@ -30,7 +46,16 @@ export function QuestionCard({
         </Button>
       ) : null}
       {turn.focusPoints.length > 0 ? (
-        <p className={styles.points}>考察要点：{turn.focusPoints.join("、")}</p>
+        <div className={styles.points}>
+          <span className={styles.pointsLabel}>考察要点</span>
+          <ul className={styles.pointList} aria-label="考察要点">
+            {turn.focusPoints.map((point) => (
+              <li key={point}>
+                <Badge>{point}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </Card>
   );
@@ -91,6 +116,8 @@ export function AnswerComposer({
   transcriptNotice = false,
   micSupported = true,
 }: AnswerComposerProps) {
+  // 字数只由输入框自己的 value 推导；提交/禁用语义仍由既有 disabled / submitting 驱动。
+  const characters = value.trim().length;
   return (
     <form
       className={styles.composer}
@@ -99,9 +126,11 @@ export function AnswerComposer({
         const trimmed = value.trim();
         if (!trimmed) return;
         // Clear only once the backend accepted it: a 429/503/504 must not eat the answer.
-        void Promise.resolve(onSubmit(trimmed)).then((accepted) => {
-          if (accepted !== false) onChange("");
-        });
+        Promise.resolve(onSubmit(trimmed))
+          .then((accepted) => {
+            if (accepted !== false) onChange("");
+          })
+          .catch(() => undefined);
       }}
     >
       {recordingError ? (
@@ -117,7 +146,7 @@ export function AnswerComposer({
         aria-label="你的回答"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="用具体案例回答（Ctrl/Cmd + Enter 提交）"
+        placeholder="用具体案例回答"
         disabled={disabled || submitting}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -126,35 +155,57 @@ export function AnswerComposer({
           }
         }}
       />
-      <div className={styles.actions}>
-        {onToggleRecording ? (
-          <Button
-            type="button"
-            variant={recording ? "secondary" : "ghost"}
-            size="sm"
-            disabled={disabled || submitting || !micSupported}
-            onClick={onToggleRecording}
-            aria-pressed={recording}
-          >
-            {recording ? "停止录音" : "语音输入"}
+      <div className={styles.composerFooter}>
+        <span className={styles.shortcutHint}>Ctrl / ⌘ + Enter 提交</span>
+        <span className={styles.counter}>{characters} 字</span>
+        <div className={styles.actions}>
+          {onToggleRecording ? (
+            <Button
+              type="button"
+              variant={recording ? "secondary" : "ghost"}
+              size="sm"
+              disabled={disabled || submitting || !micSupported}
+              onClick={onToggleRecording}
+              aria-pressed={recording}
+              data-recording={recording ? "true" : undefined}
+            >
+              {recording ? (
+                <>
+                  <span className={styles.recDot} aria-hidden="true" />
+                  停止录音
+                </>
+              ) : (
+                "语音输入"
+              )}
+            </Button>
+          ) : null}
+          <Button type="submit" loading={submitting} disabled={disabled || submitting}>
+            提交回答
           </Button>
-        ) : null}
-        <Button type="submit" loading={submitting} disabled={disabled || submitting}>
-          提交回答
-        </Button>
+        </div>
       </div>
     </form>
   );
 }
 
+/** 房间进度步骤条：一题一格，格子的状态只由 answered / total 推导。 */
 export function ProgressBar({ answered, total }: { answered: number; total: number }) {
-  const ratio = total > 0 ? Math.min(1, answered / total) : 0;
+  const questionCount = total > 0 ? total : 0;
+  const current = questionCount > 0 ? Math.min(answered + 1, questionCount) : 0;
   return (
     <div className={styles.progress}>
-      <div className={styles.progressBar} style={{ width: `${Math.round(ratio * 100)}%` }} />
       <span className={styles.progressLabel}>
-        已答 {answered} / {total} 题
+        题 {current} / {questionCount}
       </span>
+      <div className={styles.steps} aria-hidden="true">
+        {Array.from({ length: questionCount }, (_, index) => (
+          <span
+            key={index}
+            className={styles.step}
+            data-state={index < answered ? "done" : index === current - 1 ? "current" : "todo"}
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 .collapsible {
+  /* allow: 折叠面板发丝边框线宽（1px 几何，token 集无边框宽尺寸） */
   border: 1px solid var(--br-color-border);
   border-radius: var(--br-radius-md);
   background: var(--br-color-surface);
@@ -27,9 +28,13 @@
 }
 
 .chevron {
+  /* allow: 折叠箭头三角形的边长（8px 几何） */
   width: 8px;
+  /* allow: 折叠箭头三角形的边长（8px 几何） */
   height: 8px;
+  /* allow: 折叠箭头两条边的线宽（1.5px 几何） */
   border-right: 1.5px solid currentcolor;
+  /* allow: 折叠箭头两条边的线宽（1.5px 几何） */
   border-bottom: 1.5px solid currentcolor;
   transform: rotate(-45deg);
   transition: transform var(--br-duration-fast);
@@ -37,4 +42,10 @@
 
 .chevronOpen {
   transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
 }

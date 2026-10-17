@@ -1,0 +1,29 @@
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-2);
+}
+
+.line {
+  display: block;
+  height: var(--br-space-3);
+  border-radius: var(--br-radius-sm);
+  background: var(--br-color-surface);
+  animation: skeleton-pulse var(--br-duration-normal) ease-in-out infinite alternate;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line {
+    animation: none;
+  }
+}

@@ -144,7 +144,7 @@ function TranscriptionHarness({
       <button
         type="button"
         onClick={() => {
-          void controller.start();
+          controller.start().catch(() => undefined);
         }}
       >
         开始

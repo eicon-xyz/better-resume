@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""Check the audit data in docs/audit/units/*.json at two levels.
+"""分两级检查 docs/audit/units/*.json 里的审计数据。
 
-Usage:
+用法：
   python3 scripts/verify_audit_evidence.py [--structural] [--strict] [--json OUT] [--units DIR] [unit ...]
 
-Levels:
-  (always)      structural: every issue has its required fields, and every "where" citation
-                parses and points at a line range that exists in that file. Stable under code
-                drift, so this is the level CI runs.
-  (default)     corroboration report: does each cited window still contain a line quoted in the
-                issue evidence? Exploratory - unverifiable claims fail, partial ones do not.
-  (--strict)    corroboration gate: a partially corroborated claim fails too. Line numbers move
-                whenever the code moves, so this belongs to an audit/fix close-out, not to CI.
+级别：
+  （始终）      结构级：每条问题都有必需字段，每个 "where" 引证都能解析、且指向该文件里真实
+                存在的行区间。对代码漂移稳定，是 CI 跑的级别。
+  （默认）      佐证报告：每个被引窗口是否仍包含问题证据里引用的一行？探索性——无法验证的
+                声明判失败，部分佐证的声明不判失败。
+  （--strict）  佐证闸门：部分佐证的声明也判失败。代码一动行号就变，所以它属于审计/修复收口，
+                不属于 CI。
 
-Why the split (D22): a workspace refactor that only shifts lines must not turn CI red, but the
-audit data must still be checked for rot at the level that is stable. Run --strict by hand when
-you touch docs/audit/ or the files it cites.
+为什么拆两级（D22）：只挪了行的重构不能让 CI 变红，但审计数据仍要在稳定的级别上被查腐。你
+动过 docs/audit/ 或它引用的文件时，手动跑 --strict。
 """
 from __future__ import annotations
 
@@ -27,13 +25,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UNITS = ROOT / "docs" / "audit" / "units"
 WHERE_RE = re.compile(r"^(?P<path>[^\s:]+):(?P<start>\d+)(?:-(?P<end>\d+))?$")
-#: "12" | "12-18" | "12-18,30-31" - the shapes actually used in units/*.json.
+#: "12" | "12-18" | "12-18,30-31"——units/*.json 里实际用到的形态。
 LINE_SPEC_RE = re.compile(r"^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
-#: Fields every issue must carry, whatever the audit was about.
+#: 每条问题都必须携带的字段，与审计主题无关。
 STRUCTURAL_FIELDS = ("id", "dim", "severity", "title", "where", "why", "fix")
 
-# Evidence blocks are annotated in three shapes; strip the annotation, keep the code:
-#   "123: code", "123  code", "123|  code", "path/to/file.py:123  code".
+# 证据块有三种标注形态；剥掉标注，保留代码：
+#   "123: code"、"123  code"、"123|  code"、"path/to/file.py:123  code"。
 EVIDENCE_PREFIX = re.compile(
     r"^\s*(?:[\w./()\u4e00-\u9fff -]+?\.(?:py|ts|tsx|md|yaml|yml|json|sh|sql))?(?::)?\d+\s*[:|]?\s+"
 )
@@ -51,7 +49,7 @@ def file_lines(rel: str) -> list[str] | None:
 
 
 def citation_spans(where: str) -> list[tuple[str, int, int]] | None:
-    """`path:12-18,30` -> [(path, 12, 18), (path, 30, 30)]; None when unparseable."""
+    """`path:12-18,30` -> [(path, 12, 18), (path, 30, 30)]；无法解析时为 None。"""
     if ":" not in where:
         return None
     rel, spec = where.rsplit(":", 1)
@@ -70,9 +68,9 @@ def citation_spans(where: str) -> list[tuple[str, int, int]] | None:
 
 
 def check_structure(data: dict, unit_name: str) -> tuple[list[str], int, int]:
-    """Structure-only check: fields present, citations parse, cited ranges exist.
+    """仅结构级检查：字段齐全、引证可解析、被引行区间存在。
 
-    Returns (problems, issue_count, citation_count).
+    返回 (problems, issue_count, citation_count)。
     """
     problems: list[str] = []
     issues = data.get("issues")
@@ -106,10 +104,10 @@ def check_structure(data: dict, unit_name: str) -> tuple[list[str], int, int]:
 
 
 def check_issue(issue: dict) -> tuple[str, list[str]]:
-    """Return (status, details). status in ok|partial|fail|skip.
+    """返回 (status, details)。status 取 ok|partial|fail|skip。
 
-    Each citation must be corroborated by at least one evidence line; the whole issue is
-    "ok" when every citation is corroborated, "partial" when some are, "fail" when none is.
+    每条引证至少要被一行证据佐证；全部引证都被佐证时整条问题为 "ok"，部分被佐证为
+    "partial"，无一被佐证为 "fail"。
     """
     evidence_lines = [
         EVIDENCE_PREFIX.sub("", line).strip() for line in (issue.get("evidence") or "").split("\n")
@@ -151,7 +149,7 @@ def check_issue(issue: dict) -> tuple[str, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: [--structural] [--strict] [--json OUT] [--units DIR] [unit ...]."""
+    """CLI：[--structural] [--strict] [--json OUT] [--units DIR] [unit ...]。"""
     args = list(sys.argv[1:] if argv is None else argv)
     strict = "--strict" in args
     structural = "--structural" in args
@@ -193,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"cannot parse {path.name}: {exc}", file=sys.stderr)
             return 2
         if not isinstance(data, dict):
-            continue  # not an audit unit file (a scratch JSON can sit in the same dir)
+            continue  # 不是审计单元文件（临时 JSON 可能同目录）
         units_checked += 1
         unit_problems, issue_count, citation_count = check_structure(data, path.stem)
         problems.extend(unit_problems)

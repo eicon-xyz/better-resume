@@ -29,6 +29,7 @@ from .follow_up import (
     decide_follow_up_or_fallback,
 )
 from .follow_up_service import FollowUpService
+from .hot_state import HotStateStore, invalidate_hot_state
 from .locks import QuestionLockRegistry
 from .models import AnswerRecord, FlowState, InterviewSession, QuestionRecord
 from .orm import InterviewQuestionRow
@@ -66,12 +67,14 @@ class AnswerService:
         *,
         resilience: AiResilience,
         locks: QuestionLockRegistry | None = None,
+        hot_state: HotStateStore | None = None,
         low_score_threshold: float = DEFAULT_LOW_SCORE_THRESHOLD,
         decider: Callable[[FollowUpContext], FollowUpDecision] = decide_follow_up_or_fallback,
     ) -> None:
         self._session_factory = session_factory
         self._resilience = resilience
         self._locks = locks or QuestionLockRegistry()
+        self._hot_state = hot_state
         self._low_score_threshold = low_score_threshold
         self._decider = decider
         self._follow_ups = FollowUpService(resilience=resilience)
@@ -89,15 +92,20 @@ class AnswerService:
         follow_up_gateway: LlmGateway | None = None,
     ) -> AnswerResult:
         async with self._locks.acquire(session_id, question_no):
-            return await self._submit_locked(
-                session_id=session_id,
-                user_id=user_id,
-                question_no=question_no,
-                answer=answer,
-                request_id=request_id,
-                gateway=gateway,
-                follow_up_gateway=follow_up_gateway,
-            )
+            try:
+                return await self._submit_locked(
+                    session_id=session_id,
+                    user_id=user_id,
+                    question_no=question_no,
+                    answer=answer,
+                    request_id=request_id,
+                    gateway=gateway,
+                    follow_up_gateway=follow_up_gateway,
+                )
+            finally:
+                # A turn writes the answer, the flow cursor and (on the first answer) the
+                # session status; even a failed attempt leaves the status changed.
+                await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
 
     # ---- internals --------------------------------------------------------------
 

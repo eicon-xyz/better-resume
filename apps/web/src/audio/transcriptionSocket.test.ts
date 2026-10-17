@@ -149,8 +149,6 @@ describe("createTranscriptionSocket", () => {
     expect(statuses).toEqual(["connecting", "live", "reconnecting"]);
 
     // Queued audio from the dead socket is useless: it must not be replayed.
-    const socketEvents: TranscriptEvent[] = [];
-    void socketEvents;
     timers[0]!();
     const second = FakeWebSocket.instances[1]!;
     second.open();

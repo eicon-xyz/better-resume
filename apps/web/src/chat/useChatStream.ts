@@ -107,9 +107,9 @@ export function useChatStream({
         onReasoning: (text) => useChatStore.getState().appendReasoning(requestId, text),
         onDone: () => {
           useChatStore.getState().finishAssistant(requestId);
-          void queryClient.invalidateQueries({
-            queryKey: chatKeys.messages(authEpoch, targetSessionId),
-          });
+          queryClient
+            .invalidateQueries({ queryKey: chatKeys.messages(authEpoch, targetSessionId) })
+            .catch(() => undefined);
         },
         isActive: () => useChatStore.getState().activeRequestId === requestId,
       });

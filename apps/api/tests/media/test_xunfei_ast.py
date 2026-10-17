@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import pytest
 from websockets.asyncio.server import serve
 
-from better_resume.ai_resilience import AiUnavailable, ManualClock
+from better_resume.ai_resilience import AiUnavailable, ManualClock, wait_until
 from better_resume.media import ChannelCtx, TranscriptEvent
 from better_resume.media.adapters import (
     MediaConfigError,
@@ -48,16 +48,6 @@ def ast_payload(
     return payload
 
 
-async def wait_for(predicate, budget: float = 3.0) -> bool:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + budget
-    while loop.time() < deadline:
-        if predicate():
-            return True
-        await asyncio.sleep(0.01)
-    return False
-
-
 class FakeAstServer:
     """Minimal vendor stand-in: sends a script, records frames and pings."""
 
@@ -90,7 +80,7 @@ class FakeAstServer:
             return
         for item in self.script:
             await ws.send(json.dumps(item))
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)  # 允许：fake 供应商分帧节奏
         try:
             async for message in ws:
                 if isinstance(message, bytes):
@@ -161,7 +151,7 @@ async def test_handshake_uses_the_signed_query() -> None:
     async with FakeAstServer() as server:
         adapter = XunfeiAstAdapter(credentials=CREDS, on_event=on_event, ws_url=server.url)
         await adapter.start(CTX)
-        assert await wait_for(lambda: server.connections == 1)
+        await wait_until(lambda: server.connections == 1, timeout=3.0)
         await adapter.stop()
 
     assert "signature=" in server.paths[0]
@@ -177,12 +167,12 @@ async def test_frames_are_sliced_at_1280_bytes_and_paced() -> None:
             credentials=CREDS, on_event=on_event, ws_url=server.url, clock=clock
         )
         await adapter.start(CTX)
-        assert await wait_for(lambda: server.connections == 1)
+        await wait_until(lambda: server.connections == 1, timeout=3.0)
 
         await adapter.feed(b"\x00" * 3200)
         for _ in range(5):
             clock.advance(0.04)
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.02)  # 允许：推进假时钟后仍需真实事件循环收发 WS 帧
 
         assert [len(frame) for frame in server.frames[:3]] == [1280, 1280, 640]
         await adapter.stop()
@@ -194,7 +184,7 @@ async def test_results_become_replace_and_archive_events() -> None:
     async with FakeAstServer(script=script) as server:
         adapter = XunfeiAstAdapter(credentials=CREDS, on_event=on_event, ws_url=server.url)
         await adapter.start(CTX)
-        assert await wait_for(lambda: len(events) >= 2)
+        await wait_until(lambda: len(events) >= 2, timeout=3.0)
 
         await adapter.stop()
 
@@ -212,7 +202,7 @@ async def test_vendor_error_frame_surfaces_as_unavailable() -> None:
         adapter = XunfeiAstAdapter(credentials=CREDS, on_event=on_event, ws_url=server.url)
         await adapter.start(CTX)
 
-        assert await wait_for(lambda: adapter.failure is not None)
+        await wait_until(lambda: adapter.failure is not None, timeout=3.0)
         with pytest.raises(AiUnavailable):
             await adapter.wait()
         await adapter.stop()
@@ -226,7 +216,7 @@ async def test_reconnect_then_give_up() -> None:
         )
         await adapter.start(CTX)
 
-        assert await wait_for(lambda: adapter.failure is not None)
+        await wait_until(lambda: adapter.failure is not None, timeout=3.0)
         assert server.connections == 2  # one retry, then it stopped
         with pytest.raises(AiUnavailable, match="connection failed"):
             await adapter.wait()
@@ -238,7 +228,7 @@ async def test_stop_is_idempotent_and_emits_one_final() -> None:
     async with FakeAstServer(script=[ast_payload("收尾")]) as server:
         adapter = XunfeiAstAdapter(credentials=CREDS, on_event=on_event, ws_url=server.url)
         await adapter.start(CTX)
-        assert await wait_for(lambda: len(events) >= 1)
+        await wait_until(lambda: len(events) >= 1, timeout=3.0)
 
         await adapter.stop()
         await adapter.stop()

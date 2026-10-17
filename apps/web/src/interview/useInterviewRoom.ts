@@ -55,7 +55,9 @@ export function useInterviewRoom({
   useEffect(() => {
     // Deferred a tick so the restore's own state updates never run inside the effect body
     // (React 19 flags synchronous setState in effects as cascading renders).
-    queueMicrotask(() => void restore());
+    queueMicrotask(() => {
+      restore().catch(() => undefined);
+    });
   }, [restore]);
 
   const submitAnswer = useCallback(

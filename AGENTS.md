@@ -23,7 +23,7 @@
   - `apps/web`：React 19 + Vite SPA 前端。
   - `docs/`：决议 / 交接 / 各阶段票据与验收包 / 容量报告。**接手先读 `docs/HANDOFF.md`**。
   - `skills/`：给 AI 的导航——repo-map（"改 X 先看哪"）+ 每个深模块一个 SKILL.md + 生成的 API 索引。
-- 决议记录在 `docs/DECISIONS.md`（D01–D22），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
+- 决议记录在 `docs/DECISIONS.md`（D01–D26），术语表在 `GLOSSARY.md`。**判定权**：选型与范围以 DECISIONS.md 为准，工程规范以本文为准；`docs/HANDOFF.md` 是**带日期的状态快照**（管「现在什么状态、怎么跑」），里面的数字可能过期，冲突时以实测为准。
 
 ## 技术栈
 
@@ -35,7 +35,7 @@
 - **语音**：`media` 模块，`TranscriptionChannel`（start/feed/stop/wait → `replace|archive|final` 事件）+ `TtsSynthesizer` 两个缝：
   - ASR：讯飞 AST（流式句池归并 pgs/rg/seg_id）、百炼 Qwen-Audio 批量（`qwen-asr`）、百炼 Paraformer 实时（`paraformer-rt`，边说边出字）。
   - TTS：edge-tts + 缓存。适配器由 `BR_MEDIA__TRANSCRIPTION_ADAPTER` 选择（scripted 为 CI/本地默认）。
-- **前端**：React 19 + Vite + TanStack Query + zustand + shadcn/ui；移植旧项目 lib 四件套（request / streamLimiter / audioTranscription / errors）。
+- **前端**：React 19 + Vite + TanStack Query + zustand；CSS Modules + 自研 `--br-*` 设计 token + 手写组件（不引 UI 组件库，D24）；移植旧项目 lib 四件套（request / streamLimiter / audioTranscription / errors）。
 - **契约**：后端 FastAPI → `openapi.json` → **openapi-typescript 生成前端类型**（`schema.d.ts`），根治前端猜字段（D17）。
 - **实时通道**：转写走 WebSocket（一次性 ticket 握手）、对话走 SSE；认证是 HttpOnly Cookie session（Redis，30 天滑动）+ WS ticket（D11）。
 - **测试**：pytest（**只 mock 系统边界**：LLM/时钟/Redis/讯飞/浏览器音频/IPC）+ Vitest；假上游 `apps/api/scripts/fake_openai.py`。
@@ -47,7 +47,7 @@
 - `uv` 在 `~/.local/bin`：新 shell 先 `export PATH="$HOME/.local/bin:$PATH"`。
 - 子智能体等沙箱里 `uv` 默认写工作区外的 `/root/.cache/uv` → 权限拒绝；先 `export UV_CACHE_DIR='/root/better resume/.cache/uv'`。
   症状：`uv run pytest` 报 cache 错，而 `./.venv/bin/python -m pytest` 照跑。
-- pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped（不是失败，实测能一次吞掉 136 例）：
+- pytest **必须显式导出测试库地址**，否则依赖 DB 的用例会 skipped，`test_interview_api.py` 的 `interview_type` 用例还会直接 FAILED（缺 DB 不可达守卫，直连默认 :5432 被拒）——静默面同时含 skip 与 fail；条数看 `--junitxml` 读数，别抄固定值：
 
   ```bash
   cd apps/api
@@ -59,6 +59,7 @@
 - 本机**没有 ffmpeg**：转音频用 `uv run --with soundfile --with numpy python …`。
 - 新建 httpx/ws 客户端一律显式兜底（`trust_env=False` / `proxy=None`）——本机 `NO_PROXY` 含裸 IPv6。
 - 真机凭据**只进仓库根 gitignored `.env`**；`.env.example` 只写变量名，任何密钥不得出现在代码/测试/票据/日志摘录里。
+  - 判定见 `bash scripts/verify_secrets.sh`（命中即红，只打印 `文件:行号`；凭据形状表是 `scripts/verify_secrets.sh:28-41`，判据勿在此复制）。
 
 > 端口表、Docker 构建代理与镜像站前缀、**沙箱内 docker 构建为何跑不了**、WSL 掉线恢复、出网 22 端口、`gh` 的中间人证书怪癖、改过 volume 挂载的文件要 `--force-recreate`——见 **`docs/HANDOFF.md` §4**（环境事实的单一真相源，本文不再抄第二份）。
 
@@ -76,7 +77,7 @@ bash scripts/verify.sh --layer real --dry-run # 真机清单 + 预算（不花�
 # 变异证明：断言「这段测试真的钉住了这段实现」——基线绿 → 变异红 → 恢复绿，脚本真看退出码
 bash scripts/verify_mutation.sh --test "..." --file <path> --find "<锚点>" --replace "<变异>"
 
-# 后端全量测试（例数看 --junitxml 读数；不导出 BR_* 会静默 skip 136 例）
+# 后端全量测试（例数看 --junitxml 读数；不导出 BR_* 会静默 skip 一批依赖 DB 的用例，个别还 FAILED）
 cd apps/api && uv run pytest -q --junitxml=/tmp/x.xml
 
 # 前端测试——必须从仓库根跑
@@ -167,7 +168,9 @@ uv run python scripts/extract_api_index.py --check
 ## 开发规范
 
 - 语言与沟通：全部使用简体中文（注释、文档、对话）；提交信息用英文短句说 WHAT（如 `fix(media): …`）。
+  - 判定见 `skills/verify-delivery/SKILL.md:42`（§3 中文：C1 成句西文判据与白名单）——判据正文只在该技能，勿在此复制。
 - **只 mock 系统边界**（LLM/时钟/Redis/讯飞/浏览器音频/IPC），不 mock 内部模块；测试必须 hermetic——断言不依赖 shell 里的代理变量/PATH/DB 地址。
+  - 判定见 `python3 scripts/verify_hermetic.py`（判据 H1–H5 与豁免清单是 `scripts/verify_hermetic.py:7-12` 与脚本内 `EXEMPTIONS`）——判据表只在该脚本，勿在此复制。
 - **TDD 循环纪律**：测试只写在事先向用户确认的缝上；**垂直切片**——一个用例红 → 最小实现绿 → 下一个，不整批铺测试（整批铺测试会在绿灯期连修测试自身的 bug）；任何行为变更（含验证期热修）先在旧代码上演示红再改；断言走公开行为或 fake 协作对象的入参捕获，不加测试专用属性。
 - **所有供应商调用走 `ai_resilience` 链**（Stage 分类），不要裸调；时间用注入时钟测，不写真实 sleep 断言。
 - **错误语义**：依赖不可用/缺配置 → **503 + Retry-After** 并点名缺失变量，不是 401 也不是 500；响应要能区分"你没登录"和"我这边坏了"。
@@ -175,12 +178,14 @@ uv run python scripts/extract_api_index.py --check
 - **WS 转写**：成功路径显式 `close(1000)`（否则客户端报 1006）；失败关 4411；前端转写文本**追加、同段去重、绝不覆盖手写**。
 - **WS/HTTP 客户端连接参数一律显式**：`open_timeout`、`close_timeout`（供应商会拖关闭握手，默认 10s 会让松手→final 变 10 秒）、`proxy=None` 或 `trust_env=False` 兜底。
 - **证据诚实**：真模型响应必带 `usage`（流式需按模型行 `extra.stream_usage=true` 请求）；fake 上游（`smoke-fake`）无 usage——不许拿假的冒充真的；未验证就写未验证。
+  - 改动说明的四栏与命令引证形状见 `skills/verify-delivery/SKILL.md:56`（§5；字段与引证判定由 helper 的 `--kind changelog` 跑）——判据只在技能与 helper，勿在此复制。
 - **依赖纪律**：不引入 LangChain / OpenTelemetry / 请求层重试库等被决议排除的依赖（D04/D17）；新增依赖先在提案里说明。
 - 设置新增走 `settings/config.py`（`BR_` 前缀；嵌套用 `__`）；compose 需要透传的新变量同步加到 `compose.yaml` 与 `.env.example`（只写变量名）。
 - 部署形态变更（compose/nginx）必须同步更新对应验收脚本并在票据里留证据；nginx upstream 用变量 + resolver，否则 `--scale` 不生效。
 - 清洁度：不留临时文件、注释掉的死代码、"默认关闭没人跑"的分支——要么真机跑通并设为默认，要么删掉。
 - **测试的共享状态自己还原**：用例动了跨进程可见的东西（如场景绑定表）必须由 fixture 快照还原——否则「全量跑绿、单跑子集红」（一个用例留下的场景绑定会让另一个文件的用例假红）。
 - **审计与验证证据**：设计审计在 `docs/audit/`（`units/*.json` 是数据、`CONTRACT.md` 是口径）；`verify_audit_evidence.py` 分两级——CI 只跑结构级（`--structural`，不因代码漂移变红），逐字级（`--strict`）与 `verify_mutation.sh` 是收口手段（D22）。**改过被引用的文件后，引证行号要重锚**，否则逐字级门槛会红。
+  - 引证能否解析的判定见 `bash scripts/verify_citations.sh`（直配/短名兜底、行号越界即红的规则在 `scripts/verify_citations.sh:9-16`）——解析规则只在该脚本，勿在此复制。
 
 ## 贡献指南（提交前检查清单）
 
@@ -189,6 +194,7 @@ uv run python scripts/extract_api_index.py --check
 - 动了部署面（compose/nginx/worker）跑 `bash scripts/compose_smoke.sh`；动了韧性/分布式跑 `kill_instance_drill.sh`。
 - 新阶段/票据/验收包放 `docs/tickets/<stage>/`；`docs/HANDOFF.md` 在阶段收口时同步更新；`skills/` 索引用生成脚本刷新，不手改。
 - 可选：启用仓库内 git hooks（提交前跑 shell 语法 + 暂存 Python 的 ruff）——`git config core.hooksPath .githooks`，跳过用 `--no-verify`。
+- 改了文档或注释的文字：`bash scripts/verify_docs_hygiene.sh`（禁词集与按原文精确匹配的豁免清单在 `scripts/verify_docs_hygiene.sh:14-41`）——判据勿在此复制。
 - 人工测试（浏览器手测、录音这类 AI 验不了的部分）：唯一入口 `docs/MANUAL-TESTING.md`（§1 为必测），结果回填同一文件。
 
 ## AI 智能体须知（关键上下文）
@@ -204,7 +210,7 @@ uv run python scripts/extract_api_index.py --check
 - **前端转写合并在三层上都会发生**（store 事件 → 页面 onTranscript → chat Composer 内部 prop effect）：
   改任何合并语义前必须 `grep` 全部调用点清零，且测试要覆盖「prop 逐事件驱动组件内部合并」这条路径（store 级测试测不到它）。
 - **部署面：index.html 必须 `Cache-Control: no-store`、`/assets/` `public, immutable`**——不发头 = 浏览器启发式缓存 HTML，部署后还在跑旧 bundle（compose_smoke 有断言）。改前端后要 `up -d --build nginx` 并核对新 hash。
-- **派活约定**：用子智能体做审计/评审/并行修复时的操作约定见 `docs/agents/subagents.md`（共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
+- **派活约定**：实现类交付物**一律派子代理**（主代理派活 + 机械验收，评审派异家族）；构建/审计/评审/并行修复的操作约定见 `docs/agents/subagents.md`（构建派活、共享任务先建后派、写范围不重叠、失败不要同名重试、席位上限 8 时改用 fork）。
 - **harness 事实**：`run_code` 的 JS 模板字符串里**别出现反引号**（会截断字符串，报错形如 `Expected ',', got 'ident'`）——要反引号时用 `String.fromCharCode(96)` 或数组 `join`；长文本先 `write` 成文件再跑。`run_code` 的 `timeoutMs` 上限是 **600000**（不是 120000；默认 120000）。
 - **临时脚本一律 `set -euo pipefail` 且 `cd "$(mktemp -d)"`**：写成 `set -uo pipefail`（少 `-e`）时，`mkdir`／`cd` 失败不会中断，脚本会**留在当前目录继续跑**——在工作区里跑就等于往仓库里写。路径一律用 `mktemp -d`，不要自己拼。
 - 本文件（AGENTS.md）是长期协作文档：技术栈、命令、约定有变化时应同步更新；与 `docs/DECISIONS.md` 冲突时以后者为准。

@@ -1,22 +1,20 @@
-"""a self-contained load test (asyncio + httpx) for the interview service.
+"""面试服务的自包含压测（asyncio + httpx）。
 
-    # against the compose stack (nginx in front of two api instances) with the local fake
-    # upstream; nothing leaves this machine
+    # 对着 compose 栈（nginx 前有两个 api 实例）配本地假上游；什么都不离开本机
     uv run python scripts/load_test.py --scenario mixed --concurrency 20 --requests 2000 \
         --fake-llm --json /tmp/m6.json
 
-    # duration mode against the real vendor (no --fake-llm, so the report says upstream=real)
+    # 对着真实供应商的时长模式（不带 --fake-llm，报告里 upstream=real）
     uv run python scripts/load_test.py --scenario chat-sse --concurrency 5 --duration 30
 
-Scenarios: `chat-sse` (concurrent streams, first-frame latency), `answer-submit` (the lock /
-single-flight path), `mixed` (read + answer + stream, 60 / 25 / 15).
+场景：`chat-sse`（并发流、首帧延迟）、`answer-submit`（锁 / 单飞路径）、`mixed`
+（读 + 答题 + 流，60 / 25 / 15）。
 
-Exit codes: **0 means the run completed** — errors are data, not exit codes. 2 is a refused
-configuration (a `--fake-llm` run pointed at a non-local host never sends a request), 3 means
-the target stack could not be prepared (login or session setup failed).
+退出码：**0 表示这次运行跑完了**——错误是数据，不是退出码。2 是配置被拒绝（`--fake-llm`
+指向非本机 host 时绝不发请求），3 是目标栈无法准备（登录或会话建立失败）。
 
-What it measures: this service behind whatever sits in front of it. What it does not: model
-latency (that is the vendor's) or anything about a machine it was not run on.
+它测什么：这个服务在它前面的东西之下的表现。它不测什么：模型延迟（那是供应商的），也不是
+关于它没跑过的机器的任何结论。
 """
 
 from __future__ import annotations
@@ -35,12 +33,12 @@ from urllib.parse import urlsplit
 
 import httpx
 
-LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})  # noqa: S104 - targets
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})  # noqa: S104 - 目标地址
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 DEFAULT_MODEL = "smoke-fake"
 SCENARIOS = ("mixed", "chat-sse", "answer-submit")
-# mixed is a fixed cycle (12 read / 5 answer / 3 chat), not a dice roll: two runs of the same
-# size hit the same endpoints in the same proportions, which is what makes runs comparable.
+# mixed 是固定循环（12 读 / 5 答 / 3 聊），不是掷骰子：同规模的两次运行会以相同比例打到相同
+# 端点，这正是运行之间可比较的原因。
 MIX_PATTERN = (
     "chat",
     "read",
@@ -66,11 +64,11 @@ MIX_PATTERN = (
 
 
 class ConfigError(RuntimeError):
-    """The arguments cannot produce an honest measurement."""
+    """这些参数无法产出诚实的测量。"""
 
 
 class SetupFailed(RuntimeError):
-    """The target stack refused to prepare the scenario."""
+    """目标栈拒绝准备该场景。"""
 
 
 def _percentile(sorted_values: Sequence[float], fraction: float) -> float:
@@ -81,7 +79,7 @@ def _percentile(sorted_values: Sequence[float], fraction: float) -> float:
 
 
 class Recorder:
-    """Counts outcomes; percentiles come from the recorded wall-clock latencies."""
+    """统计结果；分位数来自记录下来的墙钟延迟。"""
 
     def __init__(self, *, base_host: str = "") -> None:
         self.latencies: list[float] = []
@@ -111,7 +109,7 @@ class Recorder:
         if status is not None and 200 <= status < 300:
             self.ok += 1
         elif status == 429:
-            self.rate_limited += 1  # the limiter working is not an error
+            self.rate_limited += 1  # 限流器生效不是错误
         elif status is not None:
             self._fail(f"http_{status}")
         else:
@@ -236,7 +234,7 @@ async def read_sessions(client: httpx.AsyncClient, recorder: Recorder) -> None:
 
 
 def _tiny_pdf() -> bytes:
-    """A resume the parser can actually read (CJK font, one project bullet)."""
+    """解析器真的能读的简历（CJK 字体、一条项目要点）。"""
     import io
 
     from reportlab.pdfbase import pdfmetrics
@@ -275,7 +273,7 @@ async def _create_chat_session(client: httpx.AsyncClient) -> str:
 
 
 async def _create_interview(client: httpx.AsyncClient, *, model_ref: str | None) -> str:
-    """Answers need a session with questions, so the lock/single-flight path has work to do."""
+    """答题需要一个带问题的会话，好让锁 / 单飞路径有活干。"""
     created = await client.post("/api/v1/interview/sessions", json={})
     _require(created, "create interview session")
     session_id = created.json().get("id")
@@ -392,8 +390,8 @@ async def run_scenario(
         timeout=args.timeout,
         limits=limits,
         follow_redirects=False,
-        # An ambient http_proxy/no_proxy must not sit in the path of a measurement (nor crash
-        # the client on a bracketed no_proxy entry): the script talks to the target directly.
+        # 环境里的 http_proxy/no_proxy 不能挡在测量的路径上（也不能因 no_proxy 里带方括号
+        # 的条目让客户端崩溃）：脚本直接和目标通信。
         trust_env=False,
     ) as client:
         chat_id, interview_id = await prepare(client, args)

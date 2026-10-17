@@ -43,8 +43,9 @@ def test_adapter_kind_gains_the_third_implementation() -> None:
 async def test_factory_reports_the_missing_variable_by_name() -> None:
     unconfigured = DashScopeAppFactory(api_key="")
 
-    assert unconfigured.is_configured(binding()) is False
-    assert unconfigured.credential_hint(binding()) == API_KEY_ENV
+    status = await unconfigured.config_status(binding())
+    assert status.configured is False
+    assert status.missing == API_KEY_ENV
     with pytest.raises(LlmConfigError, match=API_KEY_ENV):
         await unconfigured.build(binding())
 
@@ -52,8 +53,8 @@ async def test_factory_reports_the_missing_variable_by_name() -> None:
 async def test_factory_needs_a_bound_app_id() -> None:
     configured = DashScopeAppFactory(api_key="sk-test")
 
-    assert configured.is_configured(binding(target_ref="")) is False
-    assert configured.is_configured(binding()) is True
+    assert (await configured.config_status(binding(target_ref=""))).configured is False
+    assert (await configured.config_status(binding())).configured is True
 
 
 async def test_factory_builds_the_adapter_from_the_binding_target() -> None:

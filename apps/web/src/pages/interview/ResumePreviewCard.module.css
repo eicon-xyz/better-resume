@@ -6,8 +6,15 @@
 
 .stats {
   display: flex;
-  gap: var(--br-space-5);
+  gap: var(--br-space-3);
   margin: 0 0 var(--br-space-3);
+}
+
+.stats > div {
+  flex: 1;
+  padding: var(--br-space-2) var(--br-space-3);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-surface-raised);
 }
 
 .stats dt {
@@ -35,6 +42,7 @@
 }
 
 .number {
+  /* allow: 题号列最小宽度（24px 列表几何） */
   min-width: 24px;
   color: var(--br-color-accent);
   font-family: var(--br-font-mono);
@@ -69,7 +77,9 @@
 .degraded {
   margin: var(--br-space-3) 0 0;
   padding: var(--br-space-2) var(--br-space-3);
-  border-left: 3px solid var(--br-color-warning, #d97706);
-  background: var(--br-color-warning-bg, rgba(217, 119, 6, 0.08));
+  /* allow: 降级提示左侧警示条宽度（3px 几何） */
+  border-left: 3px solid var(--br-color-warning);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-warning-bg);
   font-size: var(--br-text-sm);
 }

@@ -21,6 +21,7 @@ from better_resume.ai_resilience import (
     ManualClock,
     ResilienceMetrics,
     ResilientAiResilience,
+    wait_until,
 )
 from better_resume.chat import ChatService, build_resilience_key
 from better_resume.chat.models import Done
@@ -160,15 +161,15 @@ async def test_concurrent_identical_chat_streams_share_one_vendor_call(store_fac
     leader = asyncio.create_task(one_turn())
     await asyncio.wait_for(gateway.started.wait(), timeout=5.0)  # the flight is open now
     follower = asyncio.create_task(one_turn())
-    # The follower has DB work to do before it reaches the seam: poll the metric instead
-    # of guessing how many event-loop turns that takes.
-    for _ in range(200):
-        # Real (tiny) sleeps: the follower's DB round trips need the loop to poll sockets,
-        # which sleep(0) alone never does.
-        await asyncio.sleep(0.005)
-        if resilience.metrics.snapshot()["singleflight_follower"] == 1:
-            break
-    assert resilience.metrics.snapshot()["singleflight_follower"] == 1
+    # The follower has DB work to do before it reaches the seam: wait on the metric instead
+    # of guessing how many event-loop turns that takes. The interval is real because the
+    # follower's DB round trips need the loop to poll sockets.
+    await wait_until(
+        lambda: resilience.metrics.snapshot()["singleflight_follower"] == 1,
+        timeout=2.0,
+        interval=0.005,
+        description="the follower to reach the single-flight seam",
+    )
     gateway.release.set()
 
     assert await asyncio.gather(leader, follower) == ["你好", "你好"]
@@ -195,7 +196,7 @@ class FakeInterviewGateway:
     async def complete(self, req: ChatRequest) -> ChatResult:
         self.calls += 1
         if self._delay:
-            await asyncio.sleep(self._delay)
+            await asyncio.sleep(self._delay)  # 允许：fake 供应商延迟，模拟系统边界
         if self._error is not None:
             raise self._error
         if req.response_schema is QuestionBatch:

@@ -43,9 +43,9 @@
     "apps/api/src/better_resume/db/session.py:29-33",
     "apps/api/src/better_resume/http/chat.py:81",
     "apps/api/src/better_resume/http/interview.py:127",
-    "apps/api/src/better_resume/http/scenes.py:57"
+    "apps/api/src/better_resume/http/chat.py:137"
    ],
-   "evidence": "29 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:\n30 \"\"\"Project-wide session dependency; the factory itself lives on app.state.\"\"\"\n31 factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory\n32 async with factory() as session:\n33 yield session\n\napps/api/src/better_resume/http/chat.py:81 async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/interview.py:119 async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/scenes.py:57 async with request.app.state.session_factory() as session:",
+   "evidence": "29 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:\n30 \"\"\"Project-wide session dependency; the factory itself lives on app.state.\"\"\"\n31 factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory\n32 async with factory() as session:\n33 yield session\n\napps/api/src/better_resume/http/chat.py:81 async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/interview.py:119 async with request.app.state.session_factory() as db:\n\napps/api/src/better_resume/http/chat.py:137 async with request.app.state.session_factory() as db:",
    "why": "这是删除测试里最该删的一个：把 get_session 整个删掉，没有任何调用方变复杂——它已经零调用者（grep 全仓库只有定义处与 db/__init__ 的 re-export，连测试都没用）。它同时是一个不诚实的导航信号：docstring 写「项目统一」，而 5 个 HTTP 模块共 29 处绕过它自己开 session，读代码的人会以为自己漏看了某处 DI 装配。代价是「一次请求一个 session、谁负责 commit」这条知识没有任何地方强制，每个端点各写一遍 async with + commit。",
    "fix": "二选一：要么让所有端点改走 Depends(get_session)（顺带把它变成真实的缝，store 构造也就有了落点），要么删掉 get_session 并修掉 docstring 里「项目统一」的说法。留着不动是最差选项。"
   },
@@ -77,14 +77,15 @@
    "severity": "高",
    "title": "7 条业务路由里有 7 处把业务服务内联构造（QuestionService/AnswerService/ReportService ×4），没有一处装配根",
    "where": [
-    "apps/api/src/better_resume/http/interview.py:146-150",
-    "apps/api/src/better_resume/http/interview.py:257-261",
-    "apps/api/src/better_resume/http/interview.py:381",
-    "apps/api/src/better_resume/http/interview.py:432",
-    "apps/api/src/better_resume/http/interview.py:455",
+    "apps/api/src/better_resume/http/interview.py:154-160",
+    "apps/api/src/better_resume/http/interview.py:262-267",
+    "apps/api/src/better_resume/http/interview.py:388",
+    "apps/api/src/better_resume/http/interview.py:448-450",
+    "apps/api/src/better_resume/http/interview.py:462-464",
+    "apps/api/src/better_resume/http/interview.py:475",
     "apps/api/src/better_resume/http/chat.py:151"
    ],
-   "evidence": "interview.py:146 service = QuestionService(\n147 state.session_factory,\n148 resilience=state.ai_resilience,\n149 storage=ResumeStorage(state.settings.resume_storage_dir),\n150 )\ninterview.py:257 service = AnswerService(\n258 state.session_factory,\n259 resilience=state.ai_resilience,\n260 locks=state.question_locks,\n261 )\ninterview.py:432 result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(",
+   "evidence": "interview.py:154 service = QuestionService(\n155 state.session_factory,\n156 resilience=state.ai_resilience,\n157 storage=ResumeStorage(state.settings.resume_storage_dir),\n160 )\ninterview.py:262 service = AnswerService(\n263 state.session_factory,\n264 resilience=state.ai_resilience,\n265 locks=state.question_locks,\n267 )\ninterview.py:388 view = await RestoreService(state.session_factory, hot_state=state.hot_state).restore(\ninterview.py:448 result = await ReportService(\ninterview.py:462 result = await ReportService(\ninterview.py:475 service = ReportService(state.session_factory, resilience=state.ai_resilience)\nchat.py:151 service = ChatService(state.session_factory, resilience=state.ai_resilience)",
    "why": "结构跟着「一个请求要现场拼出哪些零件」的执行顺序走，而不是跟着「谁拥有这些零件」走。AnswerService 的构造签名是放在 exec 顺序里被发现的，不是放在一个有名字的装配点里——加一个依赖要改 4 处 ReportService 调用、每处参数风格还不同（一处带 locks、一处带 storage）。工厂函数的存在意义（ResumeStorage(dir) 这种构建）也被摊进了路由。这是代码结构跟着执行顺序走的典型：真正稳定的知识（service → 依赖集合）没有落点。",
    "fix": "给每个 service 一个 FastAPI 依赖工厂（或一个 `deps.py` 装配模块），路由只写 `service: QuestionService = Depends(...)`；构造签名只在装配点出现一次。"
   },
@@ -129,15 +130,31 @@
    "severity": "中",
    "title": "「哪些写操作要让 hot 缓存失效」是散在路由里的人际约定（同一行 ×4），没有任何地方强制",
    "where": [
-    "apps/api/src/better_resume/http/interview.py:170",
-    "apps/api/src/better_resume/http/interview.py:284",
-    "apps/api/src/better_resume/http/interview.py:463",
-    "apps/api/src/better_resume/http/interview.py:463",
-    "apps/api/src/better_resume/http/interview.py:222-224"
+    "apps/api/src/better_resume/interview_engine/question_service.py:287",
+    "apps/api/src/better_resume/interview_engine/answer_service.py:108",
+    "apps/api/src/better_resume/interview_engine/report_service.py:136",
+    "apps/api/src/better_resume/interview_engine/report_service.py:183",
+    "apps/api/src/better_resume/interview_engine/hot_state.py:126-137"
    ],
-   "evidence": "interview.py:161 await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)\ninterview.py:272 await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)\ninterview.py:211 async def _invalidate_hot(request: Request, *, user_id: str, session_id: str) -> None:\n212 \"\"\"Writes invalidate the hot view: a stale restore is worse than a slow one.\"\"\"\n213 hot = getattr(request.app.state, \"hot_state\", None)",
+   "evidence": "interview_engine/hot_state.py（写路径唯一的失效入口）\n126: async def invalidate_hot_state(\n127: hot_state: HotStateStore | None, *, user_id: str, session_id: str\n135: if hot_state is not None:\n136: await hot_state.invalidate(user_id=user_id, session_id=session_id)\n三个写服务各自在提交后调用它（HTTP 端已无失效语句）：\ninterview_engine/question_service.py:287 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)\ninterview_engine/answer_service.py:108 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)\ninterview_engine/report_service.py:136 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)\ninterview_engine/report_service.py:183 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)",
    "why": "「写路径必须让热层失效」是 interview_engine 的知识，但它被复制到 HTTP 层用 4 次手写调用实现。缓存一致性的不变量由「每条新路由的作者都记得加一行」来保证；漏掉不会报错，只会让 restore 返回旧状态（正是注释自己说「比慢更糟」的那种 bug）。另外 http/media.py 的 TTS 写路径根本没有这个环节——因为它不用 hot 层，这说明该知识其实属于「谁写数据谁失效」的那一层，而不是路由。",
-   "fix": "把失效下沉到写路径本身（service 写成功后失效，或 store 层的写方法挂钩子），路由不再需要知道热层的存在。"
+   "fix": "把失效下沉到写路径本身（service 写成功后失效，或 store 层的写方法挂钩子），路由不再需要知道热层的存在。",
+   "fix_record": {
+    "status": "fixed",
+    "title": "写路径自带失效：HTTP 端不再手写缓存失效，热层失效收进三个写服务",
+    "approach": "把「哪些写操作要让 hot 视图失效」从路由里的人为约定收进写路径本身：interview_engine/hot_state.py 提供模块级 invalidate_hot_state(hot_state, *, user_id, session_id)，三个写服务（QuestionService._persist、AnswerService.submit、ReportService.finish/freeze）在各自提交后调用它；HTTP 端不再出现失效语句——原 http/interview.py 的 _invalidate_hot 助手与 4 处调用点已删除。",
+    "files": [
+     "apps/api/src/better_resume/interview_engine/hot_state.py",
+     "apps/api/src/better_resume/interview_engine/question_service.py",
+     "apps/api/src/better_resume/interview_engine/answer_service.py",
+     "apps/api/src/better_resume/interview_engine/report_service.py",
+     "apps/api/src/better_resume/http/interview.py",
+     "apps/api/tests/interview_engine/test_restore_report.py"
+    ],
+    "evidence": "tests/interview_engine/test_restore_report.py 的 test_every_write_path_drops_the_warm_hot_view 在出题/答题/finish 三条写路径上断言「写后读不到写前的热层视图」，失效漏一条即红；变异演示：删掉答题写路径的失效调用 → 该用例判红（「答题写路径没有失效热层」），恢复后逐字节一致。",
+    "verification": "cd apps/api && uv run pytest tests/interview_engine/test_restore_report.py -q --junitxml=/tmp/t13_restore.xml",
+    "unverified": "跨副本传播仍靠 hot_state_ttl_seconds 兜底：热层键在 Redis 上使失效天然跨副本，但「A 写、B 立刻 restore」的组合只在单进程测试里验证过。"
+   }
   },
   {
    "id": "http-07",
@@ -149,9 +166,9 @@
    "severity": "中",
    "title": "http/interview.py:417 的 _resolve_gateway 是 gateway_for 的同签名转调，只为换一个 scene 常量",
    "where": [
-    "apps/api/src/better_resume/http/interview.py:440-442",
+    "apps/api/src/better_resume/http/interview.py:433-435",
     "apps/api/src/better_resume/http/interview.py:143",
-    "apps/api/src/better_resume/http/interview.py:267"
+    "apps/api/src/better_resume/http/interview.py:260"
    ],
    "evidence": "interview.py:417 async def _resolve_gateway(request: Request, model_ref: str | None):\n418 \"\"\"Report summary scene (kept as a helper so the endpoint stays readable).\"\"\"\n419 return await gateway_for(request, LlmScene.REPORT_SUMMARY, model_ref=model_ref)\n\n同文件另两处直接写：\n135 gateway = await gateway_for(request, LlmScene.QUESTION_EXTRACTION, model_ref=model_ref)\n255 follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)",
    "why": "危险信号「透传方法」：函数体就是转调同签名方法，唯一的值是换了一个常量——而换常量这件事 gateway_for 的一行调用已经足够清楚。结果是两条几乎相同的调用路径并存：读代码的人必须记住「用 _resolve_gateway 就等于 REPORT_SUMMARY」，而新增场景时（比如给 finish 加一个总结场景）改 gateway_for 语义会漏掉这个包了一层的地方。名字也没传递信息：resolve 什么、给谁 resolve 都没说。",
@@ -184,9 +201,9 @@
    "severity": "中",
    "title": "错误分类字段 kind 从未被声明，靠 getattr(getattr(exc, \"kind\", None), \"value\", ...) 在 4 个处理器里各猜一次",
    "where": [
-    "apps/api/src/better_resume/main.py:204"
+    "apps/api/src/better_resume/main.py:220"
    ],
-   "evidence": "main.py:205 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n211 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n220 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
+   "evidence": "main.py:214 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"timeout\")\n220 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unavailable\")\n229 kind = getattr(getattr(exc, \"kind\", None), \"value\", \"unknown\")",
    "why": "调用者（错误处理器）必须先了解实现（哪类异常有 kind、kind 是枚举还是字符串、没有时该给什么默认值）才能写对三行几乎一样的代码。因为接口没约束异常长什么样，所以只能猜；因为只能猜，所以三处各猜一遍，默认值还不一样（timeout/unavailable/unknown——这是对的，但没人保证第四个处理器会猜对）。仓库对响应体形状极严（Pydantic response_schema 强校验），对异常形状却完全靠约定。",
    "fix": "给韧性异常定义一个 `kind` 属性的基类/Protocol（或统一一个 `error_kind(exc) -> str` 函数），处理器只调用它，默认值集中一处。"
   },
@@ -199,10 +216,10 @@
    "severity": "中",
    "title": "单一 model_ref 参数同时决定 ANSWER_EVALUATION 与 FOLLOW_UP 两个场景的模型——服务要两个采购者，HTTP 只能表达一个",
    "where": [
-    "apps/api/src/better_resume/http/interview.py:252-255",
+    "apps/api/src/better_resume/http/interview.py:257-260",
     "apps/api/src/better_resume/http/interview.py:262-270"
    ],
-   "evidence": "interview.py:252 answer_gateway = await gateway_for(\n253 request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref\n254 )\n255 follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)",
+   "evidence": "interview.py:257 answer_gateway = await gateway_for(\n258 request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref\n259 )\n260 follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)",
    "why": "AnswerService 的构造签名声明「我需要两个独立的模型采购者」（评分一个、出追问一个），这是专属于它的知识；而 HTTP 契约只提供一个 model_ref，于是这一层必须把同一个值喂给两者，并顺带让「用户选模型」这件事在两个场景上强行一致。通用机制（场景绑定 + 可选覆盖）与某个调用者的专用逻辑（评分/追问拆开）混在这一层：调用者读到两个 gateway 参数无法知道它们是否可以不同，也无法表达「只覆盖评分模型」。",
    "fix": "要么承认它们是同一件事（让服务只接受一个 gateway，场景差异留在服务内部按 scene 取），要么在请求模型里显式给两个可选 ref（evaluation_model_ref / follow_up_model_ref），别用一个值冒充两个决策。"
   },
@@ -215,7 +232,7 @@
    "severity": "中",
    "title": "POST /sessions/{id}/finish 的行为随服务端开关分叉，并且只在同步分支用 model_ref——参数被静默忽略",
    "where": [
-    "apps/api/src/better_resume/http/interview.py:450",
+    "apps/api/src/better_resume/http/interview.py:443",
     "apps/api/src/better_resume/http/interview.py:430-451"
    ],
    "evidence": "interview.py:427 model_ref: str | None = Query(default=None),\n430 if state.settings.jobs_enabled:\n...\n445 # The synchronous path needs the gateway here; the queued path resolves it in the worker.\n446 gateway = await _resolve_gateway(request, model_ref)",
@@ -250,7 +267,7 @@
    "title": "同一份 __all__ 在 http/interview.py 里出现两次（299-305 与 468-476），是编辑残留",
    "where": [
     "apps/api/src/better_resume/http/interview.py:307-313",
-    "apps/api/src/better_resume/http/interview.py:491-493"
+    "apps/api/src/better_resume/http/interview.py:482-489"
    ],
    "evidence": "interview.py:299 __all__ = [\n300 \"MAX_RESUME_BYTES\",\n301 \"AnswerSubmitView\",\n302 \"InterviewSessionView\",\n303 \"QuestionBatchView\",\n304 \"router\",\n305 ]\n\ninterview.py:468 __all__ = [\n469 \"MAX_RESUME_BYTES\",\n...\n476 ]",
    "why": "两个 __all__ 里覆盖的名字不同（第一个少了 RestoreResponseView/InterviewReportView 等），后一个生效、前一个纯噪声，且位置在文件中间——像一个已经写完的模块被继续追加内容时留下的痕迹。判据「删掉它读者不损失任何信息」成立；它也说明这个文件（476 行、7 条路由、8 个视图模型、3 个 service 的装配）已经超出一次能读懂的规模。",

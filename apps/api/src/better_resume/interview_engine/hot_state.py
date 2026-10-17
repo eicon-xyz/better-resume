@@ -123,6 +123,19 @@ class RedisHotState:
         await self._client.aclose()
 
 
+async def invalidate_hot_state(
+    hot_state: HotStateStore | None, *, user_id: str, session_id: str
+) -> None:
+    """The write path drops the cached view; the TTL only covers replicas that did not see it.
+
+    Every service that writes the rows a `RestoreView` is derived from calls this after its
+    own commit, so "writes invalidate" is a property of the write path instead of a rule the
+    HTTP layer has to remember.
+    """
+    if hot_state is not None:
+        await hot_state.invalidate(user_id=user_id, session_id=session_id)
+
+
 def build_hot_state(settings: Settings) -> HotStateStore:
     """memory by default (single process), Redis once there is more than one instance."""
     backend = settings.hot_state_backend

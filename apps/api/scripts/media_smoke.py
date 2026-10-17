@@ -1,13 +1,13 @@
-"""M4 evidence: media pipeline smoke — transcription events + a real TTS file.
+"""M4 证据：媒体管线冒烟——转写事件 + 一个真实 TTS 文件。
 
-Usage:
-    uv run python scripts/media_smoke.py --scripted   # no credentials needed (CI/local)
-    uv run python scripts/media_smoke.py              # real xunfei AST (needs credentials)
+用法：
+    uv run python scripts/media_smoke.py --scripted   # 不需要凭据（CI/本地）
+    uv run python scripts/media_smoke.py              # 真实讯飞 AST（需要凭据）
 
-What it proves:
-  * the assembler + channel seam produce the replace/archive/final sequence from audio;
-  * edge-tts really synthesizes an mp3 through the cache (size + header check);
-  * with credentials, the same code path runs against the vendor (T10).
+它证明：
+  * assembler + channel 缝会从音频产出 replace/archive/final 序列；
+  * edge-tts 真的经缓存合成出 mp3（大小 + 文件头检查）；
+  * 有凭据时，同一代码路径打到供应商（T10）。
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ async def xunfei_transcription(settings: Settings) -> bool:
 
 
 def read_pcm(path: Path) -> bytes:
-    """Read a 16 kHz mono 16-bit WAV and hand back its raw PCM (the channel's format)."""
+    """读取 16 kHz 单声道 16 位 WAV，返回其原始 PCM（channel 的格式）。"""
     import wave
 
     with wave.open(str(path), "rb") as handle:
@@ -112,7 +112,7 @@ def read_pcm(path: Path) -> bytes:
 
 
 async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
-    """V3: the batch ASR channel against the real MaaS endpoint, one release per file."""
+    """V3：批量 ASR 通道打到真实 MaaS 端点，每个文件一次 release。"""
     print("== transcription (real qwen-audio-3.0-asr-flash, batch: one request per release) ==")
     pcm = read_pcm(wav_path)
     print(f"  audio: {wav_path.name} {len(pcm) / 32000:.1f}s ({len(pcm)} bytes of 16 kHz mono pcm)")
@@ -132,7 +132,7 @@ async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
 
     started = time.monotonic()
     await adapter.start(ChannelCtx(session_id="smoke"))
-    for offset in range(0, len(pcm), 3200):  # feed in 100 ms slices, like the browser does
+    for offset in range(0, len(pcm), 3200):  # 按 100 ms 分片喂入，和浏览器一样
         await adapter.feed(pcm[offset : offset + 3200])
     await adapter.stop()
     elapsed = time.monotonic() - started
@@ -147,10 +147,9 @@ async def qwen_asr_transcription(settings: Settings, wav_path: Path) -> bool:
 
 
 async def paraformer_rt_transcription(settings: Settings, wav_path: Path) -> bool:
-    """The realtime channel against the real vendor, paced at 1x like a microphone.
+    """实时通道打到真实供应商，像麦克风一样以 1 倍速喂入。
 
-    Unlike the batch adapter this exercises the incremental path: partial sentences are
-    expected to arrive while the audio is still being fed.
+    与批量适配器不同，这里演练增量路径：预期在音频仍在喂入时就有部分句子到达。
     """
     print(f"== transcription (real {settings.media.asr_realtime_model}, realtime WS) ==")
     pcm = read_pcm(wav_path)
@@ -173,7 +172,7 @@ async def paraformer_rt_transcription(settings: Settings, wav_path: Path) -> boo
     started = time.monotonic()
     first_partial: float | None = None
     await adapter.start(ChannelCtx(session_id="smoke"))
-    for offset in range(0, len(pcm), 3200):  # 1x pacing: partials arrive while "speaking"
+    for offset in range(0, len(pcm), 3200):  # 1 倍速：分片在「说话」过程中到达
         await adapter.feed(pcm[offset : offset + 3200])
         if first_partial is None and any(e.kind == "replace" for e in recorder.events):
             first_partial = time.monotonic() - started

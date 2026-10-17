@@ -15,7 +15,19 @@ body {
   line-height: var(--br-leading-normal);
 }
 
+/* 图标基础类：所有线稿图标共用的默认尺寸（--br-size-icon），组件只切颜色与线宽。
+   本文件在组件模块样式之后注入，普通特异性会让这里的 width/height 压掉调用方给的尺寸
+   （如右下角气泡图标），所以把默认值写成零特异性的 :where()：调用方类要多大就多大，
+   没给尺寸类时取这里的默认值。 */
+:where(.br-icon) {
+  flex: none;
+  width: var(--br-size-icon);
+  height: var(--br-size-icon);
+}
+
 :focus-visible {
+  /* allow: 键盘焦点外框线宽（2px 几何） */
   outline: 2px solid var(--br-color-accent);
+  /* allow: 焦点外框与控件的偏移（2px 几何） */
   outline-offset: 2px;
 }

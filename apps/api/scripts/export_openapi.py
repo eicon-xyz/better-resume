@@ -1,7 +1,7 @@
-"""Export the FastAPI OpenAPI document; --check fails when the committed file is stale.
+"""导出 FastAPI OpenAPI 文档；已提交文件过期时 --check 失败。
 
-The backend is the single source of truth for the wire contract (D17): the frontend type
-file is generated from apps/api/openapi.json, and CI refuses to merge drift.
+后端是线上契约的唯一真相源（D17）：前端类型文件由 apps/api/openapi.json 生成，CI 拒绝合并
+漂移。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ OUTPUT = Path(__file__).resolve().parents[1] / "openapi.json"
 
 
 def render() -> str:
-    """Stable rendering: sorted keys + fixed indent, so diffs are meaningful."""
+    """稳定渲染：键排序 + 固定缩进，让 diff 有意义。"""
     schema = create_app().openapi()
     return json.dumps(schema, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 

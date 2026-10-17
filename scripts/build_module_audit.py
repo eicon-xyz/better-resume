@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Render docs/audit/units/*.json into one self-contained HTML module-design audit.
+"""把 docs/audit/units/*.json 渲染成一份自包含的 HTML 模块设计审计。
 
-Usage: python3 scripts/build_module_audit.py
+用法：python3 scripts/build_module_audit.py
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 UNITS = ROOT / "docs" / "audit" / "units"
 OUT = ROOT / "docs" / "audit" / "MODULE-AUDIT.html"
 
-# Rendering order and display metadata. Any unit JSON not listed is appended.
+# 渲染顺序与展示元数据。未列出的 unit JSON 追加在末尾。
 UNIT_ORDER = [
     ("settings_observability", "配置与装配", "settings / observability / main"),
     ("http", "HTTP 薄层", "http/"),
@@ -33,7 +33,7 @@ UNIT_ORDER = [
 SEVERITY_ORDER = {"高": 0, "中": 1, "低": 2}
 SEVERITY_LABEL = {"高": "高", "中": "中", "低": "低"}
 
-# The user's checklist, verbatim, grouped as given.
+# 用户给的检查清单，原文照录，按给定分组。
 CHECKLIST = [
     ("设计一个模块时", [
         "先用一句话写清：它做什么、给谁用、最重要的 1~3 件事是什么。",
@@ -239,7 +239,7 @@ STATUS_LABEL = {
 
 
 def fix_html(issue: dict) -> str:
-    """Render the remediation block attached to an issue, when one exists."""
+    """渲染挂在问题上的修复记录块（存在时）。"""
     fix = issue.get("fix_record")
     if not fix:
         return ""
@@ -359,7 +359,7 @@ def overview_html(units: list[dict]) -> str:
         </div>
       </a>""")
 
-    # Dimension / signal aggregate across units.
+    # 跨 unit 的检查维度 / 危险信号聚合。
     dim_counter: Counter = Counter()
     sig_counter: Counter = Counter()
     for issue in all_issues:
@@ -389,7 +389,7 @@ def overview_html(units: list[dict]) -> str:
         for i in hotspots
     )
 
-    # Cross-module leakage: issues whose evidence names another module.
+    # 跨模块泄露：证据里点到另一个模块的问题。
     leak_rows = []
     for issue in all_issues:
         if "信息泄露" in issue.get("signals", []) or "重复" in issue.get("signals", []):
@@ -406,7 +406,7 @@ def overview_html(units: list[dict]) -> str:
         else "<p class='lede'>未发现本条。</p>"
     )
 
-    # Sites that more than one unit independently flagged (hit by 高/中 issues in 2+ units).
+    # 被一个以上 unit 独立标记的位置（被 2 个以上 unit 的 高/中 问题命中）。
     file_units: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for issue in all_issues:
         if issue.get("severity") == "低":

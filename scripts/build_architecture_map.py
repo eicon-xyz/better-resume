@@ -9,7 +9,7 @@
   就写「未知」，绝不编造（AGENTS.md §证据诚实）。
 * 单文件产物，无外链、无第三方依赖：python3 直接跑，--watch 就是「实时图」。
 
-Usage:
+用法：
   python3 scripts/build_architecture_map.py                  # 渲染一次（含探针）
   python3 scripts/build_architecture_map.py --no-probe        # 只取仓库事实（不碰 docker/网络）
   python3 scripts/build_architecture_map.py --watch -i 10     # 实时：每 10s 重渲染 + 浏览器自刷

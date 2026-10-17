@@ -1,10 +1,8 @@
-"""per-module coverage floors for the deep modules.
+"""深模块的按模块覆盖率下限。
 
-Criterion (user decision, codebase-design vocabulary): a module gets a floor when it passes
-the deletion test, has a small stable interface, and hides thick implementation. Shallow
-modules (adapters/factories/route shells) deliberately get NO floor -- they are verified by
-seam contracts instead. Reads the coverage JSON written by the unit layer and refuses
-(exit 2) listing every deep module below its floor."""
+判据（用户决策，codebase-design 词汇）：一个模块通过删除测试、接口小而稳定、隐藏厚实现时
+才给它下限。浅模块（适配器/工厂/路由壳）刻意不设下限——它们靠缝契约验证。读取 unit 层写
+出的 coverage JSON，列出每个低于下限的深模块并拒绝（退出 2）。"""
 
 from __future__ import annotations
 
@@ -12,8 +10,8 @@ import argparse
 import json
 import sys
 
-#: module -> floor (percent of statements covered).
-#: Rationale: docs/history_docs/tickets/p2-test-automation/README.md §5.5.
+#: module -> 下限（语句覆盖率百分比）。
+#: 依据：docs/history_docs/tickets/p2-test-automation/README.md §5.5。
 DEEP_MODULES: dict[str, float] = {
     "ai_resilience": 90.0,
     "identity": 90.0,
@@ -80,7 +78,7 @@ def main() -> int:
     return 0
 
 
-import pathlib  # noqa: E402  (used by main; kept late to keep the floors table on top)
+import pathlib  # noqa: E402  （main 使用；置后以让下限表保持在顶部）
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -201,14 +201,14 @@ async def test_factory_reports_missing_credentials() -> None:
         scene=LlmScene.FOLLOW_UP, adapter=AdapterKind.XINGYUN, target_ref="flow-1"
     )
 
-    assert empty.is_configured(binding) is False
+    assert (await empty.config_status(binding)).configured is False
     with pytest.raises(Exception, match="missing"):
         await empty.build(binding)
 
     configured = XingyunGatewayFactory(
         environ={API_KEY_ENV: "k", API_SECRET_ENV: "s"}, base_url="http://localhost:1"
     )
-    assert configured.is_configured(binding) is True
+    assert (await configured.config_status(binding)).configured is True
     gateway = await configured.build(binding)
     assert isinstance(gateway, XingyunWorkflowAdapter)
     await gateway.aclose()

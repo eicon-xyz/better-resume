@@ -22,6 +22,7 @@ from .corpus import DEFAULT_LIMIT, CorpusEntry, filter_corpus, load_corpus
 from .errors import GenerationInProgress, InterviewEngineError, SessionNotFound
 from .flow_fsm import FlowStatus
 from .flow_store import FlowStateStore
+from .hot_state import HotStateStore, invalidate_hot_state
 from .models import FlowState, InterviewSession, QuestionRecord
 from .orm import InterviewQuestionRow
 from .planning import plan_questions
@@ -78,9 +79,11 @@ class QuestionService:
         parser: HybridResumeParser | None = None,
         corpus_limit: int = DEFAULT_LIMIT,
         corpus_path: Path | None = None,
+        hot_state: HotStateStore | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._resilience = resilience
+        self._hot_state = hot_state
         self._storage = storage or ResumeStorage(Path("data/resumes"))
         self._parser = parser or HybridResumeParser()
         self._corpus_limit = corpus_limit
@@ -143,6 +146,7 @@ class QuestionService:
         try:
             return await self._persist(
                 session_id=session_id,
+                user_id=user_id,
                 request_id=request_id,
                 batch=batch,
                 context=context,
@@ -222,6 +226,7 @@ class QuestionService:
         self,
         *,
         session_id: str,
+        user_id: str,
         request_id: str,
         batch: QuestionBatch,
         context: ResumeContext,
@@ -279,6 +284,7 @@ class QuestionService:
             await db.flush()
             await repo.transition(session_id, SessionStatus.READY)
             await db.commit()
+            await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
 
             questions = [
                 {

@@ -1,12 +1,10 @@
-"""A deterministic OpenAI-compatible endpoint for the deploy smoke.
+"""为部署冒烟提供一个确定性的 OpenAI 兼容端点。
 
-The compose smoke has to prove that nginx forwards SSE frames as they are produced and
-upgrades WebSockets. A real vendor would make that check flaky and would bill the account,
-so the smoke points a dedicated smoke-fake model row at this server (it only runs under the
-smoke compose profile).
+compose 冒烟必须证明 nginx 会边产生边转发 SSE 帧，并升级 WebSocket。真实供应商会让这项检查
+忽红忽绿并产生账单，所以冒烟把一条专用 smoke-fake 模型行指向本服务器（它只在 smoke compose
+profile 下运行）。
 
-The first content chunk is delayed on purpose: the client should therefore see the API's
-own ": ping" heartbeat before any model text arrives.
+首个内容分片刻意延迟：客户端因此应当在任何模型文本到达前先看到 API 自己的 ": ping" 心跳。
 """
 
 from __future__ import annotations
@@ -20,10 +18,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_CHUNKS = ("今天", "天气", "不错。")
 
-#: Non-streaming answers per interview scene. The api sends no scene header, so the fake
-#: sniffs the prompt text (each stage asks for a different JSON shape).
-#: tests/test_fake_openai.py validates every payload against the real pydantic contracts,
-#: so the fake cannot silently drift away from what the engine expects.
+#: 生成的问题必须携带的受控类别（D23）；在问题之间循环使用。
+CATEGORY_VALUES = ("fundamentals", "project", "internship")
+
+#: 携带此标记的提示要求无 category 形状，让 D23 规则回退继续经由同一个假上游被演练（Q2）。
+#: 没有它时假上游会给出类别。
+NO_CATEGORY_MARKER = "不给出 category"
+
+#: 每个面试场景的非流式回答。api 不发 scene 头，所以假上游嗅探提示文本（每个阶段要的 JSON
+#: 形状不同）。tests/test_fake_openai.py 读取真实 pydantic 契约，检查每个受控枚举字段都存在
+#: 且合法；缺失或未知的值会让该守卫失败。
 SCORE_PAYLOAD = {
     "score": 55.0,
     "feedback": "回答覆盖了主要流程，但缺少量化结果与失败复盘。",
@@ -35,9 +39,9 @@ SUMMARY_PAYLOAD = {"summary": "整体结构清晰，深度尚可；建议用数�
 
 
 def scene_for(text: str) -> str:
-    """Which stage asked for this completion (prompt sniffing, distinctive markers first)."""
-    # Match the JSON shape each stage asks for, not loose words: the scoring prompt also
-    # mentions 追问 (follow_up_needed) and the question prompt mentions 总结-free wording.
+    """这次补全由哪个阶段发起（嗅探提示，先看特征性标记）。"""
+    # 按每个阶段要求的 JSON 形状匹配，而不是匹配零散词：评分提示也提到 追问
+    # （follow_up_needed），出题提示则提到不含「总结」的措辞。
     if "道面试题" in text or "interview questions" in text or "questions[" in text:
         return "questions"
     if "{score, feedback" in text or "评分官" in text:
@@ -53,15 +57,19 @@ def _question_payload(text: str) -> dict:
     match = re.search(r"请出 (\d+) 道面试题", text)
     count = int(match.group(1)) if match else 3
     count = max(1, min(count, 10))
+    include_category = NO_CATEGORY_MARKER not in text
+    questions = []
+    for index in range(1, count + 1):
+        question = {
+            "topic": f"主题{index}",
+            "focus_points": [f"要点{index}A", f"要点{index}B"],
+            "text": f"第 {index} 题：请说明这个项目里你做过的一个具体取舍。",
+        }
+        if include_category:
+            question["category"] = CATEGORY_VALUES[(index - 1) % len(CATEGORY_VALUES)]
+        questions.append(question)
     return {
-        "questions": [
-            {
-                "topic": f"主题{index}",
-                "focus_points": [f"要点{index}A", f"要点{index}B"],
-                "text": f"第 {index} 题：请说明这个项目里你做过的一个具体取舍。",
-            }
-            for index in range(1, count + 1)
-        ],
+        "questions": questions,
         "resume_score": 72.0,
         "suggestions": ["补充量化结果"],
     }
@@ -97,10 +105,10 @@ class FakeOpenAI(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self) -> None:  # noqa: N802 - stdlib hook
+    def do_GET(self) -> None:  # noqa: N802 - 标准库钩子
         self._json({"object": "list", "data": [{"id": "smoke-fake", "object": "model"}]})
 
-    def do_POST(self) -> None:  # noqa: N802 - stdlib hook
+    def do_POST(self) -> None:  # noqa: N802 - 标准库钩子
         length = int(self.headers.get("Content-Length") or 0)
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
@@ -155,7 +163,7 @@ class FakeOpenAI(BaseHTTPRequestHandler):
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="fake OpenAI-compatible SSE endpoint")
-    # It only ever runs as a compose service, so binding all interfaces is intended.
+    # 它只作为 compose 服务运行，所以绑定所有网卡是刻意的。
     parser.add_argument("--host", default="0.0.0.0")  # noqa: S104
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--first-delay", type=float, default=2.0)
