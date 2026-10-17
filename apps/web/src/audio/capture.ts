@@ -107,7 +107,10 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureHand
         /* already torn down */
       }
       stream.getTracks().forEach((track) => track.stop());
-      void context.close?.();
+      // AudioContext.close() already rejects only when the context is closed twice; the capture
+      // has no error surface after stop(), so ignore it by name instead of hiding a real failure.
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises -- teardown after stop(), no error channel left
+      context.close?.();
       if (workletUrl) URL.revokeObjectURL(workletUrl);
     },
   };

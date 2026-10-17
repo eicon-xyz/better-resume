@@ -29,9 +29,9 @@ export function useSession(client: ApiClient): SessionState {
 
   const login = useMutation({
     mutationFn: (userId: string) => client.devLogin({ user_id: userId, roles: [] }),
-    onSuccess: (principal) => {
+    onSuccess: async (principal) => {
       queryClient.setQueryData(sessionKeys.me, principal);
-      void queryClient.invalidateQueries();
+      await queryClient.invalidateQueries();
     },
   });
 

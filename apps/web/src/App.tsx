@@ -12,6 +12,8 @@ import { ChatPage } from "./pages/ChatPage";
 import { InterviewIntroPage } from "./pages/InterviewIntroPage";
 import { InterviewReportPage } from "./pages/InterviewReportPage";
 import { InterviewRoomPage } from "./pages/InterviewRoomPage";
+import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { ResumePage } from "./pages/ResumePage";
 
 import { createQueryClient } from "./queryClient";
 
@@ -30,14 +32,16 @@ export function App({ client, queryClient }: AppProps = {}) {
         <BrowserRouter>
           <AppShell>
             <Routes>
-              <Route path="/" element={<Navigate to="/chat" replace />} />
+              <Route path="/" element={<Navigate to="/interview" replace />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:sessionId" element={<ChatPage />} />
               <Route path="/settings/ai" element={<AiSettingsPage />} />
               <Route path="/interview" element={<InterviewIntroPage />} />
               <Route path="/interview/room/:sessionId" element={<InterviewRoomPage />} />
               <Route path="/interview/report/:sessionId" element={<InterviewReportPage />} />
-              <Route path="*" element={<Navigate to="/chat" replace />} />
+              <Route path="/resumes" element={<ResumePage />} />
+              <Route path="/coming-soon/:slug" element={<PlaceholderPage />} />
+              <Route path="*" element={<Navigate to="/interview" replace />} />
             </Routes>
           </AppShell>
         </BrowserRouter>

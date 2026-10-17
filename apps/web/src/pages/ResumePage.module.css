@@ -1,0 +1,69 @@
+/* 我的简历页：页头 + 导入入口 + 空态。简历库功能后置，页面只呈现导入占位形态。 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--br-space-5);
+  gap: var(--br-space-5);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-1);
+  padding-bottom: var(--br-space-4);
+  /* 页头分隔线：线宽用 thin 关键字表达发丝线，token 集只覆盖色值、不含边框宽度。 */
+  border-bottom: thin solid var(--br-color-border);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--br-text-xl);
+  line-height: var(--br-leading-tight);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--br-space-3);
+}
+
+.icon {
+  flex: none;
+  width: var(--br-space-4);
+  height: var(--br-space-4);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--br-space-4);
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: var(--br-space-6) var(--br-space-4);
+}
+
+.emptyIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  color: var(--br-color-text-muted);
+}
+
+.emptyIcon {
+  width: 100%;
+  height: 100%;
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-md);
+}

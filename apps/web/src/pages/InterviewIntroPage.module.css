@@ -1,3 +1,5 @@
+/* 模拟面试页：页头 + 暖黄主按钮 + 空态三步引导 + 可展开的创建表单。 */
+
 .page {
   display: flex;
   flex-direction: column;
@@ -11,9 +13,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--br-space-1);
+  padding-bottom: var(--br-space-4);
+  /* 页头分隔线：线宽用 thin 关键字表达发丝线，token 集只覆盖色值、不含边框宽度。 */
+  border-bottom: thin solid var(--br-color-border);
 }
 
-.brand {
+.title {
   margin: 0;
   font-size: var(--br-text-xl);
   line-height: var(--br-leading-tight);
@@ -23,6 +28,118 @@
   margin: 0;
   color: var(--br-color-text-muted);
   font-size: var(--br-text-sm);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--br-space-3);
+}
+
+.icon {
+  flex: none;
+  width: var(--br-space-4);
+  height: var(--br-space-4);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--br-space-5);
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: var(--br-space-6) var(--br-space-4);
+}
+
+.art {
+  width: 10rem;
+  height: auto;
+}
+
+.artFill {
+  fill: var(--br-color-surface);
+}
+
+.artLine {
+  fill: none;
+  stroke: var(--br-color-text-muted);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.artDot {
+  fill: var(--br-color-text-muted);
+}
+
+.artSpark {
+  fill: var(--br-color-accent);
+}
+
+.emptyLead {
+  max-width: 30rem;
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-md);
+  line-height: var(--br-leading-normal);
+  text-align: center;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-space-4);
+  width: 100%;
+  max-width: 26rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--br-space-3);
+}
+
+.stepIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--br-space-6);
+  height: var(--br-space-6);
+  border-radius: var(--br-radius-md);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-text);
+}
+
+.stepIcon svg {
+  width: var(--br-space-4);
+  height: var(--br-space-4);
+}
+
+.stepBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--br-space-1);
+}
+
+.stepTitle {
+  margin: 0;
+  font-size: var(--br-text-md);
+  line-height: var(--br-leading-tight);
+}
+
+.stepText {
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+  line-height: var(--br-leading-normal);
 }
 
 .grid {
@@ -230,7 +347,7 @@
   height: var(--br-space-7);
   border-radius: var(--br-radius-pill);
   background: var(--br-color-accent-muted);
-  color: var(--br-color-accent);
+  color: var(--br-color-text);
 }
 
 .emptyIcon {

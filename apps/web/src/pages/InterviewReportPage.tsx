@@ -77,7 +77,15 @@ export function InterviewReportPage() {
         <Empty
           title="还没有报告"
           description="先结束面试，报告会自动生成。"
-          action={<Button onClick={() => void navigate("/interview")}>回到面试入口</Button>}
+          action={
+            <Button
+              onClick={() => {
+                Promise.resolve(navigate("/interview")).catch(() => undefined);
+              }}
+            >
+              回到面试入口
+            </Button>
+          }
         />
       </div>
     );
@@ -102,10 +110,20 @@ export function InterviewReportPage() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <Button variant="secondary" onClick={() => void navigate("/interview")}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              Promise.resolve(navigate("/interview")).catch(() => undefined);
+            }}
+          >
             再面一次
           </Button>
-          <Button variant="ghost" onClick={() => void navigate("/chat")}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              Promise.resolve(navigate("/chat")).catch(() => undefined);
+            }}
+          >
             回到对话
           </Button>
         </div>

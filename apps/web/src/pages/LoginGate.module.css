@@ -1,4 +1,4 @@
-/* 登录门门面：居中 hero ＋ 玻璃质感登录卡；低饱和靛蓝渐变底衬由 AppShell 的登录门变体铺满整个视口。
+/* 登录门门面：居中 hero ＋ 玻璃质感登录卡；暖黄渐变底衬由 AppShell 的登录门变体铺满整个视口。
    玻璃 = 半透明表面（透明度作用于独立表面层，不牵连文字）＋ 发丝边框 ＋ 柔阴影，全部走既有 token。 */
 .gate {
   display: flex;
@@ -14,13 +14,11 @@
   text-align: center;
 }
 
+/* 暖黄是浅色表面色，直接当文字色在浅底上不可读：标题用正文色，暖黄只留在底衬与按钮。 */
 .title {
   display: inline-block;
   margin: 0;
-  background: var(--br-gradient-hero);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--br-color-text);
   font-size: var(--br-text-hero);
   font-weight: 700;
   line-height: var(--br-leading-tight);

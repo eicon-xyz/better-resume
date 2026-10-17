@@ -66,6 +66,13 @@ function selectFile(file: File): void {
   fireEvent.change(input, { target: { files: [file] } });
 }
 
+/** 创建表单默认收起，页面顶部与空态各有一个「创建模拟面试」入口；顶部入口在 DOM 里靠前。 */
+async function openCreateForm(): Promise<void> {
+  const createButtons = await screen.findAllByRole("button", { name: "创建模拟面试" });
+  fireEvent.click(createButtons[0] as HTMLElement);
+  await screen.findByRole("heading", { name: "第一步：上传简历" });
+}
+
 describe("InterviewIntroPage", () => {
   beforeEach(() => {
     useChatStore.getState().reset();
@@ -84,15 +91,16 @@ describe("InterviewIntroPage", () => {
   it("renders the upload card and the empty continue state", async () => {
     renderPage(fakeClient());
 
-    expect(await screen.findByRole("heading", { name: "第一步：上传简历" })).toBeInTheDocument();
-    expect(await screen.findByText("没有进行中的面试")).toBeInTheDocument();
+    await openCreateForm();
+    expect(screen.getByRole("heading", { name: "第一步：上传简历" })).toBeInTheDocument();
+    expect(screen.getByText("没有进行中的面试")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始面试" })).toBeDisabled();
   });
 
   it("rejects a file that is not a pdf", async () => {
     renderPage(fakeClient());
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     selectFile(new File(["hello"], "notes.txt", { type: "text/plain" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("只支持 PDF 文件");
@@ -101,7 +109,7 @@ describe("InterviewIntroPage", () => {
   it("rejects a pdf without the magic header", async () => {
     renderPage(fakeClient());
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     selectFile(pdfFile("fake.pdf", "MZ not really a pdf"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("不是有效的 PDF");
@@ -110,7 +118,7 @@ describe("InterviewIntroPage", () => {
   it("rejects an oversized pdf", async () => {
     renderPage(fakeClient());
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     const huge = new File(["%PDF-" + "0".repeat(10 * 1024 * 1024)], "huge.pdf", {
       type: "application/pdf",
     });
@@ -123,7 +131,7 @@ describe("InterviewIntroPage", () => {
     const client = fakeClient();
     renderPage(client);
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     selectFile(pdfFile());
 
     await waitFor(() => {
@@ -144,7 +152,7 @@ describe("InterviewIntroPage", () => {
   it("keeps the chosen focus in controlled state and explains each option", async () => {
     renderPage(fakeClient());
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     const select = screen.getByLabelText("面试侧重");
     fireEvent.change(select, { target: { value: "project" } });
 
@@ -166,7 +174,7 @@ describe("InterviewIntroPage", () => {
     });
     renderPage(client);
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     selectFile(pdfFile());
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "开始面试" })).toBeEnabled();
@@ -190,7 +198,7 @@ describe("InterviewIntroPage", () => {
     const client = fakeClient();
     renderPage(client);
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     fireEvent.change(screen.getByLabelText("面试侧重"), { target: { value: "project" } });
     selectFile(pdfFile());
     await waitFor(() => {
@@ -215,7 +223,7 @@ describe("InterviewIntroPage", () => {
     });
     renderPage(client);
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     selectFile(pdfFile());
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "开始面试" })).toBeEnabled();
@@ -229,7 +237,7 @@ describe("InterviewIntroPage", () => {
   it("accepts a dropped pdf through the same validation path", async () => {
     renderPage(fakeClient());
 
-    await screen.findByRole("heading", { name: "第一步：上传简历" });
+    await openCreateForm();
     const dropzone = screen.getByLabelText("选择简历 PDF").closest("label");
     expect(dropzone).not.toBeNull();
     fireEvent.drop(dropzone as HTMLElement, { dataTransfer: { files: [pdfFile()] } });
@@ -262,5 +270,42 @@ describe("InterviewIntroPage", () => {
 
     expect(await screen.findByText("房间已打开")).toBeInTheDocument();
     expect(client.restoreInterview).toHaveBeenCalledWith("s-old");
+  });
+
+  it("starts on the empty state and expands the create form from the header button", async () => {
+    renderPage(fakeClient());
+
+    const createButtons = await screen.findAllByRole("button", { name: "创建模拟面试" });
+    expect(createButtons).toHaveLength(2);
+    expect(screen.queryByRole("heading", { name: "第一步：上传简历" })).not.toBeInTheDocument();
+
+    fireEvent.click(createButtons[0] as HTMLElement);
+
+    expect(await screen.findByRole("heading", { name: "第一步：上传简历" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建模拟面试" })).toBeInTheDocument();
+    expect(screen.queryByText("创建你的第一场模拟面试，开始结构化练习")).not.toBeInTheDocument();
+  });
+
+  it("expands the create form from the empty-state button", async () => {
+    renderPage(fakeClient());
+
+    const createButtons = await screen.findAllByRole("button", { name: "创建模拟面试" });
+    fireEvent.click(createButtons[createButtons.length - 1] as HTMLElement);
+
+    expect(await screen.findByRole("heading", { name: "第一步：上传简历" })).toBeInTheDocument();
+  });
+
+  it("shows the quota subtitle and the three-step guide in the empty state", async () => {
+    renderPage(fakeClient());
+
+    expect(await screen.findByText("免费额度：2 场")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "模拟面试" })).toBeInTheDocument();
+    expect(screen.getByText("创建你的第一场模拟面试，开始结构化练习")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "1. 选择简历" })).toBeInTheDocument();
+    expect(screen.getByText("选择简历，填写岗位和可选 JD，生成一场专属模拟面试。")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "2. 开始模拟" })).toBeInTheDocument();
+    expect(screen.getByText("系统准备面试计划与首题，随后进入实时语音逐轮答题。")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "3. 生成报告" })).toBeInTheDocument();
+    expect(screen.getByText("完成模拟后生成专属面试报告，查看面试表现与改进建议。")).toBeInTheDocument();
   });
 });

@@ -1,0 +1,32 @@
+/* 占位页：窄内容列居中，视觉与内容页一致，无额外装饰。 */
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--br-space-3);
+  padding: var(--br-space-7) var(--br-space-5);
+  text-align: center;
+}
+
+.badge {
+  margin: 0;
+  padding: var(--br-space-1) var(--br-space-3);
+  border-radius: var(--br-radius-pill);
+  background: var(--br-color-accent-muted);
+  color: var(--br-color-text);
+  font-size: var(--br-text-xs);
+  font-weight: 600;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--br-text-xl);
+  line-height: var(--br-leading-tight);
+}
+
+.description {
+  max-width: 32rem;
+  margin: 0;
+  color: var(--br-color-text-muted);
+  font-size: var(--br-text-sm);
+}

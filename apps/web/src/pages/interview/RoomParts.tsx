@@ -126,9 +126,11 @@ export function AnswerComposer({
         const trimmed = value.trim();
         if (!trimmed) return;
         // Clear only once the backend accepted it: a 429/503/504 must not eat the answer.
-        void Promise.resolve(onSubmit(trimmed)).then((accepted) => {
-          if (accepted !== false) onChange("");
-        });
+        Promise.resolve(onSubmit(trimmed))
+          .then((accepted) => {
+            if (accepted !== false) onChange("");
+          })
+          .catch(() => undefined);
       }}
     >
       {recordingError ? (

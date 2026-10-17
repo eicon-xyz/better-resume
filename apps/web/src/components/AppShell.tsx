@@ -1,17 +1,38 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useSession } from "../chat/useSession";
 import { Button } from "./Button";
+import {
+  BookIcon,
+  BrandMark,
+  CalendarIcon,
+  ChatIcon,
+  ExternalIcon,
+  GearIcon,
+  PanelIcon,
+  QuestionIcon,
+  SparkIcon,
+  TargetIcon,
+  UserIcon,
+} from "./Icons";
 import styles from "./AppShell.module.css";
 
-// 主导航只指向既有路由；新增页面不在这里扩项。
-const NAV_ITEMS = [
-  { to: "/chat", label: "对话" },
-  { to: "/interview", label: "面试" },
-  { to: "/settings/ai", label: "AI 设置" },
+/** 主导航：图标 + 文案，active 以路由前缀判定。 */
+const PRIMARY_NAV = [
+  { to: "/coming-soon/interview-assist", label: "面试辅助", icon: CalendarIcon },
+  { to: "/coming-soon/knowledge-base", label: "定制知识库", icon: BookIcon },
+  { to: "/interview", label: "模拟面试", icon: TargetIcon },
+  { to: "/resumes", label: "我的简历", icon: UserIcon },
+] as const;
+
+/** 次级导航：带外链样式图标，点进去仍是站内占位页。 */
+const SECONDARY_NAV = [
+  { to: "/coming-soon/user-manual", label: "用户手册", icon: QuestionIcon },
+  { to: "/coming-soon/whats-new", label: "最新更新", icon: SparkIcon },
 ] as const;
 
 function isActive(pathname: string, to: string): boolean {
@@ -22,66 +43,136 @@ export interface AppShellProps {
   children: ReactNode;
 }
 
-/** 全局页壳：顶栏（产品名 + 主导航 + 用户区与退出）+ 居中内容容器。 */
+/** 全局页壳：左侧栏（品牌 + 主导航 + 次级导航 + 账号行）+ 内容列 + 右下角对话气泡。
+    登录门变体只保留品牌区与折叠按钮，登录面仍在页面自己渲染。 */
 export function AppShell({ children }: AppShellProps) {
   const api = useApi();
   const queryClient = useQueryClient();
   const session = useSession(api);
   const { pathname } = useLocation();
-  // 对话页内容通栏贴边：内容容器去掉最大宽度与水平内边距，会话侧栏贴窗口左缘。
-  const fullBleed = isActive(pathname, "/chat");
-  // 登录门变体：/chat 与 /interview 未登录时渲染登录门，渐变底衬改由页壳承载，
-  // 顶栏透明叠在渐变上、内容通栏，顶栏结构与导航语义不变。
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 登录门变体：/chat 与 /interview 未登录时，渐变底衬由页壳承载并覆盖整个视口，
+  // 侧栏导航与账号行隐去，登录面通栏居中。
   const gateRoute = isActive(pathname, "/chat") || isActive(pathname, "/interview");
   const gate = gateRoute && !session.isLoading && !session.isAuthenticated;
+  // 对话页入口在右下角气泡，不再占侧栏导航项；/chat 自身与登录门态都不渲染（门态点气泡只会撞回同一扇门）。
+  const onChatRoute = isActive(pathname, "/chat");
+  const signedIn = session.isAuthenticated;
 
   return (
     <div className={[styles.shell, gate ? styles.shellGate : ""].join(" ")}>
-      <header className={[styles.topbar, gate ? styles.topbarGate : ""].join(" ")}>
-        <Link className={styles.brandLink} to="/chat">
-          <h1 className={styles.brand}>better-resume</h1>
-        </Link>
-        <nav className={styles.nav} aria-label="主导航">
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(pathname, item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={[styles.navLink, active ? styles.navActive : ""].join(" ")}
-                aria-current={active ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className={styles.user}>
-          {session.isAuthenticated && session.principal ? (
-            <span className={styles.userName}>{session.principal.user_id}</span>
-          ) : null}
-          {session.isAuthenticated ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                void api.logout().then(() => {
-                  void queryClient.invalidateQueries();
-                });
-              }}
-            >
-              退出
-            </Button>
-          ) : null}
-        </div>
-      </header>
-      <div
-        className={[styles.content, fullBleed ? styles.contentFull : "", gate ? styles.contentGate : ""].join(
-          " ",
-        )}
+      <aside
+        className={[
+          styles.sidebar,
+          collapsed ? styles.sidebarCollapsed : "",
+          gate ? styles.sidebarGate : "",
+        ].join(" ")}
+        aria-label="侧边栏"
       >
-        {children}
-      </div>
+        <div className={styles.brandRow}>
+          <Link className={styles.brandLink} to="/interview">
+            <span className={styles.brandLogo} aria-hidden="true">
+              <BrandMark className={styles.brandLogoMark} />
+            </span>
+            <h1 className={styles.brand}>better-resume</h1>
+          </Link>
+          <button
+            type="button"
+            className={styles.collapseToggle}
+            onClick={() => {
+              setCollapsed((previous) => !previous);
+            }}
+            aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
+            aria-expanded={!collapsed}
+          >
+            <PanelIcon />
+          </button>
+        </div>
+
+        {gate ? null : (
+          <div className={styles.sidebarBody}>
+            <nav className={styles.nav} aria-label="主导航">
+              {PRIMARY_NAV.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={[styles.navLink, active ? styles.navActive : ""].join(" ")}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon className={styles.navIcon} />
+                    <span className={styles.navLabel}>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <nav className={styles.navSecondary} aria-label="次级导航">
+              {SECONDARY_NAV.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={[styles.navLink, active ? styles.navActive : ""].join(" ")}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon className={styles.navIcon} />
+                    <span className={styles.navLabel}>{item.label}</span>
+                    <ExternalIcon className={styles.navTrailing} />
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className={styles.account}>
+              <span className={styles.avatar} aria-hidden="true">
+                <UserIcon className={styles.avatarIcon} />
+              </span>
+              <span className={styles.accountName}>
+                {signedIn && session.principal
+                  ? `账号: ${session.principal.user_id}`
+                  : "未登录"}
+              </span>
+              <Link
+                className={styles.iconButton}
+                to="/settings/ai"
+                aria-label="AI 设置"
+                title="AI 设置"
+              >
+                <GearIcon className={styles.iconButtonGlyph} />
+              </Link>
+              {signedIn ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Logout owns its own failure; only a rejection that escapes it reaches here.
+                    api
+                      .logout()
+                      .then(() => queryClient.invalidateQueries())
+                      .catch(() => undefined);
+                  }}
+                >
+                  退出
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </aside>
+
+      <main className={styles.content}>{children}</main>
+
+      {onChatRoute || gate ? null : (
+        <Link className={styles.chatFab} to="/chat" aria-label="打开对话">
+          <ChatIcon className={styles.chatFabIcon} />
+        </Link>
+      )}
     </div>
   );
 }
