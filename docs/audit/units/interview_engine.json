@@ -29,7 +29,7 @@
    "severity": "高",
    "title": "失败的答案行与成功的答案行不可区分：同 request_id 重试会被幂等闸门当成「已作答」重放，分数永远拿不回来",
    "where": [
-    "apps/api/src/better_resume/interview_engine/answer_service.py:118-124",
+    "apps/api/src/better_resume/interview_engine/answer_service.py:126-132",
     "apps/api/src/better_resume/interview_engine/answer_service.py:368-401",
     "apps/api/src/better_resume/interview_engine/answer_repo.py:58-67",
     "apps/api/src/better_resume/interview_engine/orm.py:131-132",
@@ -156,10 +156,10 @@
    "severity": "中",
    "title": "同一条「网关返回的 parsed 不是期望类型」防御分支有四种写法，其中两种把模型契约问题报成 404",
    "where": [
-    "apps/api/src/better_resume/interview_engine/answer_service.py:217-228",
-    "apps/api/src/better_resume/interview_engine/question_service.py:213-214",
+    "apps/api/src/better_resume/interview_engine/answer_service.py:233-236",
+    "apps/api/src/better_resume/interview_engine/question_service.py:216-218",
     "apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98",
-    "apps/api/src/better_resume/interview_engine/report_service.py:301-302"
+    "apps/api/src/better_resume/interview_engine/report_service.py:305-307"
    ],
    "evidence": "answer_service.py\n219: parsed = result.parsed\n220: if not isinstance(parsed, ScoreResult): # defensive: the gateway validates\n221: raise QuestionNotFound(\"score was not validated\")\nquestion_service.py\n166: if not isinstance(parsed, QuestionBatch): # defensive: the gateway enforces the schema\n167: raise InterviewEngineError(\"question batch was not validated\")\nfollow_up_service.py\n96: if not isinstance(parsed, FollowUpQuestion): # defensive: the gateway validates\n97: raise InterviewEngineError(\"follow-up question was not validated\")\nreport_service.py\n294: if not isinstance(parsed, ReportSummary):\n295: raise SessionNotFound(\"summary was not validated\")",
    "why": "四个服务对同一个上游契约违规给出四种身份：QuestionNotFound 与 SessionNotFound 会被 main.py:147-149 的 handler 映射成 HTTP 404（客户端看到的是「题目/会话不存在」，与真实原因相差最远，还会误导客户端去重新拉取资源），InterviewEngineError 映射成 422，而 score 那条路径直接把 QuestionNotFound 抛给用户。排障时异常类型不再能定位问题层（是网关 schema 失败还是数据被删）；同时这四段防御代码本身是同一份知识的四份拷贝，gateway 若真的保证 parsed 类型，它们应该都不存在。",
@@ -174,10 +174,10 @@
    "severity": "中",
    "title": "ReportService._aggregate 返回无名 dict（6 个键），被 build_report_key / _summarise / JSONB payload 三处按字符串键消费",
    "where": [
-    "apps/api/src/better_resume/interview_engine/report_service.py:213",
-    "apps/api/src/better_resume/interview_engine/report_service.py:269-276",
+    "apps/api/src/better_resume/interview_engine/report_service.py:218",
+    "apps/api/src/better_resume/interview_engine/report_service.py:280-288",
     "apps/api/src/better_resume/interview_engine/report_service.py:65-77",
-    "apps/api/src/better_resume/interview_engine/report_service.py:280"
+    "apps/api/src/better_resume/interview_engine/report_service.py:292"
    ],
    "evidence": "report_service.py\n208: async def _aggregate(self, db: AsyncSession, session_id: str) -> dict:\n269: return {\n270: \"session_id\": session_id,\n271: \"overall_score\": round(statistics.fmean(all_scores), 1) if all_scores else None,\n272: \"dimensions\": dimensions,\n273: \"turns\": turns,\n65: def build_report_key(payload: dict) -> str:\n69: \"overall\": payload[\"overall_score\"],\n71: \"missing\": [point for turn in payload[\"turns\"] for point in turn[\"missing_points\"]],\n280: missing = [point for turn in payload[\"turns\"] for point in turn[\"missing_points\"]]",
    "why": "报告数字集合有一个稳定且不平凡的形状（turns 是 list[dict]，每个 turn 又有 10 个键），却没有类型：build_report_key 在模块级直接下标（键名一改就是 KeyError，而它只在生成 summary 的那条路径上跑，容易漏测），_summarise 依赖 payload[\"turns\"] 的两层结构，同一个 dict 还被塞进 JSONB 变成了前后端契约的一部分。读者必须同时读 208-276、65-77、280 三处才能拼出这个形状；ReportRecord.turns/dimensions 用的又是另一套字段名。",
@@ -192,8 +192,8 @@
    "severity": "中",
    "title": "三处「留给未来调用者 / 为了让 import 不算未使用」的死代码，带 pragma 所以覆盖率也不会报警",
    "where": [
-    "apps/api/src/better_resume/interview_engine/answer_service.py:405-444",
-    "apps/api/src/better_resume/interview_engine/report_service.py:428-433",
+    "apps/api/src/better_resume/interview_engine/answer_service.py:451-452",
+    "apps/api/src/better_resume/interview_engine/report_service.py:433-438",
     "apps/api/src/better_resume/interview_engine/answer_repo.py:143-179"
    ],
    "evidence": "answer_service.py\n405: async def _noop() -> None: # pragma: no cover - keeps asyncio import used in type-checking paths\n406: await asyncio.sleep(0)\nreport_service.py\n375: async def _noop() -> None: # pragma: no cover - keeps asyncio import meaningful for type checkers\n376: await asyncio.sleep(0)\n379: def _new_id() -> str: # pragma: no cover - helper for future callers\n380: return str(uuid.uuid4())\nanswer_repo.py\n143: def _as_dict(value: Any) -> dict[str, Any]: # pragma: no cover - helper kept for symmetry\n144: return value if isinstance(value, dict) else {}",
@@ -211,12 +211,12 @@
    "where": [
     "apps/api/src/better_resume/interview_engine/models.py:135",
     "apps/api/src/better_resume/interview_engine/flow_store.py:37",
-    "apps/api/src/better_resume/interview_engine/question_service.py:275",
-    "apps/api/src/better_resume/interview_engine/restore_service.py:153-156",
+    "apps/api/src/better_resume/interview_engine/question_service.py:277-283",
+    "apps/api/src/better_resume/interview_engine/restore_service.py:156-162",
     "apps/api/src/better_resume/interview_engine/orm.py:180-181",
     "apps/api/src/better_resume/http/interview.py:76"
    ],
-   "evidence": "models.py\n132: max_follow_up: int = 2\nflow_store.py\n37: max_follow_up: int = 2,\nquestion_service.py\n220: max_follow_up=2,\nrestore_service.py（流状态丢失时的派生路径）\n153: return await FlowStateStore(db).initialize(\n156: max_follow_up=2,\norm.py\n148: max_follow_up: Mapped[int] = mapped_column(\n149: Integer, nullable=False, default=2, server_default=\"2\"\nhttp/interview.py（http 模块的对外视图也给同一个默认值）\n72: max_follow_up: int = 2",
+   "evidence": "models.py\n135: max_follow_up: int = 2\nflow_store.py\n37: max_follow_up: int = 2,\nquestion_service.py\n280: max_follow_up=2,\nrestore_service.py（流状态丢失时的派生路径）\n156: return FlowState(\n162: max_follow_up=2,\norm.py\n180: max_follow_up: Mapped[int] = mapped_column(\n181: Integer, nullable=False, default=2, server_default=\"2\"\nhttp/interview.py（http 模块的对外视图也给同一个默认值）\n76: max_follow_up: int = 2",
    "why": "「每个主题最多追问 2 次」这一条产品规则被抄了五次（模型默认、store 默认、生成时写入、派生时写入、ORM/DB 默认），settings 里没有对应变量，谁都无法在部署时调整。更实际的风险是 RestoreService._derive 在 flow 行丢失时硬写 2——如果将来支持按 session 配置追问次数（或有人改了其中一处常量），派生出来的会话会静默拿到与创建时不同的预算，且 flow 表里也看不出这个差异。",
    "fix": "预算只留一处常量（或进 settings），initialize 的默认值由它派生，_derive 复用同一来源；对外视图的默认值改为从 flow 读取而不是自带字面量。"
   },

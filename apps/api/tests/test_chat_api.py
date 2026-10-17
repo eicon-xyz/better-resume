@@ -39,7 +39,7 @@ class FakeGateway:
     async def _stream(self, req: ChatRequest) -> AsyncIterator[StreamEvent]:
         for event in self._events:
             if self._delay:
-                await asyncio.sleep(self._delay)
+                await asyncio.sleep(self._delay)  # 允许：fake 供应商延迟，模拟系统边界
             yield event
         if self._error is not None:
             raise self._error

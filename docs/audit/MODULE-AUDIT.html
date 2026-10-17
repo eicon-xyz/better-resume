@@ -88,7 +88,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
 <header class="top">
   <h1>better-resume 模块设计审计：问题清单与原因</h1>
   <div class="sub">用「模块设计检查清单 + 危险信号速查表」逐条拷问每个模块，产出可复核的问题清单。</div>
-  <div class="meta">生成日期 2026-10-11 ｜ 审计单元 10 个 ｜
+  <div class="meta">生成日期 2026-10-17 ｜ 审计单元 10 个 ｜
     数据源 <code>docs/audit/units/*.json</code> ｜ 生成器 <code>scripts/build_module_audit.py</code></div>
 </header>
 
@@ -224,12 +224,12 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
   </table>
 
   <h3>跨模块一览（信息泄露 / 重复知识）</h3>
-  <table><thead><tr><th>所属 unit</th><th>跨模块的知识重复 / 泄露</th><th>证据位置</th></tr></thead><tbody><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>桶名清单在 settings 与 ai_resilience 各一份，而注释声称的「pin 住」测试并不存在</td><td>apps/api/src/better_resume/settings/config.py:85-88 apps/api/src/better_resume/ai_resilience/ratelimit.py:22-27</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>Retry-After 硬编码 5 秒，与熔断的 open_seconds=30、舱壁的 queue_wait=2 各说各话</td><td>apps/api/src/better_resume/main.py:209-216 apps/api/src/better_resume/ai_resilience/breaker.py:94-97</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>两个中间件是同构的 25 行：纯 ASGI + 跳过非 http + 包 send + 改 response.start 的头</td><td>apps/api/src/better_resume/observability/middleware.py:17-47 apps/api/src/better_resume/observability/middleware.py:50-74</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>讯飞 WS 端点同时是 settings.media.xunfei_ws_url 与 media 的 DEFAULT_WS_URL（跨模块）</td><td>apps/api/src/better_resume/settings/config.py:79 apps/api/src/better_resume/media/adapters/xunfei_ast.py:36-37</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>shared_buckets 同一份集合知识以 CSV 字符串与 frozenset 两种表示并存</td><td>apps/api/src/better_resume/settings/config.py:111-130</td></tr><tr><td><a href='#unit-http'>http</a></td><td>app.state 是 20 个 key 的字典总线：装配知识在 main.py，键名字符串知识散在 13 个模块，类型标注在传递中丢失</td><td>apps/api/src/better_resume/main.py:70-134 apps/api/src/better_resume/http/chat.py:149-152 apps/api/src/better_resume/http/models.py:18 apps/api/src/better_resume/http/media.py:66-68</td></tr><tr><td><a href='#unit-http'>http</a></td><td>SSE 心跳协议是路由自己写的（生产者任务 + 队列 + None 哨兵 + wait_for），复杂度没有下沉成一个可复用的渲染器</td><td>apps/api/src/better_resume/http/chat.py:168-211 apps/api/src/better_resume/http/chat.py:141-165</td></tr><tr><td><a href='#unit-http'>http</a></td><td>「哪些写操作要让 hot 缓存失效」是散在路由里的人际约定（同一行 ×4），没有任何地方强制</td><td>apps/api/src/better_resume/http/interview.py:170 apps/api/src/better_resume/http/interview.py:284 apps/api/src/better_resume/http/interview.py:463 apps/api/src/better_resume/http/interview.py:463 apps/api/src/better_resume/http/interview.py:222-224</td></tr><tr><td><a href='#unit-http'>http</a></td><td>限流桶的路由分类靠中间件手写正则去匹配路由字面量，新增/改路径时（含 delete 会话）会静默落进 GENERAL 桶</td><td>apps/api/src/better_resume/http/ratelimit.py:27-51 apps/api/src/better_resume/http/chat.py:36 apps/api/src/better_resume/http/chat.py:131</td></tr><tr><td><a href='#unit-http'>http</a></td><td>POST /sessions/{id}/finish 的行为随服务端开关分叉，并且只在同步分支用 model_ref——参数被静默忽略</td><td>apps/api/src/better_resume/http/interview.py:450 apps/api/src/better_resume/http/interview.py:430-451</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>哨兵配置的『成对且可用』判据有两份且不等价：BR_REDIS_SENTINELS=&quot;,&quot; 能过启动校验，运行时却静默退回单节点</td><td>apps/api/src/better_resume/redis_client.py:38-51 apps/api/src/better_resume/settings/config.py:233-244</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>worker 复制了一份 app 的运行时装配，还为可直接 import 的符号绕道 __import__(&quot;better_resume.main&quot;)（顺带触发模块级 create_app）</td><td>apps/api/src/better_resume/worker.py:43-68 apps/api/src/better_resume/main.py:52-60 apps/api/src/better_resume/main.py:217</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>缝收住了端点，却把 socket_timeout/decode_responses 留给 8 个调用点：6 处根本不设超时</td><td>apps/api/src/better_resume/redis_client.py:58-63 apps/api/src/better_resume/jobs/queue.py:52-57 apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>队列的可观测面在生产里没有消费者：status()/pending() 只有测试调用，V6 演练改用裸 redis-cli 自己拼键名</td><td>apps/api/src/better_resume/jobs/queue.py:89-91 apps/api/src/better_resume/jobs/queue.py:226-228 apps/api/scripts/fault_probe.py:881-883</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>DistributedAiResilience 靠摸内层私有 _policies 拿 stage 策略，且把内层声明成 Any</td><td>apps/api/src/better_resume/ai_resilience/distributed.py:270-278 apps/api/src/better_resume/ai_resilience/policy.py:34-35</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>token bucket 的补充算术在 Python 与 Lua 各写了一遍</td><td>apps/api/src/better_resume/ai_resilience/redis_buckets.py:23-49 apps/api/src/better_resume/ai_resilience/ratelimit.py:77-85</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>FailureKind→异常类的映射写了两遍，distributed 那份还用 __import__ 拼类名</td><td>apps/api/src/better_resume/ai_resilience/errors.py:71-76 apps/api/src/better_resume/ai_resilience/distributed.py:246-257</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>stage→policy 的对应关系在 StagePolicies 里写了三遍</td><td>apps/api/src/better_resume/ai_resilience/policy.py:26-41</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>熔断与分布式单飞的默认数值在 settings 与 ai_resilience 各存一份（跨模块）</td><td>apps/api/src/better_resume/settings/config.py:48-52 apps/api/src/better_resume/ai_resilience/breaker.py:33-37 apps/api/src/better_resume/settings/config.py:59-61 apps/api/src/better_resume/ai_resilience/distributed.py:93-95</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>SSE 帧解析 + 重试/退避 + 客户端参数在三个适配器里各写一份（同一份知识三份实现）</td><td>apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:191-220 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:188-221 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:215-269 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:137-151 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:128-144</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>适配器自带一套 timeout/重试预算，与 settings 和 ai_resilience 的 Stage 策略并存，且生产调用点从不传这些参数</td><td>apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:47-55 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:53-57 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:81-93 apps/api/src/better_resume/settings/config.py:27-31 apps/api/src/better_resume/ai_resilience/policy.py:74-78</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>通用 ChatRequest 里挂着一个星云形状的透传袋，百炼适配器把它的 workflow_id 当 session_id 用</td><td>apps/api/src/better_resume/llm_gateway/models.py:17-22 apps/api/src/better_resume/llm_gateway/models.py:68 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:146-149</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>供应商原始 usage JSON 穿透 VendorMeta.extra，chat 与 http 两层各自再解析/再发布这份形状</td><td>apps/api/src/better_resume/llm_gateway/models.py:94-96 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:217-218 apps/api/src/better_resume/chat/service.py:239-247 apps/api/src/better_resume/http/chat.py:219-220</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>结构化输出校验有两份实现：scene_mapping.validate_structured 与 OpenAICompatAdapter._validate</td><td>apps/api/src/better_resume/llm_gateway/scene_mapping.py:27-36 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:230-242</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「凭证是否齐备 / 缺哪个环境变量」在三个工厂里各写一遍，表达方式还各不相同</td><td>apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41 apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:25-29 apps/api/src/better_resume/llm_gateway/resolver.py:91-106</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「出厂默认绑定是 openai_compat/deepseek-flash」在 resolver 常量与迁移种子里各写一份，is_default 靠字符串相等判断</td><td>apps/api/src/better_resume/llm_gateway/resolver.py:28-30 apps/api/src/better_resume/llm_gateway/resolver.py:236-241 apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「什么算可重试」有两套 FailureKind 枚举，ai_resilience 还要 import 网关异常并反推 retryable</td><td>apps/api/src/better_resume/llm_gateway/errors.py:8-22 apps/api/src/better_resume/ai_resilience/errors.py:17-20 apps/api/src/better_resume/ai_resilience/errors.py:60-68</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>ReportService.finish 与 freeze 是同一段 35 行流程的两份实现，只差是否生成 summary</td><td>apps/api/src/better_resume/interview_engine/report_service.py:90-129 apps/api/src/better_resume/interview_engine/report_service.py:141-175</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>RestoreService 硬编码 _hot_ttl=600 覆盖 settings 的热层 TTL；put(ttl_seconds) 参数本身是冗余的，两个后端对 0 的解释还相反</td><td>apps/api/src/better_resume/interview_engine/restore_service.py:41-49 apps/api/src/better_resume/interview_engine/restore_service.py:88-89 apps/api/src/better_resume/interview_engine/hot_state.py:71-75 apps/api/src/better_resume/interview_engine/hot_state.py:85-87 apps/api/src/better_resume/interview_engine/hot_state.py:106-112 apps/api/src/better_resume/settings/config.py:185-186</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>低分阈值 60 有两份常量，评分提示词里还写了第三份；evaluation.LOW_SCORE_THRESHOLD 在生产路径上无人使用</td><td>apps/api/src/better_resume/interview_engine/evaluation.py:9-10 apps/api/src/better_resume/interview_engine/evaluation.py:22-25 apps/api/src/better_resume/interview_engine/follow_up.py:11 apps/api/src/better_resume/interview_engine/answer_service.py:26</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>三个幂等键构造函数各写一份「stage|session|关键输入哈希」的知识，docstring 还各自复述同一个历史 bug</td><td>apps/api/src/better_resume/interview_engine/question_service.py:52-59 apps/api/src/better_resume/interview_engine/answer_service.py:55-57 apps/api/src/better_resume/interview_engine/follow_up_service.py:30-37</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>同一条「网关返回的 parsed 不是期望类型」防御分支有四种写法，其中两种把模型契约问题报成 404</td><td>apps/api/src/better_resume/interview_engine/answer_service.py:217-228 apps/api/src/better_resume/interview_engine/question_service.py:213-214 apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98 apps/api/src/better_resume/interview_engine/report_service.py:301-302</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>追问预算 max_follow_up=2 在五处各写一遍，派生路径固定写 2 而不是继承既有预算</td><td>apps/api/src/better_resume/interview_engine/models.py:135 apps/api/src/better_resume/interview_engine/flow_store.py:37 apps/api/src/better_resume/interview_engine/question_service.py:275 apps/api/src/better_resume/interview_engine/restore_service.py:153-156 apps/api/src/better_resume/interview_engine/orm.py:180-181 apps/api/src/better_resume/http/interview.py:76</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>「取一条属于我的会话」没有 store 方法：ChatService 用 list_for_user(limit=200) 线性查找，会话超过 200 个就误判不存在</td><td>apps/api/src/better_resume/chat/service.py:168-179 apps/api/src/better_resume/conversation/store.py:61-72</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>客户端可见的失败类别在三个模块各存一份，ChatErrorEvent.kind 把它抄成字符串字面量</td><td>apps/api/src/better_resume/chat/models.py:52-71 apps/api/src/better_resume/llm_gateway/errors.py:8-12</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>_is_duplicate 只转调 store.has_client_message_id，而幂等这条不变量在 append 里又实现了一遍</td><td>apps/api/src/better_resume/chat/service.py:175-184 apps/api/src/better_resume/conversation/store.py:105-128</td></tr><tr><td><a href='#unit-media'>media</a></td><td>assembler 更新 → TranscriptEvent 的事件映射在 xunfei 与 scripted 两个适配器里逐行重复</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:283-293 apps/api/src/better_resume/media/adapters/scripted.py:97-105</td></tr><tr><td><a href='#unit-media'>media</a></td><td>通道的失败面没进 TranscriptionChannel 协议：端点只能 getattr 摸 channel.failure</td><td>apps/api/src/better_resume/media/protocols.py:16-24 apps/api/src/better_resume/http/media.py:164-168</td></tr><tr><td><a href='#unit-media'>media</a></td><td>xunfei 的 WS 连接参数没按仓库硬约束显式给全，隔壁 paraformer 给全了并写了理由</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:238-239 apps/api/src/better_resume/media/adapters/paraformer_rt.py:68-84</td></tr><tr><td><a href='#unit-media'>media</a></td><td>「单通道」排他性只存在进程内，而同类跨副本状态在 identity 走 Redis，部署形态明确 --scale api=2</td><td>apps/api/src/better_resume/media/registry.py:6-14 apps/api/src/better_resume/identity/tickets.py:63-65</td></tr><tr><td><a href='#unit-media'>media</a></td><td>media 级配置错误类 MediaConfigError 定义在讯飞适配器里，另两个适配器与 factory 都要 import 它</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:42-43 apps/api/src/better_resume/media/adapters/qwen_asr.py:27,208-218</td></tr><tr><td><a href='#unit-media'>media</a></td><td>TTS 音频的对外 URL 模板同时写在 TTS 适配器和 HTTP 端点里</td><td>apps/api/src/better_resume/media/adapters/edge_tts.py:66-70 apps/api/src/better_resume/http/media.py:97-102</td></tr><tr><td><a href='#unit-media'>media</a></td><td>seg_id 在事件契约里是 str 且恒为 None，在包/句池里是 int —— 同一份「句子标识」两套类型</td><td>apps/api/src/better_resume/media/models.py:20-22 apps/api/src/better_resume/media/models.py:32-45</td></tr><tr><td><a href='#unit-media'>media</a></td><td>pgs/rg 这份协议知识归谁，三处 docstring 各说一套且互相矛盾</td><td>apps/api/src/better_resume/media/models.py:1 apps/api/src/better_resume/media/models.py:25-41 apps/api/src/better_resume/media/adapters/xunfei_ast.py:1</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>AGENTS.md 宣称的『全项目统一 get_session 依赖』零调用点，10 处 HTTP 路由各自开会话/自己提交</td><td>apps/api/src/better_resume/db/session.py:29-33 apps/api/src/better_resume/http/chat.py:81-88 apps/api/src/better_resume/http/scenes.py:57-64</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>会话状态词表有三份拷贝（StrEnum + ORM CheckConstraint + 迁移 CHECK），而 alembic check 看不到 CHECK 文本</td><td>apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54 apps/api/src/better_resume/interview_engine/orm.py:33-43 apps/api/src/better_resume/interview_engine/session_fsm.py:10-16</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>scene 词表的第三份拷贝：默认绑定只存在于迁移种子里，且没有一条断言把枚举↔种子↔测试清单钉在一起</td><td>apps/api/src/better_resume/llm_gateway/scenes.py:13-25 apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23-29 apps/api/tests/llm_gateway/test_scene_binding_store.py:46-49</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>阅读顺序算两遍：extract_blocks 与 split_document 各排一次 (page, top)</td><td>apps/api/src/better_resume/resume_parser/pdf.py:59 apps/api/src/better_resume/resume_parser/sections.py:67</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>DetectedSection 与 Section 是同一个领域概念的两套模型，中间靠 _to_section 转换</td><td>apps/api/src/better_resume/resume_parser/sections.py:28-31 apps/api/src/better_resume/resume_parser/models.py:15-25 apps/api/src/better_resume/resume_parser/parser.py:64-70</td></tr><tr><td><a href='#unit-web'>web</a></td><td>「转写文本怎么进输入框」的合并协议被三个页面各实现一遍，函数只做了一半，span 状态由每个调用点自己记</td><td>apps/web/src/audio/transcriptStore.ts:53-69 apps/web/src/pages/chat/Composer.tsx:42-52 apps/web/src/pages/ChatPage.tsx:42-49 apps/web/src/pages/InterviewRoomPage.tsx:39-44</td></tr><tr><td><a href='#unit-web'>web</a></td><td>消息身份有三个名字（key / clientMessageId / seq），且都缺服务端 id，逼出「用回答内容相等来去重」的规则</td><td>apps/web/src/chat/store.ts:5-15 apps/web/src/chat/selectors.ts:6-17 apps/web/src/chat/selectors.ts:32-68</td></tr><tr><td><a href='#unit-web'>web</a></td><td>「失败 → ApiError」的映射在 3 处各写一遍，其中 api/client.ts:225 的 fetchTtsAudio 还绕过了超时与统一路径</td><td>apps/web/src/api/client.ts:223-228 apps/web/src/api/client.ts:275-298 apps/web/src/api/sse.ts:136-143</td></tr><tr><td><a href='#unit-web'>web</a></td><td>DIMENSION_LABELS / FALLBACK_DIMENSION_KEYS 是后端维度表的副本，buildReportViewModel 还重算了后端已算过的东西</td><td>apps/web/src/interview/radar.ts:21-28 apps/api/src/better_resume/interview_engine/report_service.py:28-33 apps/web/src/interview/radar.ts:102-139</td></tr><tr><td><a href='#unit-web'>web</a></td><td>简历 10MB 上限在前后端各写一份（不同模块、不同字面量位置），且后端是「先整包读进内存再校验」——约束没有在定义上生效</td><td>apps/web/src/interview/useResumeUpload.ts:9 apps/api/src/better_resume/http/interview.py:42 apps/api/src/better_resume/http/interview.py:145-149</td></tr><tr><td><a href='#unit-web'>web</a></td><td>transcriptStore.mergeTranscript 是上一代合并规则的遗留实现，生产代码无调用者（只有它自己的测试在用）</td><td>apps/web/src/audio/transcriptStore.ts:33-43 apps/web/src/audio/transcriptStore.test.ts:53-81</td></tr><tr><td><a href='#unit-web'>web</a></td><td>useTranscription 订阅整个 store 后无差别回调 onTranscript，自己分不清「转写变了」与「状态变了」</td><td>apps/web/src/audio/useTranscription.ts:52-60 apps/web/src/audio/transcriptStore.ts:79-97</td></tr></tbody></table>
+  <table><thead><tr><th>所属 unit</th><th>跨模块的知识重复 / 泄露</th><th>证据位置</th></tr></thead><tbody><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>桶名清单在 settings 与 ai_resilience 各一份，而注释声称的「pin 住」测试并不存在</td><td>apps/api/src/better_resume/settings/config.py:85-88 apps/api/src/better_resume/ai_resilience/ratelimit.py:22-27</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>Retry-After 硬编码 5 秒，与熔断的 open_seconds=30、舱壁的 queue_wait=2 各说各话</td><td>apps/api/src/better_resume/main.py:209-216 apps/api/src/better_resume/ai_resilience/breaker.py:94-97</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>两个中间件是同构的 25 行：纯 ASGI + 跳过非 http + 包 send + 改 response.start 的头</td><td>apps/api/src/better_resume/observability/middleware.py:17-47 apps/api/src/better_resume/observability/middleware.py:50-74</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>讯飞 WS 端点同时是 settings.media.xunfei_ws_url 与 media 的 DEFAULT_WS_URL（跨模块）</td><td>apps/api/src/better_resume/settings/config.py:79 apps/api/src/better_resume/media/adapters/xunfei_ast.py:36-37</td></tr><tr><td><a href='#unit-settings_observability'>settings_observability</a></td><td>shared_buckets 同一份集合知识以 CSV 字符串与 frozenset 两种表示并存</td><td>apps/api/src/better_resume/settings/config.py:111-130</td></tr><tr><td><a href='#unit-http'>http</a></td><td>app.state 是 20 个 key 的字典总线：装配知识在 main.py，键名字符串知识散在 13 个模块，类型标注在传递中丢失</td><td>apps/api/src/better_resume/main.py:70-134 apps/api/src/better_resume/http/chat.py:149-152 apps/api/src/better_resume/http/models.py:18 apps/api/src/better_resume/http/media.py:66-68</td></tr><tr><td><a href='#unit-http'>http</a></td><td>SSE 心跳协议是路由自己写的（生产者任务 + 队列 + None 哨兵 + wait_for），复杂度没有下沉成一个可复用的渲染器</td><td>apps/api/src/better_resume/http/chat.py:168-211 apps/api/src/better_resume/http/chat.py:141-165</td></tr><tr><td><a href='#unit-http'>http</a></td><td>「哪些写操作要让 hot 缓存失效」是散在路由里的人际约定（同一行 ×4），没有任何地方强制</td><td>apps/api/src/better_resume/interview_engine/question_service.py:287 apps/api/src/better_resume/interview_engine/answer_service.py:108 apps/api/src/better_resume/interview_engine/report_service.py:136 apps/api/src/better_resume/interview_engine/report_service.py:183 apps/api/src/better_resume/interview_engine/hot_state.py:126-137</td></tr><tr><td><a href='#unit-http'>http</a></td><td>限流桶的路由分类靠中间件手写正则去匹配路由字面量，新增/改路径时（含 delete 会话）会静默落进 GENERAL 桶</td><td>apps/api/src/better_resume/http/ratelimit.py:27-51 apps/api/src/better_resume/http/chat.py:36 apps/api/src/better_resume/http/chat.py:131</td></tr><tr><td><a href='#unit-http'>http</a></td><td>POST /sessions/{id}/finish 的行为随服务端开关分叉，并且只在同步分支用 model_ref——参数被静默忽略</td><td>apps/api/src/better_resume/http/interview.py:443 apps/api/src/better_resume/http/interview.py:430-451</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>哨兵配置的『成对且可用』判据有两份且不等价：BR_REDIS_SENTINELS=&quot;,&quot; 能过启动校验，运行时却静默退回单节点</td><td>apps/api/src/better_resume/redis_client.py:38-51 apps/api/src/better_resume/settings/config.py:233-244</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>worker 复制了一份 app 的运行时装配，还为可直接 import 的符号绕道 __import__(&quot;better_resume.main&quot;)（顺带触发模块级 create_app）</td><td>apps/api/src/better_resume/worker.py:43-68 apps/api/src/better_resume/main.py:54-62 apps/api/src/better_resume/main.py:233</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>缝收住了端点，却把 socket_timeout/decode_responses 留给 8 个调用点：6 处根本不设超时</td><td>apps/api/src/better_resume/redis_client.py:55-60 apps/api/src/better_resume/jobs/queue.py:52-57 apps/api/src/better_resume/ai_resilience/redis_buckets.py:124-126</td></tr><tr><td><a href='#unit-identity_jobs'>identity_jobs</a></td><td>队列的可观测面在生产里没有消费者：status()/pending() 只有测试调用，V6 演练改用裸 redis-cli 自己拼键名</td><td>apps/api/src/better_resume/jobs/queue.py:89-91 apps/api/src/better_resume/jobs/queue.py:226-228 apps/api/scripts/fault_probe.py:875-877</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>DistributedAiResilience 靠摸内层私有 _policies 拿 stage 策略，且把内层声明成 Any</td><td>apps/api/src/better_resume/ai_resilience/distributed.py:270-278 apps/api/src/better_resume/ai_resilience/policy.py:34-35</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>token bucket 的补充算术在 Python 与 Lua 各写了一遍</td><td>apps/api/src/better_resume/ai_resilience/redis_buckets.py:23-49 apps/api/src/better_resume/ai_resilience/ratelimit.py:77-85</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>FailureKind→异常类的映射写了两遍，distributed 那份还用 __import__ 拼类名</td><td>apps/api/src/better_resume/ai_resilience/errors.py:71-76 apps/api/src/better_resume/ai_resilience/distributed.py:246-257</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>stage→policy 的对应关系在 StagePolicies 里写了三遍</td><td>apps/api/src/better_resume/ai_resilience/policy.py:26-41</td></tr><tr><td><a href='#unit-ai_resilience'>ai_resilience</a></td><td>熔断与分布式单飞的默认数值在 settings 与 ai_resilience 各存一份（跨模块）</td><td>apps/api/src/better_resume/settings/config.py:48-52 apps/api/src/better_resume/ai_resilience/breaker.py:33-37 apps/api/src/better_resume/settings/config.py:59-61 apps/api/src/better_resume/ai_resilience/distributed.py:93-95</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>SSE 帧解析 + 重试/退避 + 客户端参数在三个适配器里各写一份（同一份知识三份实现）</td><td>apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:191-220 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:188-221 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:215-269 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:137-151 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:128-144</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>适配器自带一套 timeout/重试预算，与 settings 和 ai_resilience 的 Stage 策略并存，且生产调用点从不传这些参数</td><td>apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:47-55 apps/api/src/better_resume/llm_gateway/adapters/xingyun.py:53-57 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:81-93 apps/api/src/better_resume/settings/config.py:27-31 apps/api/src/better_resume/ai_resilience/policy.py:74-78</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>通用 ChatRequest 里挂着一个星云形状的透传袋，百炼适配器把它的 workflow_id 当 session_id 用</td><td>apps/api/src/better_resume/llm_gateway/models.py:17-22 apps/api/src/better_resume/llm_gateway/models.py:68 apps/api/src/better_resume/llm_gateway/adapters/dashscope_app.py:146-149</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>供应商原始 usage JSON 穿透 VendorMeta.extra，chat 与 http 两层各自再解析/再发布这份形状</td><td>apps/api/src/better_resume/llm_gateway/models.py:94-96 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:217-218 apps/api/src/better_resume/chat/service.py:239-247 apps/api/src/better_resume/http/chat.py:219-220</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>结构化输出校验有两份实现：scene_mapping.validate_structured 与 OpenAICompatAdapter._validate</td><td>apps/api/src/better_resume/llm_gateway/scene_mapping.py:27-36 apps/api/src/better_resume/llm_gateway/adapters/openai_compat.py:230-242</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「凭证是否齐备 / 缺哪个环境变量」在三个工厂里各写一遍，表达方式还各不相同</td><td>apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41 apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:26-30 apps/api/src/better_resume/llm_gateway/resolver.py:91-106</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「出厂默认绑定是 openai_compat/deepseek-flash」在 resolver 常量与迁移种子里各写一份，is_default 靠字符串相等判断</td><td>apps/api/src/better_resume/llm_gateway/resolver.py:28-30 apps/api/src/better_resume/llm_gateway/resolver.py:259-262 apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29</td></tr><tr><td><a href='#unit-llm_gateway'>llm_gateway</a></td><td>「什么算可重试」有两套 FailureKind 枚举，ai_resilience 还要 import 网关异常并反推 retryable</td><td>apps/api/src/better_resume/llm_gateway/errors.py:8-22 apps/api/src/better_resume/ai_resilience/errors.py:17-20 apps/api/src/better_resume/ai_resilience/errors.py:60-68</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>ReportService.finish 与 freeze 是同一段 35 行流程的两份实现，只差是否生成 summary</td><td>apps/api/src/better_resume/interview_engine/report_service.py:90-129 apps/api/src/better_resume/interview_engine/report_service.py:141-175</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>RestoreService 硬编码 _hot_ttl=600 覆盖 settings 的热层 TTL；put(ttl_seconds) 参数本身是冗余的，两个后端对 0 的解释还相反</td><td>apps/api/src/better_resume/interview_engine/restore_service.py:41-49 apps/api/src/better_resume/interview_engine/restore_service.py:88-89 apps/api/src/better_resume/interview_engine/hot_state.py:71-75 apps/api/src/better_resume/interview_engine/hot_state.py:85-87 apps/api/src/better_resume/interview_engine/hot_state.py:106-112 apps/api/src/better_resume/settings/config.py:185-186</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>低分阈值 60 有两份常量，评分提示词里还写了第三份；evaluation.LOW_SCORE_THRESHOLD 在生产路径上无人使用</td><td>apps/api/src/better_resume/interview_engine/evaluation.py:9-10 apps/api/src/better_resume/interview_engine/evaluation.py:22-25 apps/api/src/better_resume/interview_engine/follow_up.py:11 apps/api/src/better_resume/interview_engine/answer_service.py:26</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>三个幂等键构造函数各写一份「stage|session|关键输入哈希」的知识，docstring 还各自复述同一个历史 bug</td><td>apps/api/src/better_resume/interview_engine/question_service.py:52-59 apps/api/src/better_resume/interview_engine/answer_service.py:55-57 apps/api/src/better_resume/interview_engine/follow_up_service.py:30-37</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>同一条「网关返回的 parsed 不是期望类型」防御分支有四种写法，其中两种把模型契约问题报成 404</td><td>apps/api/src/better_resume/interview_engine/answer_service.py:233-236 apps/api/src/better_resume/interview_engine/question_service.py:216-218 apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98 apps/api/src/better_resume/interview_engine/report_service.py:305-307</td></tr><tr><td><a href='#unit-interview_engine'>interview_engine</a></td><td>追问预算 max_follow_up=2 在五处各写一遍，派生路径固定写 2 而不是继承既有预算</td><td>apps/api/src/better_resume/interview_engine/models.py:135 apps/api/src/better_resume/interview_engine/flow_store.py:37 apps/api/src/better_resume/interview_engine/question_service.py:277-283 apps/api/src/better_resume/interview_engine/restore_service.py:156-162 apps/api/src/better_resume/interview_engine/orm.py:180-181 apps/api/src/better_resume/http/interview.py:76</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>「取一条属于我的会话」没有 store 方法：ChatService 用 list_for_user(limit=200) 线性查找，会话超过 200 个就误判不存在</td><td>apps/api/src/better_resume/chat/service.py:168-179 apps/api/src/better_resume/conversation/store.py:61-72</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>客户端可见的失败类别在三个模块各存一份，ChatErrorEvent.kind 把它抄成字符串字面量</td><td>apps/api/src/better_resume/chat/models.py:52-71 apps/api/src/better_resume/llm_gateway/errors.py:8-12</td></tr><tr><td><a href='#unit-conversation_chat'>conversation_chat</a></td><td>_is_duplicate 只转调 store.has_client_message_id，而幂等这条不变量在 append 里又实现了一遍</td><td>apps/api/src/better_resume/chat/service.py:175-184 apps/api/src/better_resume/conversation/store.py:105-128</td></tr><tr><td><a href='#unit-media'>media</a></td><td>assembler 更新 → TranscriptEvent 的事件映射在 xunfei 与 scripted 两个适配器里逐行重复</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:283-293 apps/api/src/better_resume/media/adapters/scripted.py:97-105</td></tr><tr><td><a href='#unit-media'>media</a></td><td>通道的失败面没进 TranscriptionChannel 协议：端点只能 getattr 摸 channel.failure</td><td>apps/api/src/better_resume/media/protocols.py:16-24 apps/api/src/better_resume/http/media.py:164-168</td></tr><tr><td><a href='#unit-media'>media</a></td><td>xunfei 的 WS 连接参数没按仓库硬约束显式给全，隔壁 paraformer 给全了并写了理由</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:238-239 apps/api/src/better_resume/media/adapters/paraformer_rt.py:68-84</td></tr><tr><td><a href='#unit-media'>media</a></td><td>「单通道」排他性只存在进程内，而同类跨副本状态在 identity 走 Redis，部署形态明确 --scale api=2</td><td>apps/api/src/better_resume/media/registry.py:6-14 apps/api/src/better_resume/identity/tickets.py:63-65</td></tr><tr><td><a href='#unit-media'>media</a></td><td>media 级配置错误类 MediaConfigError 定义在讯飞适配器里，另两个适配器与 factory 都要 import 它</td><td>apps/api/src/better_resume/media/adapters/xunfei_ast.py:42-43 apps/api/src/better_resume/media/adapters/qwen_asr.py:27,208-218</td></tr><tr><td><a href='#unit-media'>media</a></td><td>TTS 音频的对外 URL 模板同时写在 TTS 适配器和 HTTP 端点里</td><td>apps/api/src/better_resume/media/adapters/edge_tts.py:66-70 apps/api/src/better_resume/http/media.py:97-102</td></tr><tr><td><a href='#unit-media'>media</a></td><td>seg_id 在事件契约里是 str 且恒为 None，在包/句池里是 int —— 同一份「句子标识」两套类型</td><td>apps/api/src/better_resume/media/models.py:20-22 apps/api/src/better_resume/media/models.py:32-45</td></tr><tr><td><a href='#unit-media'>media</a></td><td>pgs/rg 这份协议知识归谁，三处 docstring 各说一套且互相矛盾</td><td>apps/api/src/better_resume/media/models.py:1 apps/api/src/better_resume/media/models.py:25-41 apps/api/src/better_resume/media/adapters/xunfei_ast.py:1</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>AGENTS.md 宣称的『全项目统一 get_session 依赖』零调用点，10 处 HTTP 路由各自开会话/自己提交</td><td>apps/api/src/better_resume/db/session.py:29-33 apps/api/src/better_resume/http/chat.py:81-88 apps/api/src/better_resume/http/scenes.py:57-64</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>会话状态词表有三份拷贝（StrEnum + ORM CheckConstraint + 迁移 CHECK），而 alembic check 看不到 CHECK 文本</td><td>apps/api/migrations/versions/c28d77ba4f32_interview.py:49-54 apps/api/src/better_resume/interview_engine/orm.py:33-43 apps/api/src/better_resume/interview_engine/session_fsm.py:10-16</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>scene 词表的第三份拷贝：默认绑定只存在于迁移种子里，且没有一条断言把枚举↔种子↔测试清单钉在一起</td><td>apps/api/src/better_resume/llm_gateway/scenes.py:13-25 apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:23-29 apps/api/tests/llm_gateway/test_scene_binding_store.py:46-49</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>阅读顺序算两遍：extract_blocks 与 split_document 各排一次 (page, top)</td><td>apps/api/src/better_resume/resume_parser/pdf.py:59 apps/api/src/better_resume/resume_parser/sections.py:67</td></tr><tr><td><a href='#unit-resume_parser_db'>resume_parser_db</a></td><td>DetectedSection 与 Section 是同一个领域概念的两套模型，中间靠 _to_section 转换</td><td>apps/api/src/better_resume/resume_parser/sections.py:28-31 apps/api/src/better_resume/resume_parser/models.py:15-25 apps/api/src/better_resume/resume_parser/parser.py:64-70</td></tr><tr><td><a href='#unit-web'>web</a></td><td>「转写文本怎么进输入框」的合并协议被三个页面各实现一遍，函数只做了一半，span 状态由每个调用点自己记</td><td>apps/web/src/audio/transcriptStore.ts:53-69 apps/web/src/pages/chat/Composer.tsx:42-52 apps/web/src/pages/ChatPage.tsx:42-49 apps/web/src/pages/InterviewRoomPage.tsx:39-44</td></tr><tr><td><a href='#unit-web'>web</a></td><td>消息身份有三个名字（key / clientMessageId / seq），且都缺服务端 id，逼出「用回答内容相等来去重」的规则</td><td>apps/web/src/chat/store.ts:5-15 apps/web/src/chat/selectors.ts:6-17 apps/web/src/chat/selectors.ts:32-68</td></tr><tr><td><a href='#unit-web'>web</a></td><td>「失败 → ApiError」的映射在 3 处各写一遍，其中 api/client.ts:225 的 fetchTtsAudio 还绕过了超时与统一路径</td><td>apps/web/src/api/client.ts:223-228 apps/web/src/api/client.ts:275-298 apps/web/src/api/sse.ts:136-143</td></tr><tr><td><a href='#unit-web'>web</a></td><td>DIMENSION_LABELS / FALLBACK_DIMENSION_KEYS 是后端维度表的副本，buildReportViewModel 还重算了后端已算过的东西</td><td>apps/web/src/interview/radar.ts:21-28 apps/api/src/better_resume/interview_engine/report_service.py:28-33 apps/web/src/interview/radar.ts:102-139</td></tr><tr><td><a href='#unit-web'>web</a></td><td>简历 10MB 上限在前后端各写一份（不同模块、不同字面量位置），且后端是「先整包读进内存再校验」——约束没有在定义上生效</td><td>apps/web/src/interview/useResumeUpload.ts:9 apps/api/src/better_resume/http/interview.py:42 apps/api/src/better_resume/http/interview.py:145-149</td></tr><tr><td><a href='#unit-web'>web</a></td><td>transcriptStore.mergeTranscript 是上一代合并规则的遗留实现，生产代码无调用者（只有它自己的测试在用）</td><td>apps/web/src/audio/transcriptStore.ts:33-43 apps/web/src/audio/transcriptStore.test.ts:53-81</td></tr><tr><td><a href='#unit-web'>web</a></td><td>useTranscription 订阅整个 store 后无差别回调 onTranscript，自己分不清「转写变了」与「状态变了」</td><td>apps/web/src/audio/useTranscription.ts:52-60 apps/web/src/audio/transcriptStore.ts:79-97</td></tr></tbody></table>
 
   <h3>同一处代码被多个 unit 独立命中</h3>
   <p class="lede">下面这些位置分别被两个以上审计单元独立写进了问题清单——独立命中同一处，
     通常说明它不是某个模块的局部口味问题，而是跨模块的结构问题。</p>
-  <table><thead><tr><th>同一处代码</th><th>被哪些 unit 独立命中</th></tr></thead><tbody><tr><td><code>apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py</code></td><td><a href='#unit-llm_gateway'>llm_gateway</a> (LG-12)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-04)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/breaker.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-13)；<a href='#unit-settings_observability'>settings_observability</a> (so-05)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/errors.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-13、LG-13)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/policy.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-01、ai-08、ai-11)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-02)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/ratelimit.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-02、ai-07)；<a href='#unit-settings_observability'>settings_observability</a> (so-01)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/redis_buckets.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-02)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-05)</td></tr><tr><td><code>apps/api/src/better_resume/chat/service.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-02、conversation_chat-04、conversation_chat-05、conversation_chat-05、conversation_chat-06、conversation_chat-06、conversation_chat-09、conversation_chat-10、conversation_chat-10)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-04)</td></tr><tr><td><code>apps/api/src/better_resume/db/session.py</code></td><td><a href='#unit-http'>http</a> (http-01)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-01)</td></tr><tr><td><code>apps/api/src/better_resume/http/chat.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-01、conversation_chat-09)；<a href='#unit-http'>http</a> (http-01、http-02、http-03、http-04、http-04、http-05、http-08、http-08)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-04)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-01)</td></tr><tr><td><code>apps/api/src/better_resume/http/interview.py</code></td><td><a href='#unit-http'>http</a> (http-01、http-03、http-03、http-03、http-03、http-03、http-06、http-06、http-06、http-06、http-06、http-07、http-07、http-07、http-10、http-10、http-11、http-11)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-07)；<a href='#unit-interview_engine'>interview_engine</a> (IE-04、IE-10)；<a href='#unit-web'>web</a> (web-10、web-10)</td></tr><tr><td><code>apps/api/src/better_resume/http/media.py</code></td><td><a href='#unit-http'>http</a> (http-02)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-02)；<a href='#unit-media'>media</a> (media-02、media-06)</td></tr><tr><td><code>apps/api/src/better_resume/http/scenes.py</code></td><td><a href='#unit-http'>http</a> (http-01)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-01)</td></tr><tr><td><code>apps/api/src/better_resume/identity/tickets.py</code></td><td><a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-02、identity_jobs-11)；<a href='#unit-media'>media</a> (media-04)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/orm.py</code></td><td><a href='#unit-interview_engine'>interview_engine</a> (IE-01、IE-10)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-03)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/report_service.py</code></td><td><a href='#unit-interview_engine'>interview_engine</a> (IE-02、IE-02、IE-07、IE-08、IE-08、IE-08、IE-08、IE-09)；<a href='#unit-web'>web</a> (web-09)</td></tr><tr><td><code>apps/api/src/better_resume/llm_gateway/errors.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-11、LG-13)</td></tr><tr><td><code>apps/api/src/better_resume/main.py</code></td><td><a href='#unit-http'>http</a> (http-02、http-09)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-03、identity_jobs-03)；<a href='#unit-interview_engine'>interview_engine</a> (IE-12)；<a href='#unit-settings_observability'>settings_observability</a> (so-03、so-04、so-05、so-06、so-06、so-11)</td></tr><tr><td><code>apps/api/src/better_resume/media/adapters/xunfei_ast.py</code></td><td><a href='#unit-media'>media</a> (media-01、media-03、media-05、media-11、media-11、media-11、media-12)；<a href='#unit-settings_observability'>settings_observability</a> (so-10)</td></tr><tr><td><code>apps/api/src/better_resume/settings/config.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-13、ai-13)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-01)；<a href='#unit-interview_engine'>interview_engine</a> (IE-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-02)；<a href='#unit-settings_observability'>settings_observability</a> (so-01、so-02、so-09、so-10)</td></tr><tr><td><code>apps/api/tests/contracts/test_domain_contracts.py</code></td><td><a href='#unit-interview_engine'>interview_engine</a> (IE-04)；<a href='#unit-media'>media</a> (media-09)</td></tr><tr><td><code>apps/web/src/api/sse.ts</code></td><td><a href='#unit-http'>http</a> (http-05)；<a href='#unit-web'>web</a> (web-05、web-05、web-06)</td></tr></tbody></table>
+  <table><thead><tr><th>同一处代码</th><th>被哪些 unit 独立命中</th></tr></thead><tbody><tr><td><code>apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py</code></td><td><a href='#unit-llm_gateway'>llm_gateway</a> (LG-12)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-04)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/breaker.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-13)；<a href='#unit-settings_observability'>settings_observability</a> (so-05)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/errors.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-13、LG-13)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/policy.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-01、ai-08、ai-11)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-02)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/ratelimit.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-02、ai-07)；<a href='#unit-settings_observability'>settings_observability</a> (so-01)</td></tr><tr><td><code>apps/api/src/better_resume/ai_resilience/redis_buckets.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-02)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-05)</td></tr><tr><td><code>apps/api/src/better_resume/chat/service.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-02、conversation_chat-04、conversation_chat-05、conversation_chat-05、conversation_chat-06、conversation_chat-06、conversation_chat-09、conversation_chat-10、conversation_chat-10)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-04)</td></tr><tr><td><code>apps/api/src/better_resume/db/session.py</code></td><td><a href='#unit-http'>http</a> (http-01)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-01)</td></tr><tr><td><code>apps/api/src/better_resume/http/chat.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-01、conversation_chat-09)；<a href='#unit-http'>http</a> (http-01、http-01、http-02、http-03、http-04、http-04、http-05、http-08、http-08)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-04)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-01)</td></tr><tr><td><code>apps/api/src/better_resume/http/interview.py</code></td><td><a href='#unit-http'>http</a> (http-01、http-03、http-03、http-03、http-03、http-03、http-03、http-07、http-07、http-07、http-10、http-10、http-11、http-11)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-07)；<a href='#unit-interview_engine'>interview_engine</a> (IE-04、IE-10)；<a href='#unit-web'>web</a> (web-10、web-10)</td></tr><tr><td><code>apps/api/src/better_resume/http/media.py</code></td><td><a href='#unit-http'>http</a> (http-02)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-02)；<a href='#unit-media'>media</a> (media-02、media-06)</td></tr><tr><td><code>apps/api/src/better_resume/identity/tickets.py</code></td><td><a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-02、identity_jobs-11)；<a href='#unit-media'>media</a> (media-04)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/answer_service.py</code></td><td><a href='#unit-http'>http</a> (http-06)；<a href='#unit-interview_engine'>interview_engine</a> (IE-01、IE-01、IE-05、IE-06、IE-07、IE-09)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/hot_state.py</code></td><td><a href='#unit-http'>http</a> (http-06)；<a href='#unit-interview_engine'>interview_engine</a> (IE-03、IE-03、IE-03)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/orm.py</code></td><td><a href='#unit-interview_engine'>interview_engine</a> (IE-01、IE-10)；<a href='#unit-resume_parser_db'>resume_parser_db</a> (resume_parser_db-03)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/question_service.py</code></td><td><a href='#unit-http'>http</a> (http-06)；<a href='#unit-interview_engine'>interview_engine</a> (IE-06、IE-07、IE-10、IE-11)</td></tr><tr><td><code>apps/api/src/better_resume/interview_engine/report_service.py</code></td><td><a href='#unit-http'>http</a> (http-06、http-06)；<a href='#unit-interview_engine'>interview_engine</a> (IE-02、IE-02、IE-07、IE-08、IE-08、IE-08、IE-08、IE-09)；<a href='#unit-web'>web</a> (web-09)</td></tr><tr><td><code>apps/api/src/better_resume/llm_gateway/errors.py</code></td><td><a href='#unit-conversation_chat'>conversation_chat</a> (conversation_chat-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-11、LG-13)</td></tr><tr><td><code>apps/api/src/better_resume/main.py</code></td><td><a href='#unit-http'>http</a> (http-02、http-09)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-03、identity_jobs-03)；<a href='#unit-interview_engine'>interview_engine</a> (IE-12)；<a href='#unit-settings_observability'>settings_observability</a> (so-03、so-04、so-05、so-06、so-06、so-11)</td></tr><tr><td><code>apps/api/src/better_resume/media/adapters/xunfei_ast.py</code></td><td><a href='#unit-media'>media</a> (media-01、media-03、media-05、media-11、media-11、media-11、media-12)；<a href='#unit-settings_observability'>settings_observability</a> (so-10)</td></tr><tr><td><code>apps/api/src/better_resume/settings/config.py</code></td><td><a href='#unit-ai_resilience'>ai_resilience</a> (ai-13、ai-13)；<a href='#unit-identity_jobs'>identity_jobs</a> (identity_jobs-01)；<a href='#unit-interview_engine'>interview_engine</a> (IE-03)；<a href='#unit-llm_gateway'>llm_gateway</a> (LG-02)；<a href='#unit-settings_observability'>settings_observability</a> (so-01、so-02、so-09、so-10)</td></tr><tr><td><code>apps/api/tests/contracts/test_domain_contracts.py</code></td><td><a href='#unit-interview_engine'>interview_engine</a> (IE-04)；<a href='#unit-media'>media</a> (media-09)</td></tr><tr><td><code>apps/web/src/api/sse.ts</code></td><td><a href='#unit-http'>http</a> (http-05)；<a href='#unit-web'>web</a> (web-05、web-05、web-06)</td></tr></tbody></table>
 
 
   <h2 id="modules">二、逐模块问题清单</h2>
@@ -468,14 +468,14 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W3 错误靠定义规避</span>
           
         </div>
-        <div class="where"><div><code class="path">apps/api/src/better_resume/main.py:204-221</code></div></div>
-        <pre><span class="ln">  1</span>  204: async def _gateway_timeout(request: Request, exc: Exception) -&gt; JSONResponse:
-<span class="ln">  2</span>  205: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;timeout&quot;)
-<span class="ln">  3</span>  206: return JSONResponse(status_code=504, content={&quot;detail&quot;: str(exc), &quot;kind&quot;: kind})
-<span class="ln">  4</span>  209: async def _service_unavailable(request: Request, exc: Exception) -&gt; JSONResponse:
-<span class="ln">  5</span>  211: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unavailable&quot;)
-<span class="ln">  6</span>  219: async def _bad_gateway(request: Request, exc: Exception) -&gt; JSONResponse:
-<span class="ln">  7</span>  220: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unknown&quot;)</pre>
+        <div class="where"><div><code class="path">apps/api/src/better_resume/main.py:220</code></div></div>
+        <pre><span class="ln">  1</span>  213: async def _gateway_timeout(request: Request, exc: Exception) -&gt; JSONResponse:
+<span class="ln">  2</span>  214: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;timeout&quot;)
+<span class="ln">  3</span>  215: return JSONResponse(status_code=504, content={&quot;detail&quot;: str(exc), &quot;kind&quot;: kind})
+<span class="ln">  4</span>  218: async def _service_unavailable(request: Request, exc: Exception) -&gt; JSONResponse:
+<span class="ln">  5</span>  220: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unavailable&quot;)
+<span class="ln">  6</span>  228: async def _bad_gateway(request: Request, exc: Exception) -&gt; JSONResponse:
+<span class="ln">  7</span>  229: kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unknown&quot;)</pre>
         <p class="why"><b>为什么是问题：</b>AiResilienceError 子类（errors.py:24-57）已经带了类型化的 kind: FailureKind，但处理器把参数声明成 Exception 再用 getattr 探测，并且每个处理器给了不同的兜底字符串（timeout / unavailable / unknown）。结果是：错误响应里的 kind 可能来自三层猜测而不是定义；重构异常类（改名/去掉 kind）时 ruff 与 mypy 都不会响，只有线上响应体悄悄变了。request 参数在五个函数里都没用到，也说明这里的签名是照 Starlette 的形状抄的而不是按需要写的。</p>
         <p class="fix"><b>修法：</b>把 handler 的签名标注成具体异常类型（AiTimeout/AiUnavailable/...），直接用 exc.kind.value；未用的 request 改成 _request。</p>
       </div>
@@ -647,18 +647,22 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R5 时间分解</span>
           
         </div>
-<p class="signals">危险信号：时间分解</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:146-150</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:257-261</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:381</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:432</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:455</code></div><div><code class="path">apps/api/src/better_resume/http/chat.py:151</code></div></div>
-        <pre><span class="ln">  1</span>  interview.py:146 service = QuestionService(
-<span class="ln">  2</span>  147 state.session_factory,
-<span class="ln">  3</span>  148 resilience=state.ai_resilience,
-<span class="ln">  4</span>  149 storage=ResumeStorage(state.settings.resume_storage_dir),
-<span class="ln">  5</span>  150 )
-<span class="ln">  6</span>  interview.py:257 service = AnswerService(
-<span class="ln">  7</span>  258 state.session_factory,
-<span class="ln">  8</span>  259 resilience=state.ai_resilience,
-<span class="ln">  9</span>  260 locks=state.question_locks,
-<span class="ln"> 10</span>  261 )
-<span class="ln"> 11</span>  interview.py:432 result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(</pre>
+<p class="signals">危险信号：时间分解</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:154-160</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:262-267</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:388</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:448-450</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:462-464</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:475</code></div><div><code class="path">apps/api/src/better_resume/http/chat.py:151</code></div></div>
+        <pre><span class="ln">  1</span>  interview.py:154 service = QuestionService(
+<span class="ln">  2</span>  155 state.session_factory,
+<span class="ln">  3</span>  156 resilience=state.ai_resilience,
+<span class="ln">  4</span>  157 storage=ResumeStorage(state.settings.resume_storage_dir),
+<span class="ln">  5</span>  160 )
+<span class="ln">  6</span>  interview.py:262 service = AnswerService(
+<span class="ln">  7</span>  263 state.session_factory,
+<span class="ln">  8</span>  264 resilience=state.ai_resilience,
+<span class="ln">  9</span>  265 locks=state.question_locks,
+<span class="ln"> 10</span>  267 )
+<span class="ln"> 11</span>  interview.py:388 view = await RestoreService(state.session_factory, hot_state=state.hot_state).restore(
+<span class="ln"> 12</span>  interview.py:448 result = await ReportService(
+<span class="ln"> 13</span>  interview.py:462 result = await ReportService(
+<span class="ln"> 14</span>  interview.py:475 service = ReportService(state.session_factory, resilience=state.ai_resilience)
+<span class="ln"> 15</span>  chat.py:151 service = ChatService(state.session_factory, resilience=state.ai_resilience)</pre>
         <p class="why"><b>为什么是问题：</b>结构跟着「一个请求要现场拼出哪些零件」的执行顺序走，而不是跟着「谁拥有这些零件」走。AnswerService 的构造签名是放在 exec 顺序里被发现的，不是放在一个有名字的装配点里——加一个依赖要改 4 处 ReportService 调用、每处参数风格还不同（一处带 locks、一处带 storage）。工厂函数的存在意义（ResumeStorage(dir) 这种构建）也被摊进了路由。这是代码结构跟着执行顺序走的典型：真正稳定的知识（service → 依赖集合）没有落点。</p>
         <p class="fix"><b>修法：</b>给每个 service 一个 FastAPI 依赖工厂（或一个 `deps.py` 装配模块），路由只写 `service: QuestionService = Depends(...)`；构造签名只在装配点出现一次。</p>
       </div>
@@ -670,7 +674,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R8 透传方法</span>
           
         </div>
-<p class="signals">危险信号：透传方法</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/db/session.py:29-33</code></div><div><code class="path">apps/api/src/better_resume/http/chat.py:81</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:127</code></div><div><code class="path">apps/api/src/better_resume/http/scenes.py:57</code></div></div>
+<p class="signals">危险信号：透传方法</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/db/session.py:29-33</code></div><div><code class="path">apps/api/src/better_resume/http/chat.py:81</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:127</code></div><div><code class="path">apps/api/src/better_resume/http/chat.py:137</code></div></div>
         <pre><span class="ln">  1</span>  29 async def get_session(request: Request) -&gt; AsyncIterator[AsyncSession]:
 <span class="ln">  2</span>  30 &quot;&quot;&quot;Project-wide session dependency; the factory itself lives on app.state.&quot;&quot;&quot;
 <span class="ln">  3</span>  31 factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
@@ -681,7 +685,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
 <span class="ln">  8</span>  
 <span class="ln">  9</span>  apps/api/src/better_resume/http/interview.py:119 async with request.app.state.session_factory() as db:
 <span class="ln"> 10</span>  
-<span class="ln"> 11</span>  apps/api/src/better_resume/http/scenes.py:57 async with request.app.state.session_factory() as session:</pre>
+<span class="ln"> 11</span>  apps/api/src/better_resume/http/chat.py:137 async with request.app.state.session_factory() as db:</pre>
         <p class="why"><b>为什么是问题：</b>这是删除测试里最该删的一个：把 get_session 整个删掉，没有任何调用方变复杂——它已经零调用者（grep 全仓库只有定义处与 db/__init__ 的 re-export，连测试都没用）。它同时是一个不诚实的导航信号：docstring 写「项目统一」，而 5 个 HTTP 模块共 29 处绕过它自己开 session，读代码的人会以为自己漏看了某处 DI 装配。代价是「一次请求一个 session、谁负责 commit」这条知识没有任何地方强制，每个端点各写一遍 async with + commit。</p>
         <p class="fix"><b>修法：</b>二选一：要么让所有端点改走 Depends(get_session)（顺带把它变成真实的缝，store 构造也就有了落点），要么删掉 get_session 并修掉 docstring 里「项目统一」的说法。留着不动是最差选项。</p>
       </div>
@@ -760,7 +764,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">D6 可自动算出的配置参数</span>
           
         </div>
-<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:450</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:430-451</code></div></div>
+<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:443</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:430-451</code></div></div>
         <pre><span class="ln">  1</span>  interview.py:427 model_ref: str | None = Query(default=None),
 <span class="ln">  2</span>  430 if state.settings.jobs_enabled:
 <span class="ln">  3</span>  ...
@@ -777,7 +781,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R15 模糊的名称</span>
           
         </div>
-<p class="signals">危险信号：模糊的名称、透传方法</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:440-442</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:143</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:267</code></div></div>
+<p class="signals">危险信号：模糊的名称、透传方法</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:433-435</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:143</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:260</code></div></div>
         <pre><span class="ln">  1</span>  interview.py:417 async def _resolve_gateway(request: Request, model_ref: str | None):
 <span class="ln">  2</span>  418 &quot;&quot;&quot;Report summary scene (kept as a helper so the endpoint stays readable).&quot;&quot;&quot;
 <span class="ln">  3</span>  419 return await gateway_for(request, LlmScene.REPORT_SUMMARY, model_ref=model_ref)
@@ -794,17 +798,22 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="title">「哪些写操作要让 hot 缓存失效」是散在路由里的人际约定（同一行 ×4），没有任何地方强制</span>
           <span class="id">http-06</span>
           <span class="dim">R4 信息泄露</span>
-          
+          <span class="pill ok">已修复</span>
         </div>
-<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:170</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:284</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:463</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:463</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:222-224</code></div></div>
-        <pre><span class="ln">  1</span>  interview.py:161 await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
-<span class="ln">  2</span>  interview.py:272 await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
-<span class="ln">  3</span>  interview.py:211 async def _invalidate_hot(request: Request, *, user_id: str, session_id: str) -&gt; None:
-<span class="ln">  4</span>  212 &quot;&quot;&quot;Writes invalidate the hot view: a stale restore is worse than a slow one.&quot;&quot;&quot;
-<span class="ln">  5</span>  213 hot = getattr(request.app.state, &quot;hot_state&quot;, None)</pre>
+<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/question_service.py:287</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:108</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:136</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:183</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/hot_state.py:126-137</code></div></div>
+        <pre><span class="ln">  1</span>  interview_engine/hot_state.py（写路径唯一的失效入口）
+<span class="ln">  2</span>  126: async def invalidate_hot_state(
+<span class="ln">  3</span>  127: hot_state: HotStateStore | None, *, user_id: str, session_id: str
+<span class="ln">  4</span>  135: if hot_state is not None:
+<span class="ln">  5</span>  136: await hot_state.invalidate(user_id=user_id, session_id=session_id)
+<span class="ln">  6</span>  三个写服务各自在提交后调用它（HTTP 端已无失效语句）：
+<span class="ln">  7</span>  interview_engine/question_service.py:287 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
+<span class="ln">  8</span>  interview_engine/answer_service.py:108 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
+<span class="ln">  9</span>  interview_engine/report_service.py:136 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)
+<span class="ln"> 10</span>  interview_engine/report_service.py:183 await invalidate_hot_state(self._hot_state, user_id=user_id, session_id=session_id)</pre>
         <p class="why"><b>为什么是问题：</b>「写路径必须让热层失效」是 interview_engine 的知识，但它被复制到 HTTP 层用 4 次手写调用实现。缓存一致性的不变量由「每条新路由的作者都记得加一行」来保证；漏掉不会报错，只会让 restore 返回旧状态（正是注释自己说「比慢更糟」的那种 bug）。另外 http/media.py 的 TTS 写路径根本没有这个环节——因为它不用 hot 层，这说明该知识其实属于「谁写数据谁失效」的那一层，而不是路由。</p>
         <p class="fix"><b>修法：</b>把失效下沉到写路径本身（service 写成功后失效，或 store 层的写方法挂钩子），路由不再需要知道热层的存在。</p>
-      </div>
+<div class="fixrec"><div class="fixhead"><span class="pill ok">已修复</span><span class="fixtitle">写路径自带失效：HTTP 端不再手写缓存失效，热层失效收进三个写服务</span></div><p class="why"><b>修法：</b>把「哪些写操作要让 hot 视图失效」从路由里的人为约定收进写路径本身：interview_engine/hot_state.py 提供模块级 invalidate_hot_state(hot_state, *, user_id, session_id)，三个写服务（QuestionService._persist、AnswerService.submit、ReportService.finish/freeze）在各自提交后调用它；HTTP 端不再出现失效语句——原 http/interview.py 的 _invalidate_hot 助手与 4 处调用点已删除。</p><p class="where">改动：<code>apps/api/src/better_resume/interview_engine/hot_state.py</code>、<code>apps/api/src/better_resume/interview_engine/question_service.py</code>、<code>apps/api/src/better_resume/interview_engine/answer_service.py</code>、<code>apps/api/src/better_resume/interview_engine/report_service.py</code>、<code>apps/api/src/better_resume/http/interview.py</code>、<code>apps/api/tests/interview_engine/test_restore_report.py</code></p><pre>tests/interview_engine/test_restore_report.py 的 test_every_write_path_drops_the_warm_hot_view 在出题/答题/finish 三条写路径上断言「写后读不到写前的热层视图」，失效漏一条即红；变异演示：删掉答题写路径的失效调用 → 该用例判红（「答题写路径没有失效热层」），恢复后逐字节一致。</pre><p class="why"><b>验证：</b>cd apps/api &amp;&amp; uv run pytest tests/interview_engine/test_restore_report.py -q --junitxml=/tmp/t13_restore.xml</p><p class="why"><b>未验证 / 已知边界：</b>跨副本传播仍靠 hot_state_ttl_seconds 兜底：热层键在 Redis 上使失效天然跨副本，但「A 写、B 立刻 restore」的组合只在单进程测试里验证过。</p></div>      </div>
       <div class="issue" id="http-10">
         <div class="head">
           <span class="pill mid">中</span>
@@ -813,11 +822,11 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">S4 通用/专用是否干净分开</span>
           
         </div>
-<p class="signals">危险信号：通用专用混合体</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:252-255</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:262-270</code></div></div>
-        <pre><span class="ln">  1</span>  interview.py:252 answer_gateway = await gateway_for(
-<span class="ln">  2</span>  253 request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref
-<span class="ln">  3</span>  254 )
-<span class="ln">  4</span>  255 follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)</pre>
+<p class="signals">危险信号：通用专用混合体</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:257-260</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:262-270</code></div></div>
+        <pre><span class="ln">  1</span>  interview.py:257 answer_gateway = await gateway_for(
+<span class="ln">  2</span>  258 request, LlmScene.ANSWER_EVALUATION, model_ref=payload.model_ref
+<span class="ln">  3</span>  259 )
+<span class="ln">  4</span>  260 follow_up_gateway = await gateway_for(request, LlmScene.FOLLOW_UP, model_ref=payload.model_ref)</pre>
         <p class="why"><b>为什么是问题：</b>AnswerService 的构造签名声明「我需要两个独立的模型采购者」（评分一个、出追问一个），这是专属于它的知识；而 HTTP 契约只提供一个 model_ref，于是这一层必须把同一个值喂给两者，并顺带让「用户选模型」这件事在两个场景上强行一致。通用机制（场景绑定 + 可选覆盖）与某个调用者的专用逻辑（评分/追问拆开）混在这一层：调用者读到两个 gateway 参数无法知道它们是否可以不同，也无法表达「只覆盖评分模型」。</p>
         <p class="fix"><b>修法：</b>要么承认它们是同一件事（让服务只接受一个 gateway，场景差异留在服务内部按 scene 取），要么在请求模型里显式给两个可选 ref（evaluation_model_ref / follow_up_model_ref），别用一个值冒充两个决策。</p>
       </div>
@@ -829,10 +838,10 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W1 命名精确+一致</span>
           
         </div>
-<p class="signals">危险信号：模糊的名称</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/main.py:204-221</code></div></div>
-        <pre><span class="ln">  1</span>  main.py:205 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;timeout&quot;)
-<span class="ln">  2</span>  211 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unavailable&quot;)
-<span class="ln">  3</span>  220 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unknown&quot;)</pre>
+<p class="signals">危险信号：模糊的名称</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/main.py:220</code></div></div>
+        <pre><span class="ln">  1</span>  main.py:214 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;timeout&quot;)
+<span class="ln">  2</span>  220 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unavailable&quot;)
+<span class="ln">  3</span>  229 kind = getattr(getattr(exc, &quot;kind&quot;, None), &quot;value&quot;, &quot;unknown&quot;)</pre>
         <p class="why"><b>为什么是问题：</b>调用者（错误处理器）必须先了解实现（哪类异常有 kind、kind 是枚举还是字符串、没有时该给什么默认值）才能写对三行几乎一样的代码。因为接口没约束异常长什么样，所以只能猜；因为只能猜，所以三处各猜一遍，默认值还不一样（timeout/unavailable/unknown——这是对的，但没人保证第四个处理器会猜对）。仓库对响应体形状极严（Pydantic response_schema 强校验），对异常形状却完全靠约定。</p>
         <p class="fix"><b>修法：</b>给韧性异常定义一个 `kind` 属性的基类/Protocol（或统一一个 `error_kind(exc) -&gt; str` 函数），处理器只调用它，默认值集中一处。</p>
       </div>
@@ -844,7 +853,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R13 注释重复了代码</span>
           
         </div>
-<p class="signals">危险信号：注释重复了代码、多类症</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:307-313</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:491-493</code></div></div>
+<p class="signals">危险信号：注释重复了代码、多类症</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/http/interview.py:307-313</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:482-489</code></div></div>
         <pre><span class="ln">  1</span>  interview.py:299 __all__ = [
 <span class="ln">  2</span>  300 &quot;MAX_RESUME_BYTES&quot;,
 <span class="ln">  3</span>  301 &quot;AnswerSubmitView&quot;,
@@ -972,7 +981,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">S3 重复（知识重复）</span>
           
         </div>
-<p class="signals">危险信号：重复、信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/worker.py:43-68</code></div><div><code class="path">apps/api/src/better_resume/main.py:52-60</code></div><div><code class="path">apps/api/src/better_resume/main.py:217</code></div></div>
+<p class="signals">危险信号：重复、信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/worker.py:43-68</code></div><div><code class="path">apps/api/src/better_resume/main.py:54-62</code></div><div><code class="path">apps/api/src/better_resume/main.py:233</code></div></div>
         <pre><span class="ln">  1</span>  # apps/api/src/better_resume/worker.py:43-54
 <span class="ln">  2</span>  43: def build_worker_runtime(settings: Settings) -&gt; dict[str, Any]:
 <span class="ln">  3</span>  44: &quot;&quot;&quot;Minimal runtime for background work (the HTTP app builds its own, richer one).&quot;&quot;&quot;
@@ -987,11 +996,11 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
 <span class="ln"> 12</span>  53: cache_ttl_seconds=settings.scene_binding_cache_seconds,
 <span class="ln"> 13</span>  54: )
 <span class="ln"> 14</span>  
-<span class="ln"> 15</span>  # apps/api/src/better_resume/main.py:59-59
-<span class="ln"> 16</span>  59: build_llm_gateway,
+<span class="ln"> 15</span>  # apps/api/src/better_resume/main.py:61-61
+<span class="ln"> 16</span>  61: build_llm_gateway,
 <span class="ln"> 17</span>  
-<span class="ln"> 18</span>  # apps/api/src/better_resume/main.py:225-225
-<span class="ln"> 19</span>  225: app = create_app()</pre>
+<span class="ln"> 18</span>  # apps/api/src/better_resume/main.py:233-233
+<span class="ln"> 19</span>  233: app = create_app()</pre>
         <p class="why"><b>为什么是问题：</b>worker.py:50-52 去 better_resume.main 拿 build_llm_gateway，而那只是 llm_gateway 的同一个对象在 main.py:59 被 re-export（worker.py:24-31 本来就从 llm_gateway 导入一堆同级符号）。导入 main 会执行第 224 行的模块级 `app = create_app()`：worker 进程启动时白建一个 FastAPI app，并顺带跑 configure_logging / get_settings，只为拿一个可以直接 `from .llm_gateway import build_llm_gateway` 的函数。同时 engine/session_factory/ModelRegistry/SceneResolver+两个 register_factory/ResilientAiResilience 这份装配清单在 main.py:71-121 与 worker.py:43-68 各写一遍：新增一种 AdapterKind 或给韧性链加 DistributedAiResilience（main.py:108-117 只在 app 侧）时，两条路径会静默漂移，而 worker 正是报告叙述的唯一执行者。</p>
         <p class="fix"><b>修法：</b>把运行时装配抽成一个共享的 build_runtime(settings) 给 app 与 worker 用；gateway_builder 直接 from .llm_gateway import build_llm_gateway，删掉 __import__ hack。</p>
       </div>
@@ -1040,14 +1049,14 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">D6 可自动算出的配置参数</span>
           
         </div>
-<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/redis_client.py:58-63</code></div><div><code class="path">apps/api/src/better_resume/jobs/queue.py:52-57</code></div><div><code class="path">apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74</code></div></div>
-        <pre><span class="ln">  1</span>  # apps/api/src/better_resume/redis_client.py:58-63
-<span class="ln">  2</span>  58: def redis_client(
-<span class="ln">  3</span>  59: source: RedisSource,
-<span class="ln">  4</span>  60: *,
-<span class="ln">  5</span>  61: decode_responses: bool = True,
-<span class="ln">  6</span>  62: socket_timeout: float | None = None,
-<span class="ln">  7</span>  63: ) -&gt; aioredis.Redis:
+<p class="signals">危险信号：信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/redis_client.py:55-60</code></div><div><code class="path">apps/api/src/better_resume/jobs/queue.py:52-57</code></div><div><code class="path">apps/api/src/better_resume/ai_resilience/redis_buckets.py:124-126</code></div></div>
+        <pre><span class="ln">  1</span>  # apps/api/src/better_resume/redis_client.py:55-60
+<span class="ln">  2</span>  55: def redis_client(
+<span class="ln">  3</span>  56: source: RedisSource,
+<span class="ln">  4</span>  57: *,
+<span class="ln">  5</span>  58: decode_responses: bool = True,
+<span class="ln">  6</span>  59: socket_timeout: float | None = None,
+<span class="ln">  7</span>  60: ) -&gt; aioredis.Redis:
 <span class="ln">  8</span>  
 <span class="ln">  9</span>  # apps/api/src/better_resume/jobs/queue.py:52-57
 <span class="ln"> 10</span>  52: self._socket_timeout_seconds = socket_timeout_seconds
@@ -1057,10 +1066,10 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
 <span class="ln"> 14</span>  56: redis_source, decode_responses=True, socket_timeout=socket_timeout_seconds
 <span class="ln"> 15</span>  57: )
 <span class="ln"> 16</span>  
-<span class="ln"> 17</span>  # apps/api/src/better_resume/ai_resilience/redis_buckets.py:72-74
-<span class="ln"> 18</span>  72: self._client = redis_client(
-<span class="ln"> 19</span>  73: redis_source, decode_responses=True, socket_timeout=socket_timeout
-<span class="ln"> 20</span>  74: )</pre>
+<span class="ln"> 17</span>  # apps/api/src/better_resume/ai_resilience/redis_buckets.py:124-126
+<span class="ln"> 18</span>  124: self._client = redis_client(
+<span class="ln"> 19</span>  125: redis_source, decode_responses=True, socket_timeout=socket_timeout
+<span class="ln"> 20</span>  126: )</pre>
         <p class="why"><b>为什么是问题：</b>redis_client 的签名把 socket_timeout 做成可选，于是『等多久』变成每个调用点各自的决定：只有 JobQueue（15s，为阻塞读留出余量）和 RedisRateLimiter（settings.rate_limit.redis_socket_timeout_ms=50ms，config.py:113）设了，两者差 300 倍；identity/redis_store.py:26、tickets.py:65、interview_engine/locks.py:94、hot_state.py:86、ai_resilience/distributed.py:99、worker.py:102/149 全都不传 → 无超时。Redis『半死』（TCP 通但不答）时，/auth/me、WS 票据兑换、题级锁、分布式单飞会无限等，而 /D19 的整个故障面就是为这种情况做的。另外 7 个调用点还要各写一遍 decode_responses=True（seam 默认已经是 True），说明这个参数在实际使用中也是常量。</p>
         <p class="fix"><b>修法：</b>在 seam 里定一个来自 Settings 的默认 socket_timeout（允许有理由地覆盖），调用点不再各自发明；decode_responses 保留默认不重复书写。</p>
       </div>
@@ -1103,17 +1112,17 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R1 删除测试</span>
           
         </div>
-<p class="signals">危险信号：浅模块、重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/jobs/queue.py:89-91</code></div><div><code class="path">apps/api/src/better_resume/jobs/queue.py:226-228</code></div><div><code class="path">apps/api/scripts/fault_probe.py:881-883</code></div></div>
+<p class="signals">危险信号：浅模块、重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/jobs/queue.py:89-91</code></div><div><code class="path">apps/api/src/better_resume/jobs/queue.py:226-228</code></div><div><code class="path">apps/api/scripts/fault_probe.py:875-877</code></div></div>
         <pre><span class="ln">  1</span>  # apps/api/src/better_resume/jobs/queue.py:89-91
 <span class="ln">  2</span>  89: async def status(self, task_id: str) -&gt; dict[str, Any] | None:
 <span class="ln">  3</span>  90: data = await self._client.hgetall(f&quot;{self.stream}:status:{task_id}&quot;)
 <span class="ln">  4</span>  91: return data or None
 <span class="ln">  5</span>  
-<span class="ln">  6</span>  # apps/api/scripts/fault_probe.py:881-883
-<span class="ln">  7</span>  881: pending = docker(
-<span class="ln">  8</span>  882: &quot;compose&quot;, &quot;exec&quot;, &quot;-T&quot;, &quot;redis&quot;, &quot;redis-cli&quot;, &quot;XPENDING&quot;, &quot;br:jobs&quot;, &quot;br:workers&quot;
-<span class="ln">  9</span>  883: )</pre>
-        <p class="why"><b>为什么是问题：</b>删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:881-883，且它在 837 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。</p>
+<span class="ln">  6</span>  # apps/api/scripts/fault_probe.py:875-877
+<span class="ln">  7</span>  875: pending = docker(
+<span class="ln">  8</span>  876: &quot;compose&quot;, &quot;exec&quot;, &quot;-T&quot;, &quot;redis&quot;, &quot;redis-cli&quot;, &quot;XPENDING&quot;, &quot;br:jobs&quot;, &quot;br:workers&quot;
+<span class="ln">  9</span>  877: )</pre>
+        <p class="why"><b>为什么是问题：</b>删掉 status()，生产调用方不会有任何变化（唯一入口 interview.py:435 不看返回值），只有 tests/test_job_queue.py 的 7 处断言要改；pending() 同样只有 test_job_queue.py:131 一个调用者。真正需要『在途几件』的故障演练（fault_probe.py:875-877，且它在 832 行自己 new 了一个 JobQueue）宁可 redis-cli XPENDING br:jobs br/workers 手写流名与组名——这两个名字在 queue.py:45-46 是构造默认值。于是同一份键名知识多了一份：改 stream/group 命名时演练会静默测错键，还可能给出 PASS。</p>
         <p class="fix"><b>修法：</b>要么把状态面接给真实消费者（报告页轮询/运维接口）保留 status()，要么删到只剩 xlen/pending 并在演练里调 queue.pending()，让键名只有一处来源。</p>
       </div>
       <div class="issue" id="identity_jobs-08">
@@ -1152,19 +1161,19 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W5 多返回值用具名字段类</span>
           
         </div>
-        <div class="where"><div><code class="path">apps/api/src/better_resume/jobs/queue.py:67-87</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:435-439</code></div></div>
+        <div class="where"><div><code class="path">apps/api/src/better_resume/jobs/queue.py:67-87</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:451-455</code></div></div>
         <pre><span class="ln">  1</span>  # apps/api/src/better_resume/jobs/queue.py:67-70
 <span class="ln">  2</span>  67: async def enqueue(
 <span class="ln">  3</span>  68: self, kind: str, payload: dict[str, Any], *, idempotency_key: str
 <span class="ln">  4</span>  69: ) -&gt; tuple[str, bool]:
 <span class="ln">  5</span>  70: &quot;&quot;&quot;Returns (task_id, created). A repeated key returns the existing task id.&quot;&quot;&quot;
 <span class="ln">  6</span>  
-<span class="ln">  7</span>  # apps/api/src/better_resume/http/interview.py:435-439
-<span class="ln">  8</span>  435: await state.job_queue.enqueue(
-<span class="ln">  9</span>  436: &quot;report.summary&quot;,
-<span class="ln"> 10</span>  437: {&quot;session_id&quot;: session_id, &quot;user_id&quot;: principal.user_id},
-<span class="ln"> 11</span>  438: idempotency_key=f&quot;report:{session_id}&quot;,
-<span class="ln"> 12</span>  439: )</pre>
+<span class="ln">  7</span>  # apps/api/src/better_resume/http/interview.py:451-455
+<span class="ln">  8</span>  451: await state.job_queue.enqueue(
+<span class="ln">  9</span>  452: &quot;report.summary&quot;,
+<span class="ln"> 10</span>  453: {&quot;session_id&quot;: session_id, &quot;user_id&quot;: principal.user_id},
+<span class="ln"> 11</span>  454: idempotency_key=f&quot;report:{session_id}&quot;,
+<span class="ln"> 12</span>  455: )</pre>
         <p class="why"><b>为什么是问题：</b>tuple[str, bool] 把两个不同含义的位置值塞给调用者，读代码的人必须回来看实现才知道第二个是『本次是否新建』；而生产里唯一的调用者（http/interview.py:435）连接收都不接收，created 这个语义只有 tests/test_job_queue.py:41、60-63 在断言。结果『重复投递返回既有 task_id』这条幂等契约在系统里没有任何可见面（只有 dedupe key 的副作用），前端也无从知道报告叙述是本次新排的还是早就排过。</p>
         <p class="fix"><b>修法：</b>返回具名字段对象（如 EnqueueResult(task_id, created)），或让 enqueue 只返回 task_id 并把幂等事实写进状态/日志。</p>
       </div>
@@ -1775,23 +1784,22 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="title">GatewayFactory 协议只声明两个方法，resolver 却按私约动态取用 credential_hint / build_for_model；协议声明同步、实现是 async</span>
           <span class="id">LG-06</span>
           <span class="dim">D5 复杂度下沉 or 推给使用者</span>
-          
+          <span class="pill ok">已修复</span>
         </div>
-        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:69-75</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:91-96</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:48-56</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:176-182</code></div></div>
-        <pre><span class="ln">  1</span>  resolver.py
-<span class="ln">  2</span>  69: @runtime_checkable
-<span class="ln">  3</span>  70: class GatewayFactory(Protocol):
-<span class="ln">  4</span>  71: &quot;&quot;&quot;One per adapter kind: knows if it *can* run a binding and how to build the gateway.&quot;&quot;&quot;
-<span class="ln">  5</span>  73: def is_configured(self, binding: SceneBinding) -&gt; bool: ...
-<span class="ln">  6</span>  75: async def build(self, binding: SceneBinding) -&gt; LlmGateway: ...
-<span class="ln">  7</span>  91: async def is_configured(self, binding: SceneBinding) -&gt; bool:
-<span class="ln">  8</span>  179: builder = getattr(factory, &quot;build_for_model&quot;, None)
-<span class="ln">  9</span>  48: async def _call(factory: GatewayFactory, name: str, binding: SceneBinding) -&gt; object | None:
-<span class="ln"> 10</span>  49: &quot;&quot;&quot;Factories may answer sync (vendor adapter) or async (registry lookup): accept both.&quot;&quot;&quot;
-<span class="ln"> 11</span>  50: method = getattr(factory, name, None)</pre>
-        <p class="why"><b>为什么是问题：</b>写新工厂的人只读 Protocol 会实现 is_configured/build，然后发现 503 提示退化成「credentials are missing」（credential_hint 没实现）、模型选择器直接报「this build has no openai-compatible provider」（build_for_model 没实现）——这两条契约只存在于 resolver 的 getattr 调用里。更糟的是协议第 73 行声明 is_configured 同步，唯一的真实实现（OpenAiCompatFactory，91 行）是 async：读者与类型检查器拿到的是错的调用约定，全靠 _call 的 inspect.isawaitable 和 resolve_model 的 getattr 兜着。</p>
+        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:64-80</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:106-113</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:187-196</code></div></div>
+        <pre><span class="ln">  1</span>  resolver.py（协议：模型选择钩子与 config_status / build 并列声明，docstring 写明三者前置条件与缺省语义）
+<span class="ln">  2</span>  64: @runtime_checkable
+<span class="ln">  3</span>  65: class GatewayFactory(Protocol):
+<span class="ln">  4</span>  80: async def build_for_model(self, model_ref: str | None) -&gt; LlmGateway: ...
+<span class="ln">  5</span>  resolver.py（resolver 直接调用协议成员，getattr 兜底已删）
+<span class="ln">  6</span>  187: async def resolve_model(self, model_ref: str | None) -&gt; LlmGateway:
+<span class="ln">  7</span>  196: return await factory.build_for_model(model_ref)
+<span class="ln">  8</span>  resolver.py（唯一实现：build 转调 build_for_model，走模型注册表）
+<span class="ln">  9</span>  107: return await self.build_for_model(binding.target_ref)
+<span class="ln"> 10</span>  109: async def build_for_model(self, model_ref: str | None) -&gt; LlmGateway:</pre>
+        <p class="why"><b>为什么是问题：</b>模型选择是工厂协议之外的一条私约：读 Protocol 的人只看到 config_status 与 build，而聊天模型选择面（resolve_model）另需 build_for_model——它只活在 resolver 的动态取用里，缺这个方法的工厂不会以「协议没实现」失败，而是被翻译成 this build has no openai-compatible provider，把「这个工厂没有模型选择」说成「本构建不提供 openai 兼容供应商」，调用方与日志都被指向错误原因；钩子的前置条件与缺省语义也只有读过 resolver 实现的人知道。</p>
         <p class="fix"><b>修法：</b>把 credential_hint 与 build_for_model 提升为协议成员（is_configured 统一 async），并在 docstring 写明每个钩子的前置条件与缺省语义。</p>
-      </div>
+<div class="fixrec"><div class="fixhead"><span class="pill ok">已修复</span><span class="fixtitle">build_for_model 是工厂协议的成员：resolver 直接调用，缺实现以 AttributeError 响亮失败</span></div><p class="why"><b>修法：</b>GatewayFactory 协议在 config_status / build 之外补上 build_for_model；SceneResolver.resolve_model 删掉 getattr(factory, &quot;build_for_model&quot;, None) 的兜底，直接调用协议成员。只有 OPENAI_COMPAT 工厂实现该钩子（OpenAiCompatFactory.build 转调 build_for_model），缺它的工厂以 AttributeError 点名缺失钩子失败，不再被翻译成 this build has no openai-compatible provider；本构建根本没注册该 adapter kind 时仍抛 LlmConfigError 走 503（语义未变）。</p><p class="where">改动：<code>apps/api/src/better_resume/llm_gateway/resolver.py</code>、<code>apps/api/tests/llm_gateway/test_scene_resolver.py</code></p><pre>新增用例 tests/llm_gateway/test_scene_resolver.py::test_a_factory_without_model_selection_fails_loudly：注册只实现 config_status/build 的工厂后 resolve_model(&quot;deepseek-flash&quot;) 必须抛 AttributeError 且消息含 build_for_model（改动前该用例判红：抛 LlmConfigError: this build has no openai-compatible provider）；test_model_selection_goes_through_the_factory_protocol 钉住显式 model_ref 交给工厂的 build_for_model。grep -rn getattr apps/api/src/better_resume/llm_gateway 只剩 scene_mapping.py:113 的 getattr(message, &quot;role&quot;, None)——对 list[Any] 消息的防御读，不是工厂私约。</pre><p class="why"><b>验证：</b>cd apps/api &amp;&amp; uv run pytest -q tests/llm_gateway -k &#x27;without_model_selection or goes_through_the_factory_protocol&#x27; --junitxml=/tmp/t20-green-slice.xml</p><p class="why"><b>未验证 / 已知边界：</b>XingyunGatewayFactory / DashScopeAppFactory 不实现 build_for_model，也从不被 resolve_model 取用（它只查 AdapterKind.OPENAI_COMPAT）；这份「只有 openai_compat 有模型选择」的约束没有用例钉住。</p></div>      </div>
       <div class="issue" id="LG-02">
         <div class="head">
           <span class="pill mid">中</span>
@@ -1854,24 +1862,25 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R11 重复</span>
           
         </div>
-<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:25-29</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:91-106</code></div></div>
+<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/xingyun_factory.py:30-41</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:26-30</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:91-106</code></div></div>
         <pre><span class="ln">  1</span>  xingyun_factory.py
-<span class="ln">  2</span>  30: def is_configured(self, binding: SceneBinding) -&gt; bool:
-<span class="ln">  3</span>  31: api_key, api_secret = self.credentials
-<span class="ln">  4</span>  32: return bool(api_key and api_secret and binding.target_ref)
-<span class="ln">  5</span>  34: def credential_hint(self, binding: SceneBinding) -&gt; str | None:
-<span class="ln">  6</span>  35: api_key, api_secret = self.credentials
-<span class="ln">  7</span>  36: missing = [
-<span class="ln">  8</span>  37: name
-<span class="ln">  9</span>  38: for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))
-<span class="ln"> 10</span>  39: if not value
-<span class="ln"> 11</span>  40: ]
-<span class="ln"> 12</span>  41: return &quot; and &quot;.join(missing) if missing else None
+<span class="ln">  2</span>  31: async def config_status(self, binding: SceneBinding) -&gt; ConfigStatus:
+<span class="ln">  3</span>  32: api_key, api_secret = self.credentials
+<span class="ln">  4</span>  33: missing = [
+<span class="ln">  5</span>  34: name
+<span class="ln">  6</span>  35: for name, value in ((API_KEY_ENV, api_key), (API_SECRET_ENV, api_secret))
+<span class="ln">  7</span>  36: if not value
+<span class="ln">  8</span>  37: ]
+<span class="ln">  9</span>  38: return ConfigStatus(
+<span class="ln"> 10</span>  39: configured=bool(api_key and api_secret and binding.target_ref),
+<span class="ln"> 11</span>  40: missing=&quot; and &quot;.join(missing) or None,
+<span class="ln"> 12</span>  41: )
 <span class="ln"> 13</span>  dashscope_app_factory.py
-<span class="ln"> 14</span>  25: def is_configured(self, binding: SceneBinding) -&gt; bool:
-<span class="ln"> 15</span>  26: return bool(self._api_key and binding.target_ref)
-<span class="ln"> 16</span>  28: def credential_hint(self, binding: SceneBinding) -&gt; str | None:
-<span class="ln"> 17</span>  29: return None if self._api_key else API_KEY_ENV</pre>
+<span class="ln"> 14</span>  26: async def config_status(self, binding: SceneBinding) -&gt; ConfigStatus:
+<span class="ln"> 15</span>  27: return ConfigStatus(
+<span class="ln"> 16</span>  28: configured=bool(self._api_key and binding.target_ref),
+<span class="ln"> 17</span>  29: missing=None if self._api_key else API_KEY_ENV,
+<span class="ln"> 18</span>  30: )</pre>
         <p class="why"><b>为什么是问题：</b>同一个问题（这个绑定的凭证在不在、缺哪个变量）有三个实现：bool、空格/and 拼接的变量名、以及 resolver 里 OpenAiCompatFactory 的「resolve 模型行再查 environ」。三处对 target_ref 的判定也不完全同构（resolver 版本靠 resolve 抛错兜）。新增第四个 adapter kind 就是抄第四遍；更现实的风险是 is_configured 与 credential_hint 会漂移——一处说配置好了、另一处说缺变量，调用方（resolver.resolve 只信前者、把后者当提示）无法发现矛盾。</p>
         <p class="fix"><b>修法：</b>把「校验 + 缺什么」合并成一个方法（返回 Ok | Missing(names)），协议只暴露这一处判定；工厂只声明自己需要哪些环境变量名。</p>
       </div>
@@ -1913,7 +1922,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R15 模糊的名称</span>
           
         </div>
-<p class="signals">危险信号：模糊的名称、过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/binding_store.py:20-25</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/binding_orm.py:17-19</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:236-241</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/xingyun_factory.py:53-55</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40-42</code></div></div>
+<p class="signals">危险信号：模糊的名称、过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/binding_store.py:20-25</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/binding_orm.py:17-19</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:257-262</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/xingyun_factory.py:53-55</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/dashscope_app_factory.py:40-42</code></div></div>
         <pre><span class="ln">  1</span>  20 @dataclass(frozen=True, slots=True)
 <span class="ln">  2</span>  21 class SceneBinding:
 <span class="ln">  3</span>  22 scene: LlmScene
@@ -1925,14 +1934,14 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
 <span class="ln">  9</span>  apps/api/src/better_resume/llm_gateway/binding_orm.py:18 &quot;&quot;&quot;One row per scene; target_ref is a model name (openai_compat), a flow id (xingyun)
 <span class="ln"> 10</span>  apps/api/src/better_resume/llm_gateway/binding_orm.py:19 or a Model Studio application id (dashscope_app).&quot;&quot;&quot;
 <span class="ln"> 11</span>  
-<span class="ln"> 12</span>  apps/api/src/better_resume/llm_gateway/resolver.py:236 target_ref=binding.target_ref,
-<span class="ln"> 13</span>  apps/api/src/better_resume/llm_gateway/resolver.py:237 configured=bool(factory) and await is_configured(factory, binding),
-<span class="ln"> 14</span>  apps/api/src/better_resume/llm_gateway/resolver.py:238 is_default=(
-<span class="ln"> 15</span>  apps/api/src/better_resume/llm_gateway/resolver.py:239 binding.adapter is DEFAULT_ADAPTER
-<span class="ln"> 16</span>  apps/api/src/better_resume/llm_gateway/resolver.py:240 and binding.target_ref == DEFAULT_TARGET_REF
-<span class="ln"> 17</span>  apps/api/src/better_resume/llm_gateway/resolver.py:241 ),
+<span class="ln"> 12</span>  apps/api/src/better_resume/llm_gateway/resolver.py:257 target_ref=binding.target_ref,
+<span class="ln"> 13</span>  apps/api/src/better_resume/llm_gateway/resolver.py:258 configured=status.configured,
+<span class="ln"> 14</span>  apps/api/src/better_resume/llm_gateway/resolver.py:259 is_default=(
+<span class="ln"> 15</span>  apps/api/src/better_resume/llm_gateway/resolver.py:260 binding.adapter is DEFAULT_ADAPTER
+<span class="ln"> 16</span>  apps/api/src/better_resume/llm_gateway/resolver.py:261 and binding.target_ref == DEFAULT_TARGET_REF
+<span class="ln"> 17</span>  apps/api/src/better_resume/llm_gateway/resolver.py:262 ),
 <span class="ln"> 18</span>  
-<span class="ln"> 19</span>  apps/api/src/better_resume/llm_gateway/xingyun_factory.py:40 ]
+<span class="ln"> 19</span>  apps/api/src/better_resume/llm_gateway/xingyun_factory.py:37 ]
 <span class="ln"> 20</span>  ...
 <span class="ln"> 21</span>  apps/api/src/better_resume/llm_gateway/xingyun_factory.py:49 if not binding.target_ref:
 <span class="ln"> 22</span>  apps/api/src/better_resume/llm_gateway/xingyun_factory.py:50 raise LlmConfigError(
@@ -1969,7 +1978,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R6 过度暴露</span>
           
         </div>
-<p class="signals">危险信号：过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:141-146</code></div><div><code class="path">apps/api/tests/llm_gateway/test_scene_resolver.py:100-109</code></div><div><code class="path">apps/api/tests/llm_gateway/test_scene_binding_propagation.py:92</code></div></div>
+<p class="signals">危险信号：过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:139-144</code></div><div><code class="path">apps/api/tests/llm_gateway/test_scene_resolver.py:175-184</code></div><div><code class="path">apps/api/tests/llm_gateway/test_scene_binding_propagation.py:92</code></div></div>
         <pre><span class="ln">  1</span>  resolver.py
 <span class="ln">  2</span>  141: self._loads = 0
 <span class="ln">  3</span>  143: @property
@@ -1994,7 +2003,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">S3 重复（知识重复）</span>
           
         </div>
-<p class="signals">危险信号：重复、信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:28-30</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:236-241</code></div><div><code class="path">apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29</code></div></div>
+<p class="signals">危险信号：重复、信息泄露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:28-30</code></div><div><code class="path">apps/api/src/better_resume/llm_gateway/resolver.py:259-262</code></div><div><code class="path">apps/api/migrations/versions/9f2c1a7b5d31_scene_bindings.py:21-29</code></div></div>
         <pre><span class="ln">  1</span>  28 #: What every scene runs on out of the box (mirrors the M5-T1 migration seed).
 <span class="ln">  2</span>  29 DEFAULT_ADAPTER = AdapterKind.OPENAI_COMPAT
 <span class="ln">  3</span>  30 DEFAULT_TARGET_REF = &quot;deepseek-flash&quot;
@@ -2229,7 +2238,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W3 错误靠定义规避</span>
           <span class="pill ok">已修复</span>
         </div>
-        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:118-124</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:368-401</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_repo.py:58-67</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/orm.py:131-132</code></div><div><code class="path">apps/api/tests/interview_engine/test_answer_service.py:234-268</code></div></div>
+        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:126-132</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:368-401</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_repo.py:58-67</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/orm.py:131-132</code></div><div><code class="path">apps/api/tests/interview_engine/test_answer_service.py:234-268</code></div></div>
         <pre><span class="ln">  1</span>  answer_service.py（幂等闸门）
 <span class="ln">  2</span>  118: # Second check inside the lock: the previous holder may have finished this turn.
 <span class="ln">  3</span>  119: existing = await AnswerRepository(db).find_by_request(session_id, request_id)
@@ -2263,7 +2272,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">C1 改动让设计变好一点</span>
           
         </div>
-<p class="signals">危险信号：注释重复了代码</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:405-444</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:428-433</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_repo.py:143-179</code></div></div>
+<p class="signals">危险信号：注释重复了代码</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:451-452</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:433-438</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/answer_repo.py:143-179</code></div></div>
         <pre><span class="ln">  1</span>  answer_service.py
 <span class="ln">  2</span>  405: async def _noop() -&gt; None: # pragma: no cover - keeps asyncio import used in type-checking paths
 <span class="ln">  3</span>  406: await asyncio.sleep(0)
@@ -2335,21 +2344,21 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R11 重复</span>
           
         </div>
-<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/models.py:135</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/flow_store.py:37</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/question_service.py:275</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/restore_service.py:153-156</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/orm.py:180-181</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:76</code></div></div>
+<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/models.py:135</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/flow_store.py:37</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/question_service.py:277-283</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/restore_service.py:156-162</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/orm.py:180-181</code></div><div><code class="path">apps/api/src/better_resume/http/interview.py:76</code></div></div>
         <pre><span class="ln">  1</span>  models.py
-<span class="ln">  2</span>  132: max_follow_up: int = 2
+<span class="ln">  2</span>  135: max_follow_up: int = 2
 <span class="ln">  3</span>  flow_store.py
 <span class="ln">  4</span>  37: max_follow_up: int = 2,
 <span class="ln">  5</span>  question_service.py
-<span class="ln">  6</span>  220: max_follow_up=2,
+<span class="ln">  6</span>  280: max_follow_up=2,
 <span class="ln">  7</span>  restore_service.py（流状态丢失时的派生路径）
-<span class="ln">  8</span>  153: return await FlowStateStore(db).initialize(
-<span class="ln">  9</span>  156: max_follow_up=2,
+<span class="ln">  8</span>  156: return FlowState(
+<span class="ln">  9</span>  162: max_follow_up=2,
 <span class="ln"> 10</span>  orm.py
-<span class="ln"> 11</span>  148: max_follow_up: Mapped[int] = mapped_column(
-<span class="ln"> 12</span>  149: Integer, nullable=False, default=2, server_default=&quot;2&quot;
+<span class="ln"> 11</span>  180: max_follow_up: Mapped[int] = mapped_column(
+<span class="ln"> 12</span>  181: Integer, nullable=False, default=2, server_default=&quot;2&quot;
 <span class="ln"> 13</span>  http/interview.py（http 模块的对外视图也给同一个默认值）
-<span class="ln"> 14</span>  72: max_follow_up: int = 2</pre>
+<span class="ln"> 14</span>  76: max_follow_up: int = 2</pre>
         <p class="why"><b>为什么是问题：</b>「每个主题最多追问 2 次」这一条产品规则被抄了五次（模型默认、store 默认、生成时写入、派生时写入、ORM/DB 默认），settings 里没有对应变量，谁都无法在部署时调整。更实际的风险是 RestoreService._derive 在 flow 行丢失时硬写 2——如果将来支持按 session 配置追问次数（或有人改了其中一处常量），派生出来的会话会静默拿到与创建时不同的预算，且 flow 表里也看不出这个差异。</p>
         <p class="fix"><b>修法：</b>预算只留一处常量（或进 settings），initialize 的默认值由它派生，_derive 复用同一来源；对外视图的默认值改为从 flow 读取而不是自带字面量。</p>
       </div>
@@ -2396,7 +2405,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W3 错误靠定义规避</span>
           
         </div>
-<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:217-228</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/question_service.py:213-214</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:301-302</code></div></div>
+<p class="signals">危险信号：重复</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/answer_service.py:233-236</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/question_service.py:216-218</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/follow_up_service.py:93-98</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:305-307</code></div></div>
         <pre><span class="ln">  1</span>  answer_service.py
 <span class="ln">  2</span>  219: parsed = result.parsed
 <span class="ln">  3</span>  220: if not isinstance(parsed, ScoreResult): # defensive: the gateway validates
@@ -2446,7 +2455,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W5 多返回值用具名字段类</span>
           
         </div>
-<p class="signals">危险信号：难以理解的代码</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:213</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:269-276</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:65-77</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:280</code></div></div>
+<p class="signals">危险信号：难以理解的代码</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:218</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:280-288</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:65-77</code></div><div><code class="path">apps/api/src/better_resume/interview_engine/report_service.py:292</code></div></div>
         <pre><span class="ln">  1</span>  report_service.py
 <span class="ln">  2</span>  208: async def _aggregate(self, db: AsyncSession, session_id: str) -&gt; dict:
 <span class="ln">  3</span>  269: return {
@@ -2712,9 +2721,9 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W1 命名精确+一致</span>
           
         </div>
-<p class="signals">危险信号：模糊的名称</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/conversation/store.py:119,136</code></div><div><code class="path">apps/api/src/better_resume/conversation/models.py:59</code></div></div>
-        <pre><span class="ln">  1</span>  119: seq = row.message_count + 1
-<span class="ln">  2</span>  136: row.message_count = seq
+<p class="signals">危险信号：模糊的名称</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/conversation/store.py:130,147</code></div><div><code class="path">apps/api/src/better_resume/conversation/models.py:59</code></div></div>
+        <pre><span class="ln">  1</span>  130: seq = row.message_count + 1
+<span class="ln">  2</span>  147: row.message_count = seq
 <span class="ln">  3</span>  --- models.py（对外名字）
 <span class="ln">  4</span>  59: message_count: int = 0</pre>
         <p class="why"><b>为什么是问题：</b>同一列既是对外暴露的「消息数」（ChatSessionView.message_count，前端直接显示，http/chat.py:55）又是下一个 seq 的来源。现在两者相等只是因为消息永远不会被删除；一旦加上删除/归档（或有清理任务），计数与 seq 立刻分叉，而下一次 append 会算出重复或跳号的 seq——名字让人以为它只是统计值，改动它的人不会想到自己在动序号分配器。</p>
@@ -2909,14 +2918,14 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">R6 过度暴露</span>
           
         </div>
-<p class="signals">危险信号：过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/media/assembler.py:146-147</code></div><div><code class="path">apps/api/scripts/assembler_real_probe.py:147-149</code></div></div>
+<p class="signals">危险信号：过度暴露</p>        <div class="where"><div><code class="path">apps/api/src/better_resume/media/assembler.py:146-147</code></div><div><code class="path">apps/api/scripts/assembler_real_probe.py:146-148</code></div></div>
         <pre><span class="ln">  1</span>  146: def __init__(self) -&gt; None:
 <span class="ln">  2</span>  147: self.pool = SentencePool()
 <span class="ln">  3</span>  --- apps/api/scripts/assembler_real_probe.py
-<span class="ln">  4</span>  147: committed = assembler.pool.committed_text()
-<span class="ln">  5</span>  148: display = assembler.pool.display_text()
-<span class="ln">  6</span>  149: pooled = len(assembler.pool.ordered())</pre>
-        <p class="why"><b>为什么是问题：</b>读结果本来只需要 snapshot()（committed/display/live 都在返回里），但真机探针 apps/api/scripts/assembler_real_probe.py:147-149 与 tests/media/test_assembler.py 共 9 处都直接摸 pool → upsert/append/replace_range/next_segment_id/ordered… 全变成必须保持兼容的接口面，任何「段存储换 key/换结构」的内部重构都会同时打断探针与测试，而它们本该只依赖 TranscriptUpdate。跨模块证据：探针在 media 之外，说明这份内部结构已经泄漏到脚本层。</p>
+<span class="ln">  4</span>  146: committed = assembler.pool.committed_text()
+<span class="ln">  5</span>  147: display = assembler.pool.display_text()
+<span class="ln">  6</span>  148: pooled = len(assembler.pool.ordered())</pre>
+        <p class="why"><b>为什么是问题：</b>读结果本来只需要 snapshot()（committed/display/live 都在返回里），但真机探针 apps/api/scripts/assembler_real_probe.py:146-148 与 tests/media/test_assembler.py 共 9 处都直接摸 pool → upsert/append/replace_range/next_segment_id/ordered… 全变成必须保持兼容的接口面，任何「段存储换 key/换结构」的内部重构都会同时打断探针与测试，而它们本该只依赖 TranscriptUpdate。跨模块证据：探针在 media 之外，说明这份内部结构已经泄漏到脚本层。</p>
         <p class="fix"><b>修法：</b>pool 改私有（_pool），探针所需的段数/committed 通过 snapshot() 或一个只读视图方法暴露。</p>
       </div>
       <div class="issue" id="media-08">
@@ -3654,7 +3663,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:v
           <span class="dim">W3 错误靠定义规避</span>
           
         </div>
-<p class="signals">危险信号：连体方法</p>        <div class="where"><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:9</code></div><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:67-71</code></div><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:76-80</code></div></div>
+<p class="signals">危险信号：连体方法</p>        <div class="where"><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:9</code></div><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:67-71</code></div><div><code class="path">apps/web/src/interview/useInterviewRoom.ts:78-82</code></div></div>
         <pre><span class="ln">  1</span>  useInterviewRoom.ts:9 const DOUBLE_SUBMIT_WINDOW_MS = 250;
 <span class="ln">  2</span>  
 <span class="ln">  3</span>  67 // Two guards: an in-flight request and a 250ms window (double click / double Enter).

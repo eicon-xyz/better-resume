@@ -14,11 +14,13 @@ from better_resume.interview_engine import (
     AnswerService,
     FlowStateStore,
     FlowStatus,
+    InMemoryHotState,
     InterviewSessionRepository,
     QuestionBatch,
     QuestionService,
     ReportService,
     RestoreService,
+    RestoreView,
     SessionStatus,
 )
 from better_resume.interview_engine.errors import SessionNotFound
@@ -156,15 +158,49 @@ async def test_restore_derives_flow_state_when_the_row_is_gone(factory) -> None:
         await session.commit()
 
     view = await RestoreService(factory).restore(session_id=session_id, user_id=USER)
+    again = await RestoreService(factory).restore(session_id=session_id, user_id=USER)
 
     assert view.derived is True
     assert view.current_question_no == "3"
     assert view.answered == 2
+    # Re-deriving is idempotent: the second read sees the same thing.
+    assert (again.derived, again.current_question_no, again.answered) == (True, "3", 2)
 
     async with factory() as session:
         restored = await FlowStateStore(session).load(session_id)
-    assert restored is not None  # derived state was written back
-    assert restored.current_question_no == "3"
+    assert restored is None  # the read path derives in memory and never writes
+
+
+async def test_restore_leaves_the_flow_row_to_the_generation_writer(factory) -> None:
+    """P15-2: restore 是读路径，flow 行的创建只有一个写入方——出题。
+
+    A restore on a session that has no questions yet used to derive and insert the flow row
+    (total_questions=0). Generation then initialized the same primary key and died with an
+    IntegrityError: the read path had already claimed the row the writer needed to create.
+    """
+    async with factory() as session:
+        created = await InterviewSessionRepository(session).create(user_id=USER)
+        await session.commit()
+    session_id = created.id
+
+    view = await RestoreService(factory).restore(session_id=session_id, user_id=USER)
+    assert view.derived is True  # 无题会话没有 flow 行，派生态只在内存里
+
+    result = await QuestionService(factory, resilience=DirectAiResilience()).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_resume_pdf(),
+        request_id="gen-after-restore",
+        gateway=FakeGateway(),
+        count=3,
+    )
+
+    assert result.flow is not None
+    assert result.flow.current_question_no == "1"
+    async with factory() as session:
+        stored = await FlowStateStore(session).load(session_id)
+    assert stored is not None
+    assert stored.current_question_no == "1"
 
 
 async def test_restore_marks_a_fully_answered_session_completed(factory) -> None:
@@ -175,6 +211,67 @@ async def test_restore_marks_a_fully_answered_session_completed(factory) -> None
     assert view.flow_status is FlowStatus.COMPLETED
     assert view.current_question_no is None
     assert view.answered == 3
+
+
+async def test_every_write_path_drops_the_warm_hot_view(factory) -> None:
+    """P10: 出题/答题/finish 之后，同进程里不能再读到写之前的热层视图。
+
+    The hot layer is a read cache over rows these three services write. If the write path
+    leaves the cached view alone, the next restore answers from a pre-write snapshot (up to
+    the 600s TTL) — the exact "stale view" P10 records. Warm the view, write, read again.
+    """
+    memory = InMemoryHotState()
+    restorer = RestoreService(factory, hot_state=memory)
+    async with factory() as session:
+        created = await InterviewSessionRepository(session).create(user_id=USER)
+        await session.commit()
+    session_id = created.id
+
+    # Warm the cache the way another replica would: the pre-generation empty view.
+    await memory.put(
+        RestoreView(
+            session=created,
+            flow_status=FlowStatus.ASKING,
+            current_question_no=None,
+            answered=0,
+            total_questions=0,
+        ),
+        user_id=USER,
+        ttl_seconds=600,
+    )
+
+    await QuestionService(factory, resilience=DirectAiResilience(), hot_state=memory).generate(
+        session_id=session_id,
+        user_id=USER,
+        resume_pdf=build_resume_pdf(),
+        request_id="gen-hot",
+        gateway=FakeGateway(),
+        count=3,
+    )
+    after_generate = await restorer.restore(session_id=session_id, user_id=USER)
+    assert after_generate.source == "derived", "出题写路径没有失效热层"
+    assert after_generate.current_question_no == "1"
+    assert after_generate.total_questions == 3
+
+    await AnswerService(factory, resilience=DirectAiResilience(), hot_state=memory).submit(
+        session_id=session_id,
+        user_id=USER,
+        question_no="1",
+        answer="第一题的回答",
+        request_id="ans-hot",
+        gateway=FakeGateway(),
+    )
+    after_answer = await restorer.restore(session_id=session_id, user_id=USER)
+    assert after_answer.source == "derived", "答题写路径没有失效热层"
+    assert after_answer.answered == 1
+    assert after_answer.current_question_no == "2"
+
+    await ReportService(factory, resilience=DirectAiResilience(), hot_state=memory).finish(
+        session_id=session_id, user_id=USER, gateway=FakeGateway()
+    )
+    after_finish = await restorer.restore(session_id=session_id, user_id=USER)
+    assert after_finish.source == "derived", "finish 写路径没有失效热层"
+    assert after_finish.session.status is SessionStatus.FINISHED
 
 
 async def test_restore_hides_other_users_sessions(factory) -> None:

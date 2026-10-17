@@ -66,7 +66,7 @@
 
 | 埋的违规 | A 组（不给 §6） | B 组（给 §6） | §6 的增量 |
 | --- | --- | --- | --- |
-| **#1** 新设置进了 `settings_config.py:8`，但 `compose.yaml` 与 `env.example` 都没有对应行 | **2/2 抓住** | 2/2 抓住 | **无**——三个文件都在目录里，已有的 `BR_REPORT__FREEZE_AFTER_SECONDS` 就是模板，比对即可发现 |
+| **#1** 新设置进了 `apps/api/src/better_resume/settings/config.py:133`，但 `compose.yaml` 与 `env.example` 都没有对应行 | **2/2 抓住** | 2/2 抓住 | **无**——三个文件都在目录里，已有的 `BR_REPORT__FREEZE_AFTER_SECONDS` 就是模板，比对即可发现 |
 | **#2** 新测试 patch 的是**被测对象自己的私有方法** `_generate`；真正的边界 `_gateway.complete` / `_store.frozen_numbers` 反而用 `object()` 占位 | **0/2 未识别为违规**（两个都只当成「测试覆盖不足」） | **2/2 点名**，并指出真正的边界在哪 | **有，且是决定性的** |
 
 **预登记预测的对照**：预测「A 组大概率放过 #1、#2 五五开」。实际 A 组**抓住了 #1**——**预测错**，因为 `compose.yaml` 与 `env.example` 就在目录里，等于给了模板；#2 是 **0/2**，比预测更极端。

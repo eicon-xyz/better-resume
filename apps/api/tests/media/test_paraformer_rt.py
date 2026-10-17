@@ -46,6 +46,7 @@ class FakeVendor:
         self.finish_seen = False
         self.started_sent = False
         self.closed = False
+        self.closed_with: int | None = None
 
     async def send(self, frame: str | bytes) -> None:
         self.client_frames.append(frame)
@@ -67,10 +68,12 @@ class FakeVendor:
                 return self.results.pop(0)
             if self.finish_seen and self.finishes:
                 return finished_frame(self.task_id)
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)  # 允许：fake 供应商分帧节奏
 
-    async def close(self) -> None:
+    async def close(self, code: int | None = None) -> None:
+        # websockets 的关闭带一个码；假供应商记录适配器要的是哪个（None = 吃了库默认值）。
         self.closed = True
+        self.closed_with = code
 
 
 def build_adapter(
@@ -107,7 +110,7 @@ async def run_press(adapter: ParaformerRealtimeAdapter, pcm: bytes = SAMPLE_PCM)
     await adapter.start(ChannelCtx(session_id="p1a"))
     if pcm:
         await adapter.feed(pcm)
-        await asyncio.sleep(0.05)  # let the session task stream the buffered audio
+        await asyncio.sleep(0.05)  # 允许：让真实会话任务把缓冲音频送到 fake 供应商
     await adapter.stop()
 
 

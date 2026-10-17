@@ -156,6 +156,7 @@ async def generate_questions(
         resilience=state.ai_resilience,
         storage=ResumeStorage(state.settings.resume_storage_dir),
         corpus_limit=state.settings.corpus_limit,
+        hot_state=state.hot_state,
     )
 
     result = await service.generate(
@@ -167,7 +168,6 @@ async def generate_questions(
         count=count,
     )
 
-    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
     return QuestionBatchView(
         session=_session_view(result.session),
         questions=[GeneratedQuestionView(**question) for question in result.questions],
@@ -219,13 +219,6 @@ class AnswerSubmitView(BaseModel):
     replayed: bool = False
 
 
-async def _invalidate_hot(request: Request, *, user_id: str, session_id: str) -> None:
-    """Writes invalidate the hot view: a stale restore is worse than a slow one."""
-    hot = getattr(request.app.state, "hot_state", None)
-    if hot is not None:
-        await hot.invalidate(user_id=user_id, session_id=session_id)
-
-
 async def _load_question_view(
     request: Request, session_id: str, question_no: str | None
 ) -> GeneratedQuestionView | None:
@@ -270,6 +263,7 @@ async def submit_answer(
         state.session_factory,
         resilience=state.ai_resilience,
         locks=state.question_locks,
+        hot_state=state.hot_state,
     )
     result = await service.submit(
         session_id=session_id,
@@ -281,7 +275,6 @@ async def submit_answer(
         follow_up_gateway=follow_up_gateway,
     )
 
-    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
     return AnswerSubmitView(
         session=_session_view(result.session),
         answer=AnswerView(
@@ -452,25 +445,23 @@ async def finish_interview(
     state = request.app.state
     if state.settings.jobs_enabled:
         # Queue the narrative and return the frozen numbers immediately.
-        result = await ReportService(state.session_factory, resilience=state.ai_resilience).freeze(
-            session_id=session_id, user_id=principal.user_id
-        )
+        result = await ReportService(
+            state.session_factory, resilience=state.ai_resilience, hot_state=state.hot_state
+        ).freeze(session_id=session_id, user_id=principal.user_id)
         await state.job_queue.enqueue(
             "report.summary",
             {"session_id": session_id, "user_id": principal.user_id},
             idempotency_key=f"report:{session_id}",
         )
-        await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
         return _report_view(
             result.session, result.report, llm_summary_used=result.llm_summary_used
         ).model_copy(update={"summary_pending": not result.llm_summary_used})
 
     # The synchronous path needs the gateway here; the queued path resolves it in the worker.
     gateway = await _resolve_gateway(request, model_ref)
-    result = await ReportService(state.session_factory, resilience=state.ai_resilience).finish(
-        session_id=session_id, user_id=principal.user_id, gateway=gateway
-    )
-    await _invalidate_hot(request, user_id=principal.user_id, session_id=session_id)
+    result = await ReportService(
+        state.session_factory, resilience=state.ai_resilience, hot_state=state.hot_state
+    ).finish(session_id=session_id, user_id=principal.user_id, gateway=gateway)
     return _report_view(result.session, result.report, llm_summary_used=result.llm_summary_used)
 
 

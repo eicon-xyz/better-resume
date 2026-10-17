@@ -14,6 +14,8 @@ from better_resume.ai_resilience import (
     Stage,
 )
 
+from ..support import settle
+
 
 def make_bulkhead(
     clock: ManualClock, *, limit: int = 2, wait: float = 2.0
@@ -41,11 +43,9 @@ async def test_slots_are_bounded_and_waiters_are_admitted() -> None:
             await release.wait()
 
     running = [asyncio.create_task(work("a")), asyncio.create_task(work("b"))]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
     queued = asyncio.create_task(work("c"))
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
 
     assert entered == ["a", "b"]
     assert bulkhead.in_flight == 2
@@ -68,15 +68,14 @@ async def test_queue_wait_budget_raises_overloaded() -> None:
             await holder.wait()
 
     running = asyncio.create_task(hold())
-    await asyncio.sleep(0)
+    await settle()
 
     async def queued() -> None:
         async with bulkhead.slot():
             raise AssertionError("the queue should have timed out")
 
     waiter = asyncio.create_task(queued())
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
     assert waiter.done() is False  # still waiting for a slot
 
     clock.advance(1.1)

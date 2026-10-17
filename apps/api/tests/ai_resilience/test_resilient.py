@@ -20,10 +20,11 @@ from better_resume.ai_resilience import (
 from better_resume.llm_gateway import LlmSchemaError, LlmTimeoutError
 from better_resume.settings import ResilienceSettings, Settings
 
+from ..support import settle as settle_turns
+
 
 async def settle(times: int = 6) -> None:
-    for _ in range(times):
-        await asyncio.sleep(0)
+    await settle_turns(times)
 
 
 async def collect(stream: AsyncIterator[object]) -> list[object]:
@@ -220,7 +221,7 @@ async def test_aclose_cancels_open_streams() -> None:
 
     async def source() -> AsyncIterator[int]:
         while True:
-            await asyncio.sleep(0)
+            await settle()
             yield 1
 
     async def open_stream() -> AsyncIterator[int]:

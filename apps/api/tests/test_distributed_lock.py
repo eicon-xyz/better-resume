@@ -14,6 +14,7 @@ from better_resume.interview_engine import (
     RedisQuestionLockRegistry,
 )
 from better_resume.settings import Settings
+from tests.support import settle
 
 
 @pytest.fixture
@@ -51,7 +52,7 @@ async def test_lock_is_mutually_exclusive(locks: RedisQuestionLockRegistry) -> N
             inside += 1
             peak = max(peak, inside)
             order.append(f"{name}:enter")
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.02)  # 允许：真实 Redis 临界区需要真实重叠窗口
             order.append(f"{name}:exit")
             inside -= 1
 
@@ -129,7 +130,7 @@ async def test_cancellation_releases_and_leaves_no_task(locks: RedisQuestionLock
     async def hold() -> None:
         async with locks.acquire(session, "1"):
             entered.set()
-            await asyncio.sleep(30)
+            await asyncio.Event().wait()  # held until the test cancels it
 
     task = asyncio.create_task(hold())
     await entered.wait()
@@ -154,7 +155,7 @@ async def test_lease_expires_after_a_crash(redis_url: str) -> None:
     session = uuid.uuid4().hex
     try:
         await registry._client.set(token_key(registry, session, "1"), "dead-owner", px=100)
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(0.15)  # 允许：Redis PX 是真实时间，短 TTL 只能真等
         async with registry.acquire(session, "1"):
             pass
     finally:
@@ -171,7 +172,7 @@ async def test_lease_is_renewed_while_held(redis_url: str) -> None:
     session = uuid.uuid4().hex
     try:
         async with registry.acquire(session, "1"):
-            await asyncio.sleep(0.45)  # two TTLs: without renewal this would expire
+            await asyncio.sleep(0.45)  # 允许：验证续租要跨过两个真实 TTL
             assert await registry._client.get(token_key(registry, session, "1")) is not None
     finally:
         await registry._client.flushdb()
@@ -207,7 +208,7 @@ async def test_fifty_concurrent_answers_enter_one_at_a_time(
         async with locks.acquire(session, "1"):
             counter += 1
             peak = max(peak, counter)
-            await asyncio.sleep(0)
+            await settle()
             counter -= 1
 
     await asyncio.gather(*(attempt() for _ in range(50)))
@@ -222,7 +223,7 @@ async def test_memory_backend_keeps_m2_behaviour() -> None:
     async def worker(name: str) -> None:
         async with registry.acquire("s", "1"):
             order.append(f"{name}:enter")
-            await asyncio.sleep(0)
+            await settle()
             order.append(f"{name}:exit")
 
     await asyncio.gather(worker("a"), worker("b"))

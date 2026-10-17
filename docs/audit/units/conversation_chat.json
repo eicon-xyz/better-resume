@@ -161,10 +161,10 @@
  "severity": "中",
  "title": "Conversation.message_count 其实是「最后一条消息的 seq」，同时充当序号分配器",
  "where": [
- "apps/api/src/better_resume/conversation/store.py:119,136",
+ "apps/api/src/better_resume/conversation/store.py:130,147",
  "apps/api/src/better_resume/conversation/models.py:59"
  ],
- "evidence": "119: seq = row.message_count + 1\n136: row.message_count = seq\n--- models.py（对外名字）\n59: message_count: int = 0",
+ "evidence": "130: seq = row.message_count + 1\n147: row.message_count = seq\n--- models.py（对外名字）\n59: message_count: int = 0",
  "why": "同一列既是对外暴露的「消息数」（ChatSessionView.message_count，前端直接显示，http/chat.py:55）又是下一个 seq 的来源。现在两者相等只是因为消息永远不会被删除；一旦加上删除/归档（或有清理任务），计数与 seq 立刻分叉，而下一次 append 会算出重复或跳号的 seq——名字让人以为它只是统计值，改动它的人不会想到自己在动序号分配器。",
  "fix": "拆成 last_message_seq（分配器，配合 for_update 读）与 message_count（派生），或把字段直接改名 last_message_seq 并让展示层自己解释。"
  },

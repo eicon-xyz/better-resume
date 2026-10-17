@@ -15,6 +15,8 @@ from better_resume.ai_resilience import (
     Stage,
 )
 
+from ..support import settle
+
 
 @pytest.fixture
 def clock() -> ManualClock:
@@ -37,8 +39,7 @@ async def test_concurrent_same_key_runs_once(flight: SingleFlight) -> None:
         return "answer"
 
     tasks = [asyncio.create_task(flight.execute("k", fn)) for _ in range(10)]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
     release.set()
 
     assert await asyncio.gather(*tasks) == ["answer"] * 10
@@ -138,8 +139,7 @@ async def test_followers_see_the_very_same_failure(flight: SingleFlight) -> None
         raise error
 
     tasks = [asyncio.create_task(flight.execute("k", fn)) for _ in range(3)]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
     release.set()
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -171,9 +171,9 @@ async def test_cancelled_follower_leaves_the_flight_alone(flight: SingleFlight) 
         return "ok"
 
     leader = asyncio.create_task(flight.execute("k", fn))
-    await asyncio.sleep(0)
+    await settle()
     follower = asyncio.create_task(flight.execute("k", fn))
-    await asyncio.sleep(0)
+    await settle()
 
     follower.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -193,8 +193,7 @@ async def test_full_registry_fails_open(clock: ManualClock) -> None:
         return "v"
 
     tasks = [asyncio.create_task(flight.execute(f"k{index}", fn)) for index in range(3)]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
     release.set()
 
     assert await asyncio.gather(*tasks) == ["v"] * 3
@@ -229,7 +228,7 @@ async def test_the_m1_passthrough_would_call_twice() -> None:
         return "x"
 
     tasks = [asyncio.create_task(direct.run(Stage.CHAT, "k", fn)) for _ in range(2)]
-    await asyncio.sleep(0)
+    await settle()
     release.set()
     await asyncio.gather(*tasks)
 

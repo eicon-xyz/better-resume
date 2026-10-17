@@ -41,6 +41,7 @@ from .identity import (
     build_ws_ticket_store,
 )
 from .interview_engine import (
+    FlowStateMissing,
     IllegalFlowTransition,
     IllegalSessionTransition,
     InterviewEngineError,
@@ -150,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(IllegalSessionTransition, _conflict)
     app.add_exception_handler(IllegalFlowTransition, _conflict)
     app.add_exception_handler(InterviewEngineError, _unprocessable)
+    app.add_exception_handler(FlowStateMissing, _flow_state_missing)
     app.add_exception_handler(LlmError, _bad_gateway)
     # M3 taxonomy: 504 timeout, 503 shedding/unavailable, 502 malformed upstream.
     app.add_exception_handler(AiTimeout, _gateway_timeout)
@@ -192,6 +194,20 @@ async def _conflict(request: Request, exc: Exception) -> JSONResponse:
 
 async def _unprocessable(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+async def _flow_state_missing(request: Request, exc: Exception) -> JSONResponse:
+    """A vanished flow row is our own missing data, not a bad request and not an outage.
+
+    500 rather than 401 (the caller is authenticated and owns an existing session), 404 (the
+    session and its questions are there) or 503 + Retry-After (nothing is down; resending the
+    same request fails identically, so telling the client to retry would be a lie). `kind` names
+    the missing state so the client does not have to parse the message.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "kind": "flow_state_missing"},
+    )
 
 
 async def _gateway_timeout(request: Request, exc: Exception) -> JSONResponse:

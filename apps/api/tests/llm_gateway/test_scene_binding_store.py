@@ -113,7 +113,7 @@ async def test_upsert_touches_updated_at(factory) -> None:
             )
         ).scalar_one()
 
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)  # 允许：等真实 wall clock 跨过 updated_at 的写入分辨率
         await store.upsert(LlmScene.CHAT, AdapterKind.OPENAI_COMPAT, "deepseek-flash")
         await session.commit()
         second = (

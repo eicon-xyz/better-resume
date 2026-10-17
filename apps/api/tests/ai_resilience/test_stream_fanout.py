@@ -9,6 +9,8 @@ import pytest
 
 from better_resume.ai_resilience import ManualClock, SingleFlight
 
+from ..support import settle
+
 
 @pytest.fixture
 def flight() -> SingleFlight:
@@ -36,7 +38,7 @@ async def test_three_consumers_share_one_upstream(flight: SingleFlight) -> None:
         nonlocal subscriptions
         subscriptions += 1
         for index in range(5):
-            await asyncio.sleep(0)
+            await settle()
             yield f"f{index}"
 
     streams = await asyncio.gather(
@@ -73,7 +75,7 @@ async def test_late_subscriber_replays_from_the_first_frame(flight: SingleFlight
 async def test_early_close_by_one_consumer_keeps_the_stream_alive(flight: SingleFlight) -> None:
     async def source() -> AsyncIterator[int]:
         for index in range(4):
-            await asyncio.sleep(0)
+            await settle()
             yield index
 
     leader = await flight.execute("chat|s|h", opener(source), expect_stream=True)
@@ -91,7 +93,7 @@ async def test_last_consumer_leaving_cancels_the_producer(flight: SingleFlight) 
     async def source() -> AsyncIterator[int]:
         started.set()
         while True:
-            await asyncio.sleep(0)
+            await settle()
             yield 1
 
     stream = await flight.execute("chat|s|h", opener(source), expect_stream=True)
@@ -101,8 +103,7 @@ async def test_last_consumer_leaving_cancels_the_producer(flight: SingleFlight) 
     assert broadcast.consumer_count == 1
 
     await stream.aclose()  # type: ignore[attr-defined]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
 
     assert broadcast.cancelled is True
     assert flight.entry_count == 0
@@ -137,8 +138,7 @@ async def test_backpressure_stops_the_producer_at_the_buffer_limit(flight: Singl
     broadcast = flight.active_stream("chat|s|h")
     assert broadcast is not None
 
-    for _ in range(30):
-        await asyncio.sleep(0)
+    await settle(30)
 
     assert broadcast.frame_count <= 3
     # The generator body appends before yielding, so the producer holds at most one
@@ -180,8 +180,7 @@ async def test_finished_streams_are_never_replayed(flight: SingleFlight) -> None
 
     first = await flight.execute("chat|s|h", opener(source), expect_stream=True)
     assert await collect(first) == ["x"]
-    for _ in range(3):
-        await asyncio.sleep(0)
+    await settle(3)
 
     assert flight.entry_count == 0
     second = await flight.execute("chat|s|h", opener(source), expect_stream=True)

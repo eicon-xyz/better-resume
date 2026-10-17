@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..identity import Principal, current_principal
-from ..llm_gateway import LlmScene, SceneBindingError, SceneBindingStore, SceneResolver
+from ..llm_gateway import LlmScene, SceneBindingError, SceneResolver
 
 router = APIRouter(prefix="/api/v1/scenes", tags=["scenes"])
 
@@ -54,16 +54,13 @@ async def update_scene(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown scene") from exc
 
     resolver = _resolver(request)
-    async with request.app.state.session_factory() as session:
-        try:
-            await SceneBindingStore(session).upsert(resolved, payload.adapter, payload.target_ref)
-        except SceneBindingError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-            ) from exc
-        await session.commit()
+    try:
+        await resolver.bind(resolved, payload.adapter, payload.target_ref)
+    except SceneBindingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
-    resolver.invalidate(resolved)
     for view in await resolver.views():
         if view.scene is resolved:
             return SceneViewResponse(**asdict(view))

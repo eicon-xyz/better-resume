@@ -20,6 +20,7 @@
 - **`AGENTS.md` §开发规范**：实现期硬约束（mock 边界、`ai_resilience` 链、503 语义、缓存 TTL、WS 关闭码、连接参数、证据诚实、依赖纪律、清洁度）。
 - **`AGENTS.md` §贡献指南（提交前检查清单）**：改动类型 → 必跑命令。
 - **`AGENTS.md` §AI 智能体须知**：改某个模块前先对照它的约束，判断「这个改动会不会重蹈覆辙」。
+- **`skills/verify-delivery/SKILL.md`**：交付文案判据、中文判定、AI 味词表、图·HTML 出口、改动说明四栏——判据表与词表在技能自带的 helper，勿复制进本文件。
 
 评审口径（不是复读规则）：
 
@@ -44,6 +45,7 @@ Message Chains / Middle Man / Refused Bequest）。两条约束：**仓库明文
 | 跨文件一致性、「跟周围风格保持一致」 | 本文件 |
 | 实现期必须遵守的硬约束 | `AGENTS.md` §开发规范 |
 | 导航指针（「改 X 先看哪」） | `AGENTS.md` / `skills/repo-map/` |
+| 交付文案的写作判据与 AI 味词表（F08/F10/F16） | `skills/verify-delivery/SKILL.md`（判据表唯一真源在它自带的 `check_copy.py`，勿复制） |
 
 `/retro` 提出新规则时按这张表分类；**能变成检查的，就不要写成人读的规则**。
 

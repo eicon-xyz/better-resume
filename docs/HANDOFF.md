@@ -162,7 +162,7 @@ python3 scripts/verify_audit_evidence.py --strict   # 审计收口：逐字核�
 GLOSSARY.md                             ← 域词汇表（术语；**接手先读这个**）
 AGENTS.md                               ← 项目全貌/技术栈/命令/规范/TDD 纪律
 docs/HANDOFF.md                         ← 本文档：当前状态 / 怎么跑 / 环境坑 / 未验证清单
-docs/DECISIONS.md                       技术决议 D01–D22（冲突以它为准）
+docs/DECISIONS.md                       技术决议 D01–D26（冲突以它为准）
 docs/agents/subagents.md                子智能体操作约定
 docs/audit/                             模块设计审计：MODULE-AUDIT.html（产物）/ units/*.json（数据）/ CONTRACT.md（口径）
 docs/history_docs/                      历史归档：tickets/**（各阶段票据+验收包+问题台账）、HANDOFF-archive.md、audit/FIXES.md

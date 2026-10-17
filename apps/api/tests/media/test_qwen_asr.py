@@ -21,6 +21,8 @@ from better_resume.media.adapters import (
     to_data_uri,
 )
 
+from ..support import settle
+
 ENDPOINT = "https://example.invalid/api/v1/services/aigc/multimodal-generation/generation"
 SAMPLE_PCM = b"\x00\x01" * 8000  # 0.5 s of 16 kHz mono s16le, loud enough to be speech
 VENDOR_TEXT = "你好，我是来自示例大学人工智能本科的测试用户。"
@@ -96,11 +98,11 @@ async def test_wait_blocks_until_stop_finished() -> None:
     await adapter.feed(SAMPLE_PCM)
 
     waiter = asyncio.create_task(adapter.wait())
-    await asyncio.sleep(0.05)
+    await settle(5)
     assert not waiter.done(), "wait() returned before the channel ended"
 
     stopper = asyncio.create_task(adapter.stop())
-    await asyncio.sleep(0.05)
+    await settle(5)
     assert not stopper.done()
     release.set()
     await asyncio.wait_for(stopper, timeout=5)

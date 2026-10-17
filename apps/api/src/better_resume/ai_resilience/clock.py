@@ -70,6 +70,11 @@ class ManualClock:
     def now(self) -> float:
         return self._now
 
+    @property
+    def pending_waiters(self) -> int:
+        """Sleepers parked on this clock: a test advances only once they are registered."""
+        return len(self._waiters)
+
     async def sleep(self, seconds: float) -> None:
         if seconds <= 0:
             return

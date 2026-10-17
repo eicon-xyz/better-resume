@@ -94,6 +94,29 @@ add_web_contract() {
   add web "python3 scripts/check_web_style_guards.py"
 }
 build_scripts() {
+  # p15 建议 7：每个门禁脚本自带「已知坏输入必红」的自检。接线按两行一组：
+  # --selftest 证明门禁真会判定（D22：只打印不判定的脚本算缺陷），全量扫描证明当前树干净。
+  add all "bash scripts/verify_secrets.sh --selftest"
+  add all "bash scripts/verify_secrets.sh"
+  add all "bash scripts/verify_docs_hygiene.sh --selftest"
+  add all "bash scripts/verify_docs_hygiene.sh"
+  add all "bash scripts/verify_citations.sh --selftest"
+  # 引证只判票据与验收包，`*-EVIDENCE.md` 除外：证据文件是原始输出转储，里面的「文件:行号」
+  # 是引文不是引证；对它们解析等于让门禁替转储里的历史行号背书。证据的正确性由复跑判定。
+  add all "find docs/tickets -name '*.md' ! -name '*-EVIDENCE.md' -print0 | xargs -0 bash scripts/verify_citations.sh"
+  # p15 建议 11 的环境半边（P12）：用例把运行环境的隐式状态当输入读的形态命中即红；
+  # 两行一组：--selftest 证明判据真会判定，全量扫描证明当前测试树干净。
+  add all "python3 scripts/verify_hermetic.py --selftest"
+  add all "python3 scripts/verify_hermetic.py"
+  # 交付验证技能（skills/verify-delivery）自带的机械判据：--selftest 是它的「已知坏样本必红」自证，
+  # 也顺带守住这个 helper 的语法（它不在 check_scripts.py 的扫描范围里）。
+  add all "python3 skills/verify-delivery/check_copy.py --selftest"
+  add all "bash scripts/ticket_frontier.sh --selftest"
+  # --check 只认在飞阶段目录：更早阶段的票头部没有 Status 行（历史格式），全量循环会把票面
+  # 格式欠账算成本层的红。那些阶段收口按 docs/agents/issue-tracker.md 补齐头部后再纳入。
+  add all "bash scripts/ticket_frontier.sh --check docs/tickets/p15-agent-friendly-architecture"
+  # 写入路径越界门禁（p15 建议 12 的工具半边）：只接自检；逐票真判定用 --check <票> --paths-from <本轮清单>。
+  add all "bash scripts/verify_write_scope.sh --selftest"
   add api "cd apps/api && uv run pytest tests/test_fault_probe.py tests/test_drill_prereqs.py tests/test_load_test_script.py tests/test_real_model_smoke_script.py tests/test_verify_script.py tests/test_web_style_guards.py"
   # The drill scripts above are tested by pytest; the shell scripts next to them were not
   # (retro 2026-10-06: a proof script that always exited 0 shipped through a green CI).

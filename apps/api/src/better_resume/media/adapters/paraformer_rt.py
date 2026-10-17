@@ -265,7 +265,8 @@ class ParaformerRealtimeAdapter:
         finally:
             if connection is not None:
                 with contextlib.suppress(Exception):
-                    await connection.close()
+                    # 显式关闭码：一轮结束就是 1000，盒子两端都不必去猜库的默认值。
+                    await connection.close(1000)
         full = "".join(self._sentences) + self._live
         if full:
             await self._emit(TranscriptEvent(kind="final", text=full))

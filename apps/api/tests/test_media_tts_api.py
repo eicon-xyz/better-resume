@@ -27,7 +27,7 @@ class FakeEngine:
     async def __call__(self, text: str, voice: str, rate: str | None) -> bytes:
         self.calls.append((text, voice, rate))
         if self.delay:
-            await asyncio.sleep(self.delay)
+            await asyncio.sleep(self.delay)  # 允许：fake 供应商延迟，模拟系统边界
         if self.error is not None:
             raise self.error
         return self.audio

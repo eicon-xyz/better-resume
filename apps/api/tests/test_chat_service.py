@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from better_resume.ai_resilience import wait_until
 from better_resume.chat import ChatErrorEvent, ChatService
 from better_resume.conversation import (
     ConversationNotFoundError,
@@ -57,7 +58,7 @@ class FakeGateway:
         self.started.set()
         for event in self._events:
             if self._delay:
-                await asyncio.sleep(self._delay)
+                await asyncio.sleep(self._delay)  # 允许：fake 供应商延迟，模拟系统边界
             yield event
         self.completed = True
         if self._error is not None:
@@ -216,22 +217,30 @@ async def test_cancellation_persists_partial_answer(store_factory) -> None:
         async for _ in service.stream_reply(
             session=ref, user_id=USER, content="长问题", gateway=gateway
         ):
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)  # 允许：消费侧模拟慢客户端
 
     task = asyncio.create_task(consume())
     # Wait until the model stream really started, otherwise the cancel hits setup code.
     await asyncio.wait_for(gateway.started.wait(), timeout=5)
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)  # 允许：等 fake 供应商的流式延迟走完，取消点落在流中途
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
     stored: list = []
-    for _ in range(50):  # the shielded write may land a moment after the cancel
+
+    async def partial_write_landed() -> bool:
+        nonlocal stored
         stored = await history(store_factory, ref)
-        if len(stored) == 2:
-            break
-        await asyncio.sleep(0.02)
+        return len(stored) == 2
+
+    # the shielded write may land a moment after the cancel
+    await wait_until(
+        partial_write_landed,
+        timeout=1.0,
+        interval=0.02,
+        description="the shielded partial answer to be persisted",
+    )
 
     assert [m.role for m in stored] == ["user", "assistant"]
     assert stored[1].content == "被中断的半句"

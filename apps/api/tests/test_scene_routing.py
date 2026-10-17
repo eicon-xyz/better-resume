@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from better_resume.llm_gateway import AdapterKind, LlmScene, SceneBinding
+from better_resume.llm_gateway import AdapterKind, ConfigStatus, LlmScene, SceneBinding
 from better_resume.llm_gateway.protocols import LlmGateway
 from better_resume.main import create_app
 from better_resume.settings import Settings
@@ -31,8 +31,8 @@ class RecordingFactory:
         self.configured = configured
         self.bindings: list[SceneBinding] = []
 
-    def is_configured(self, binding: SceneBinding) -> bool:
-        return self.configured
+    async def config_status(self, binding: SceneBinding) -> ConfigStatus:
+        return ConfigStatus(configured=self.configured)
 
     async def build(self, binding: SceneBinding) -> LlmGateway:
         self.bindings.append(binding)
